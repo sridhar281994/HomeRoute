@@ -49,7 +49,7 @@ class RegisterScreen(Screen):
         username = self._get("phone_input")  # reusing existing field id as "username"
         email = self._get("email_input")
         password = self._get("password_input")
-        country = (self.ids.get("country_spinner").text or "").strip() if self.ids.get("country_spinner") else ""
+        state = (self.ids.get("country_spinner").text or "").strip() if self.ids.get("country_spinner") else ""
         gender = (self.ids.get("gender_spinner").text or "").strip() if self.ids.get("gender_spinner") else ""
 
         err = self._validate(username, email, password)
@@ -63,8 +63,8 @@ class RegisterScreen(Screen):
         if not username or len(username) < 3:
             self._popup("Invalid", "Please enter a username (min 3 chars).")
             return
-        if not country or country == "Select Country":
-            self._popup("Invalid", "Please select your country.")
+        if not state or state in {"Select Country", "Select State"}:
+            self._popup("Invalid", "Please select your state.")
             return
         if gender.lower() not in {"male", "female", "cross"}:
             self._popup("Invalid", "Please select gender: male/female/cross.")
@@ -80,7 +80,7 @@ class RegisterScreen(Screen):
                     username=username,
                     password=password_safe,
                     name=name.strip(),
-                    country=country,
+                    state=state,
                     gender=gender.lower(),
                 )
 

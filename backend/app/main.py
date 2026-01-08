@@ -2,19 +2,65 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
+import secrets
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import session_scope
-from app.models import OtpCode, Property, Subscription, User
+from app.models import OtpCode, Property, PropertyImage, Subscription, User
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
 
 
 app = FastAPI(title="Property Discovery API")
+
+
+def _uploads_dir() -> str:
+    return os.environ.get("UPLOADS_DIR") or os.path.join(os.path.dirname(__file__), "..", "uploads")
+
+
+def _public_image_url(file_path: str) -> str:
+    fp = (file_path or "").strip()
+    if fp.startswith("http://") or fp.startswith("https://"):
+        return fp
+    fp = fp.lstrip("/")
+    return f"/uploads/{fp}"
+
+
+os.makedirs(_uploads_dir(), exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_uploads_dir()), name="uploads")
+
+
+@app.on_event("startup")
+def seed_admin_user() -> None:
+    """
+    Create the default administrator account for GUI access:
+    username: Admin
+    password: Admin@123
+    """
+    try:
+        with session_scope() as db:
+            admin = db.execute(select(User).where(User.username == "Admin")).scalar_one_or_none()
+            if admin:
+                return
+            admin = User(
+                email="admin@local",
+                username="Admin",
+                name="Administrator",
+                role="admin",
+                password_hash=hash_password("Admin@123"),
+            )
+            db.add(admin)
+            db.flush()
+            db.add(Subscription(user_id=admin.id, status="active", provider="google_play"))
+    except Exception:
+        # If the DB isn't migrated yet, ignore and seed later.
+        return
 
 
 # -----------------------
@@ -60,7 +106,7 @@ class RegisterIn(BaseModel):
     username: str
     password: str = Field(min_length=6)
     name: str = ""
-    country: str = ""
+    state: str = ""
     gender: str = ""
 
 
@@ -83,6 +129,19 @@ class ForgotResetIn(BaseModel):
     identifier: str
     otp: str
     new_password: str = Field(min_length=6)
+
+
+class PropertyCreateIn(BaseModel):
+    title: str
+    description: str = ""
+    property_type: str = "apartment"
+    rent_sale: str = "rent"
+    price: int = 0
+    location: str = ""
+    amenities: list[str] = Field(default_factory=list)
+    availability: str = "available"
+    contact_phone: str = ""
+    contact_email: str = ""
 
 
 # -----------------------
@@ -113,7 +172,7 @@ def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
         email=email,
         username=username,
         name=(data.name or "").strip(),
-        country=(data.country or "").strip(),
+        state=(data.state or "").strip(),
         gender=(data.gender or "").strip(),
         role="user",
         password_hash=hash_password(data.password),
@@ -246,6 +305,12 @@ def _property_out(p: Property) -> dict[str, Any]:
         amenities = json.loads(p.amenities_json or "[]") if p.amenities_json else []
     except Exception:
         amenities = []
+    images = []
+    try:
+        for i in (p.images or []):
+            images.append({"id": i.id, "url": _public_image_url(i.file_path), "sort_order": i.sort_order})
+    except Exception:
+        images = []
     return {
         "id": p.id,
         "title": p.title,
@@ -259,6 +324,7 @@ def _property_out(p: Property) -> dict[str, Any]:
         "amenities": amenities,
         "availability": p.availability,
         "status": p.status,
+        "images": images,
     }
 
 
@@ -353,4 +419,120 @@ def get_property_contact(
         raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
 
     return {"phone": p.contact_phone, "email": p.contact_email}
+
+
+# -----------------------
+# Owner flow: create listing (images uploaded separately)
+# -----------------------
+@app.post("/owner/properties")
+def owner_create_property(
+    data: PropertyCreateIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role not in {"owner", "admin"}:
+        raise HTTPException(status_code=403, detail="Owner account required")
+    p = Property(
+        owner_id=me.id,
+        title=(data.title or "").strip() or "Untitled",
+        description=(data.description or "").strip(),
+        property_type=(data.property_type or "apartment").strip(),
+        rent_sale=(data.rent_sale or "rent").strip(),
+        price=int(data.price or 0),
+        location=(data.location or "").strip(),
+        amenities_json=json.dumps(list(data.amenities or [])),
+        availability=(data.availability or "available").strip(),
+        status="pending",
+        contact_phone=(data.contact_phone or "").strip(),
+        contact_email=(data.contact_email or "").strip(),
+    )
+    db.add(p)
+    db.flush()
+    return {"id": p.id, "status": p.status}
+
+
+# -----------------------
+# Admin moderation flow
+# -----------------------
+@app.get("/admin/properties/pending")
+def admin_pending_properties(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    items = [_property_out(p) for p in db.execute(select(Property).where(Property.status == "pending").order_by(Property.id.desc())).scalars().all()]
+    return {"items": items}
+
+
+@app.post("/admin/properties/{property_id}/approve")
+def admin_approve_property(
+    property_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    p = db.get(Property, int(property_id))
+    if not p:
+        raise HTTPException(status_code=404, detail="Property not found")
+    p.status = "approved"
+    db.add(p)
+    return {"ok": True}
+
+
+@app.post("/admin/properties/{property_id}/reject")
+def admin_reject_property(
+    property_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    p = db.get(Property, int(property_id))
+    if not p:
+        raise HTTPException(status_code=404, detail="Property not found")
+    p.status = "rejected"
+    db.add(p)
+    return {"ok": True}
+
+
+@app.post("/properties/{property_id}/images")
+def upload_property_image(
+    property_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    file: UploadFile = File(...),
+    sort_order: int = Query(default=0),
+):
+    """
+    Upload an image for a property listing.
+    Note: This stores the file locally. For production, swap to S3/GCS/etc.
+    """
+    p = db.get(Property, int(property_id))
+    if not p:
+        raise HTTPException(status_code=404, detail="Property not found")
+    if me.role not in {"owner", "admin"} and p.owner_id != me.id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    content_type = (file.content_type or "").lower()
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image uploads are allowed")
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg" if content_type in {"image/jpeg", "image/jpg"} else ".png"
+
+    safe_name = f"p{p.id}_{secrets.token_hex(8)}{ext}"
+    disk_path = os.path.join(_uploads_dir(), safe_name)
+    try:
+        with open(disk_path, "wb") as out:
+            out.write(file.file.read())
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save upload")
+
+    img = PropertyImage(property_id=p.id, file_path=safe_name, sort_order=int(sort_order))
+    db.add(img)
+    db.flush()
+    return {"id": img.id, "url": _public_image_url(img.file_path), "sort_order": img.sort_order}
 

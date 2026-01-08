@@ -1,12 +1,26 @@
+#:set BG_PURPLE (0.12, 0.02, 0.18, 1)
+#:set SHINE_PURPLE (0.70, 0.25, 0.95, 0.18)
+#:set SHINE_WHITE (1, 1, 1, 0.05)
+
 <SplashScreen>:
     name: "splash"
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.08, 0.08, 0.10, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         Label:
             text: "Property Discovery"
@@ -26,10 +40,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.9, 0.45, 0.0, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         BoxLayout:
             orientation: 'vertical'
@@ -87,10 +111,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.9, 0.45, 0.0, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         ScrollView:
             size_hint: 0.9, 0.9
@@ -288,10 +322,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.9, 0.45, 0.0, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         ScrollView:
             size_hint: 0.9, 0.8
@@ -361,10 +405,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.9, 0.45, 0.0, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         ScrollView:
             size_hint: 0.9, 0.8
@@ -476,10 +530,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.9, 0.45, 0.0, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         ScrollView:
             size_hint: 0.9, 0.8
@@ -603,10 +667,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.9, 0.45, 0.0, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         ScrollView:
             size_hint: 0.94, 0.94
@@ -656,7 +730,7 @@
 
                 Spinner:
                     id: country_spinner
-                    text: "Select Country"
+                    text: "Select State"
                     values: root.country_values()
                     size_hint_y: None
                     height: dp(48)
@@ -734,10 +808,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.95, 0.55, 0.10, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         BoxLayout:
             orientation: "vertical"
@@ -844,10 +928,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.95, 0.55, 0.10, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         BoxLayout:
             orientation: "vertical"
@@ -911,10 +1005,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.95, 0.55, 0.10, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height *  0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         BoxLayout:
             orientation: "vertical"
@@ -964,10 +1068,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.95, 0.55, 0.10, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
         BoxLayout:
             orientation: "vertical"
             size_hint: 0.9, 0.8
@@ -1008,10 +1122,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.95, 0.55, 0.10, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
         BoxLayout:
             orientation: "vertical"
             size_hint: 0.9, 0.85
@@ -1065,10 +1189,20 @@
     FloatLayout:
         canvas.before:
             Color:
-                rgba: 0.95, 0.55, 0.10, 1
+                rgba: BG_PURPLE
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
         BoxLayout:
             orientation: "vertical"
             size_hint: 0.9, 0.8

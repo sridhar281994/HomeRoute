@@ -17,7 +17,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), default="")
-    country: Mapped[str] = mapped_column(String(80), default="")
+    state: Mapped[str] = mapped_column(String(80), default="")
     gender: Mapped[str] = mapped_column(String(32), default="")
     role: Mapped[str] = mapped_column(String(32), default="user")  # user | owner | admin
     password_hash: Mapped[str] = mapped_column(String(255))
@@ -76,6 +76,7 @@ class Property(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 
     owner = relationship("User", back_populates="properties")
+    images = relationship("PropertyImage", back_populates="property", cascade="all, delete-orphan")
 
 
 class SavedProperty(Base):
@@ -86,4 +87,17 @@ class SavedProperty(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"), index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+
+
+class PropertyImage(Base):
+    __tablename__ = "property_images"
+    __table_args__ = (UniqueConstraint("property_id", "sort_order", name="uq_property_image_sort"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"), index=True)
+    file_path: Mapped[str] = mapped_column(String(512))  # relative path or URL
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+
+    property = relationship("Property", back_populates="images")
 
