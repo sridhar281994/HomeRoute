@@ -1,0 +1,20 @@
+COUNTRIES = [
+    "United States",
+    "United Kingdom",
+    "Canada",
+    "Australia",
+    "India",
+    "United Arab Emirates",
+    "Saudi Arabia",
+    "Germany",
+    "France",
+    "Italy",
+    "Spain",
+    "Netherlands",
+    "Singapore",
+    "Malaysia",
+    "South Africa",
+    "Nigeria",
+    "Kenya",
+]
+

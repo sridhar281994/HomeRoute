@@ -1,3 +1,25 @@
+<SplashScreen>:
+    name: "splash"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: 0.08, 0.08, 0.10, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        Label:
+            text: "Property Discovery"
+            font_size: sp(30)
+            color: 1, 1, 1, 1
+            pos_hint: {"center_x": 0.5, "center_y": 0.55}
+
+        Label:
+            text: "Loading..."
+            font_size: sp(16)
+            color: 1, 1, 1, 0.7
+            pos_hint: {"center_x": 0.5, "center_y": 0.45}
+
 <WelcomeScreen>:
     name: 'welcome'
 
@@ -449,8 +471,8 @@
                     background_color: (0.7, 0.2, 0.2, 1)
                     on_release: root.go_back()
 
-<settings>:
-    name: "edit_profile"
+<SettingsScreen>:
+    name: "profile"
     FloatLayout:
         canvas.before:
             Color:
@@ -481,19 +503,20 @@
                         radius: [20]
 
                 Label:
-                    text: "Edit Profile"
+                    text: "Profile / Settings"
                     font_size: sp(24)
                     size_hint_y: None
                     height: dp(40)
 
                 TextInput:
                     id: name_input
-                    text: root.current_name
-                    hint_text: "Full Name"
+                    text: root.user_summary
+                    hint_text: ""
                     size_hint_y: None
                     height: dp(48)
                     font_size: sp(16)
                     multiline: False
+                    disabled: True
 
                 TextInput:
                     id: image_url_input
@@ -505,42 +528,39 @@
                     disabled: True
 
                 Button:
-                    text: "Save Changes"
+                    text: "Refresh Subscription Status"
                     size_hint_y: None
                     height: dp(48)
                     background_color: (0.3, 0.8, 0.4, 1)
-                    on_release: root.save_profile()
+                    on_release: root.refresh_subscription()
 
-                # Current profile photo preview + upload button
+                # Subscription quick actions
                 BoxLayout:
+                    orientation: "vertical"
                     size_hint_y: None
-                    height: dp(90)
-                    spacing: dp(10)
+                    height: self.minimum_height
+                    spacing: dp(8)
+                    padding: dp(10)
+                    canvas.before:
+                        Color:
+                            rgba: 0.1, 0.15, 0.3, 0.8
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
 
-                    AsyncImage:
-                        source: root.current_image_url if root.current_image_url else ""
-                        size_hint: None, None
-                        size: dp(80), dp(80)
-                        fit_mode: "cover"
+                    Label:
+                        text: "Subscription"
+                        size_hint_y: None
+                        height: dp(20)
+                        color: 1, 1, 1, 0.9
 
-                    BoxLayout:
-                        orientation: "vertical"
-                        spacing: dp(6)
-                        Label:
-                            text: "Profile photo"
-                            size_hint_y: None
-                            height: dp(20)
-                            color: 1, 1, 1, 0.9
-                            halign: "left"
-                            valign: "middle"
-                            text_size: self.size
-
-                        Button:
-                            text: "Upload Image"
-                            size_hint_y: None
-                            height: dp(44)
-                            background_color: (0.2, 0.5, 0.9, 1)
-                            on_release: root.pick_image()
+                    Button:
+                        text: "Manage Subscription (Google Play)"
+                        size_hint_y: None
+                        height: dp(44)
+                        background_color: (0.2, 0.5, 0.9, 1)
+                        on_release: root.manage_subscription()
 
                 Label:
                     text: "Options"
@@ -549,42 +569,20 @@
                     color: 1, 1, 1, 0.7
 
                 Button:
-                    text: "Messages"
+                    text: "Subscription Status: " + root.subscription_status
                     size_hint_y: None
                     height: dp(44)
                     background_color: (0.2, 0.5, 0.8, 1)
-                    on_release: root.go_history()
+                    on_release: root.manage_subscription()
 
                 Button:
                     text: "Change Password"
                     size_hint_y: None
                     height: dp(44)
                     background_color: (0.2, 0.5, 0.8, 1)
-                    on_release: root.change_password()
-
-                Label:
-                    text: "Subscribe"
-                    size_hint_y: None
-                    height: dp(30)
-                    color: 1, 1, 1, 0.7
-                
-                GridLayout:
-                    cols: 2
-                    size_hint_y: None
-                    height: dp(100)
-                    spacing: dp(5)
-                    Button:
-                        text: "Text 1h"
-                        on_release: root.subscribe("text_hour")
-                    Button:
-                        text: "Text 10m"
-                        on_release: root.subscribe("text_10min")
-                    Button:
-                        text: "Video 1h"
-                        on_release: root.subscribe("video_hour")
-                    Button:
-                        text: "Video 10m"
-                        on_release: root.subscribe("video_10min")
+                    on_release:
+                        root.manager.get_screen("forgot_password").open_from(source_screen="profile", title="Change Password")
+                        root.manager.current = "forgot_password"
 
                 Button:
                     text: "Logout"
@@ -730,4 +728,385 @@
                     height: dp(44)
                     background_color: (0.7, 0.2, 0.2, 1)
                     on_release: root.go_back()
+
+<HomeScreen>:
+    name: "home"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: 0.95, 0.55, 0.10, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.95, 0.95
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(10)
+            padding: dp(12)
+            canvas.before:
+                Color:
+                    rgba: 0, 0, 0, 0.55
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [16]
+
+            BoxLayout:
+                size_hint_y: None
+                height: dp(44)
+                spacing: dp(8)
+                Label:
+                    text: "Home / Property Feed"
+                    color: 1, 1, 1, 1
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.size
+                Button:
+                    text: "Profile"
+                    size_hint_x: None
+                    width: dp(90)
+                    on_release: root.go_profile()
+
+            GridLayout:
+                cols: 2
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: dp(8)
+
+                TextInput:
+                    hint_text: "Search (location, keyword)"
+                    text: root.query
+                    multiline: False
+                    on_text: root.query = self.text
+                    size_hint_y: None
+                    height: dp(42)
+                TextInput:
+                    hint_text: "Max budget"
+                    text: root.max_price
+                    multiline: False
+                    input_filter: "int"
+                    on_text: root.max_price = self.text
+                    size_hint_y: None
+                    height: dp(42)
+
+                Spinner:
+                    text: root.rent_sale
+                    values: ["Any", "rent", "sale"]
+                    on_text: root.rent_sale = self.text
+                    size_hint_y: None
+                    height: dp(42)
+                Spinner:
+                    text: root.property_type
+                    values: ["Any", "apartment", "house", "villa", "studio", "land"]
+                    on_text: root.property_type = self.text
+                    size_hint_y: None
+                    height: dp(42)
+
+            BoxLayout:
+                size_hint_y: None
+                height: dp(44)
+                spacing: dp(8)
+                Button:
+                    text: "Apply Filters"
+                    background_color: (0.2, 0.6, 0.9, 1)
+                    on_release: root.refresh()
+                Button:
+                    text: "Owner"
+                    size_hint_x: None
+                    width: dp(90)
+                    on_release: root.go_owner()
+                Button:
+                    text: "Admin"
+                    size_hint_x: None
+                    width: dp(90)
+                    on_release: root.go_admin()
+
+            Label:
+                text: "Loading..." if root.is_loading else "Listings"
+                size_hint_y: None
+                height: dp(24)
+                color: 1, 1, 1, 0.85
+
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+                GridLayout:
+                    id: list_container
+                    cols: 1
+                    size_hint_y: None
+                    height: self.minimum_height
+                    spacing: dp(8)
+
+<PropertyDetailScreen>:
+    name: "property_detail"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: 0.95, 0.55, 0.10, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.95, 0.95
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(10)
+            padding: dp(12)
+            canvas.before:
+                Color:
+                    rgba: 0, 0, 0, 0.55
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [16]
+
+            BoxLayout:
+                size_hint_y: None
+                height: dp(44)
+                spacing: dp(8)
+                Button:
+                    text: "Back"
+                    size_hint_x: None
+                    width: dp(90)
+                    on_release: root.back()
+                Label:
+                    text: "Property Detail"
+                    color: 1, 1, 1, 1
+
+            Label:
+                text: root.property_data.get("title","(loading...)")
+                color: 1, 1, 1, 1
+                font_size: sp(20)
+                size_hint_y: None
+                height: dp(32)
+
+            Label:
+                text: (root.property_data.get("price_display") or "") + " • " + (root.property_data.get("location_display") or "")
+                color: 1, 1, 1, 0.9
+                size_hint_y: None
+                height: dp(24)
+
+            Label:
+                text: "Amenities: " + (", ".join(root.property_data.get("amenities") or []) if root.property_data.get("amenities") else "—")
+                color: 1, 1, 1, 0.85
+
+            Button:
+                text: "Unlock Contact"
+                size_hint_y: None
+                height: dp(50)
+                background_color: (0.2, 0.6, 0.9, 1)
+                on_release: root.unlock_contact()
+
+            Button:
+                text: "Save / Share (demo)"
+                size_hint_y: None
+                height: dp(44)
+                background_color: (0.3, 0.8, 0.3, 1)
+
+<SubscriptionScreen>:
+    name: "subscription"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: 0.95, 0.55, 0.10, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.9, 0.8
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(12)
+            padding: dp(16)
+            canvas.before:
+                Color:
+                    rgba: 0, 0, 0, 0.55
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [16]
+
+            Label:
+                text: "Subscription"
+                font_size: sp(24)
+                size_hint_y: None
+                height: dp(40)
+                color: 1, 1, 1, 1
+
+            Label:
+                text: "Status: " + root.status_text
+                color: 1, 1, 1, 0.9
+
+            Label:
+                text: "Payments are handled by Google Play Billing. This app only unlocks digital contact access after Google confirms an active subscription."
+                color: 1, 1, 1, 0.8
+
+            Button:
+                text: "Go to Google Play Billing (demo)"
+                size_hint_y: None
+                height: dp(50)
+                background_color: (0.2, 0.6, 0.9, 1)
+                on_release: root.simulate_google_play_success()
+
+            Button:
+                text: "Back"
+                size_hint_y: None
+                height: dp(44)
+                background_color: (0.7, 0.2, 0.2, 1)
+                on_release: root.back()
+
+<OwnerDashboardScreen>:
+    name: "owner_dashboard"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: 0.95, 0.55, 0.10, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.9, 0.8
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(12)
+            padding: dp(16)
+            canvas.before:
+                Color:
+                    rgba: 0, 0, 0, 0.55
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [16]
+            Label:
+                text: "Owner Dashboard"
+                font_size: sp(24)
+                size_hint_y: None
+                height: dp(40)
+                color: 1, 1, 1, 1
+            Button:
+                text: "Add Property"
+                size_hint_y: None
+                height: dp(50)
+                background_color: (0.2, 0.6, 0.9, 1)
+                on_release: root.go_add()
+            Label:
+                text: "My Listings (demo)"
+                color: 1, 1, 1, 0.85
+            Button:
+                text: "Back"
+                size_hint_y: None
+                height: dp(44)
+                background_color: (0.7, 0.2, 0.2, 1)
+                on_release: root.go_back()
+
+<OwnerAddPropertyScreen>:
+    name: "owner_add_property"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: 0.95, 0.55, 0.10, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.9, 0.85
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(10)
+            padding: dp(16)
+            canvas.before:
+                Color:
+                    rgba: 0, 0, 0, 0.55
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [16]
+            Label:
+                text: "Add Property"
+                font_size: sp(24)
+                size_hint_y: None
+                height: dp(40)
+                color: 1, 1, 1, 1
+            TextInput:
+                hint_text: "Title"
+                multiline: False
+                size_hint_y: None
+                height: dp(44)
+            TextInput:
+                hint_text: "Location"
+                multiline: False
+                size_hint_y: None
+                height: dp(44)
+            TextInput:
+                hint_text: "Price"
+                multiline: False
+                input_filter: "int"
+                size_hint_y: None
+                height: dp(44)
+            Button:
+                text: "Submit Listing"
+                size_hint_y: None
+                height: dp(50)
+                background_color: (0.3, 0.8, 0.3, 1)
+                on_release: root.submit_listing()
+            Button:
+                text: "Back"
+                size_hint_y: None
+                height: dp(44)
+                background_color: (0.7, 0.2, 0.2, 1)
+                on_release: root.go_back()
+
+<AdminReviewScreen>:
+    name: "admin_review"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: 0.95, 0.55, 0.10, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.9, 0.8
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(12)
+            padding: dp(16)
+            canvas.before:
+                Color:
+                    rgba: 0, 0, 0, 0.55
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [16]
+            Label:
+                text: "Admin Review"
+                font_size: sp(24)
+                size_hint_y: None
+                height: dp(40)
+                color: 1, 1, 1, 1
+            Label:
+                text: "Review new listings (demo)"
+                color: 1, 1, 1, 0.85
+            BoxLayout:
+                size_hint_y: None
+                height: dp(50)
+                spacing: dp(10)
+                Button:
+                    text: "Approve"
+                    background_color: (0.3, 0.8, 0.3, 1)
+                    on_release: root.approve_demo()
+                Button:
+                    text: "Reject / Flag"
+                    background_color: (0.8, 0.2, 0.2, 1)
+                    on_release: root.reject_demo()
+            Button:
+                text: "Back"
+                size_hint_y: None
+                height: dp(44)
+                background_color: (0.7, 0.2, 0.2, 1)
+                on_release: root.go_back()
 

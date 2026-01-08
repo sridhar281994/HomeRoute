@@ -152,8 +152,8 @@ class LoginScreen(Screen):
 
                 def after(*_):
                     if self.manager:
-                        self.manager.current = "choose"
-                    _popup("Success", "Swipe Left/Right to chat.")
+                        self.manager.current = "home"
+                    _popup("Success", "Logged in.")
 
                 Clock.schedule_once(after, 0)
 
@@ -174,7 +174,7 @@ class LoginScreen(Screen):
                     user=(data.get("user") or {}),
                     remember=False,
                 )
-                Clock.schedule_once(lambda *_: setattr(self.manager, "current", "choose"), 0)
+                Clock.schedule_once(lambda *_: setattr(self.manager, "current", "home"), 0)
             except ApiError as exc:
                 msg = str(exc)
                 Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)

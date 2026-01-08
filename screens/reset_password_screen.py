@@ -53,7 +53,7 @@ class ForgotPasswordScreen(Screen):
         Configure this screen when opened from different places.
 
         - login -> Forgot Password flow
-        - choose -> Change Password flow (Back should return to Choose)
+        - profile -> Change Password flow (Back should return to Profile)
         """
         self.return_to = (source_screen or "login").strip() or "login"
         self.header_text = (title or "Forgot Password").strip() or "Forgot Password"
@@ -67,7 +67,7 @@ class ForgotPasswordScreen(Screen):
         try:
             if "phone_input" in self.ids:
                 # If invoked from Choose, prefill identifier when available.
-                if self.return_to == "choose":
+                if self.return_to == "profile":
                     u = get_user() or {}
                     ident = str(u.get("email") or u.get("username") or u.get("phone") or "")
                     self.ids["phone_input"].text = ident
