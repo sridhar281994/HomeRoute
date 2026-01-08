@@ -37,7 +37,7 @@ def _handle(resp: requests.Response) -> dict[str, Any]:
 # -----------------------
 # Auth
 # -----------------------
-def api_register(*, email: str, username: str, password: str, name: str, state: str, gender: str) -> dict[str, Any]:
+def api_register(*, email: str, username: str, password: str, name: str, state: str, district: str, gender: str) -> dict[str, Any]:
     url = f"{_base_url()}/auth/register"
     resp = requests.post(
         url,
@@ -47,6 +47,7 @@ def api_register(*, email: str, username: str, password: str, name: str, state: 
             "password": password,
             "name": name,
             "state": state,
+            "district": district,
             "gender": gender,
         },
         timeout=15,

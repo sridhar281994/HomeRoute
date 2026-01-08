@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { registerUser } from "../api";
 import { INDIA_STATES } from "../indiaStates";
+import { districtsForState } from "../indiaDistricts";
 import { Link, useNavigate } from "react-router-dom";
 
 export default function RegisterPage() {
@@ -9,11 +10,13 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [state, setState] = useState(INDIA_STATES[0] || "");
+  const [district, setDistrict] = useState("");
   const [gender, setGender] = useState("male");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string>("");
 
   const stateOptions = useMemo(() => INDIA_STATES, []);
+  const districtOptions = useMemo(() => districtsForState(state), [state]);
 
   return (
     <div className="panel">
@@ -37,10 +40,27 @@ export default function RegisterPage() {
         </div>
         <div className="col-6">
           <label className="muted">State</label>
-          <select value={state} onChange={(e) => setState(e.target.value)}>
+          <select
+            value={state}
+            onChange={(e) => {
+              setState(e.target.value);
+              setDistrict("");
+            }}
+          >
             {stateOptions.map((s) => (
               <option key={s} value={s}>
                 {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-6">
+          <label className="muted">District</label>
+          <select value={district} onChange={(e) => setDistrict(e.target.value)}>
+            <option value="">Select District</option>
+            {districtOptions.map((d) => (
+              <option key={d} value={d}>
+                {d}
               </option>
             ))}
           </select>
@@ -62,7 +82,8 @@ export default function RegisterPage() {
             className="primary"
             onClick={async () => {
               try {
-                await registerUser({ email, username, password, name, state, gender });
+                if (!district) throw new Error("Please select your district.");
+                await registerUser({ email, username, password, name, state, district, gender });
                 nav("/login");
               } catch (e: any) {
                 setMsg(e.message || "Failed");

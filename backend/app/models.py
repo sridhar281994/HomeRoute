@@ -18,6 +18,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), default="")
     state: Mapped[str] = mapped_column(String(80), default="")
+    district: Mapped[str] = mapped_column(String(120), default="")
     gender: Mapped[str] = mapped_column(String(32), default="")
     role: Mapped[str] = mapped_column(String(32), default="user")  # user | owner | admin
     password_hash: Mapped[str] = mapped_column(String(255))

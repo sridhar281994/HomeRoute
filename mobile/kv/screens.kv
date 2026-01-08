@@ -734,6 +734,14 @@
                     values: root.country_values()
                     size_hint_y: None
                     height: dp(48)
+                    on_text: root.on_state_changed()
+
+                Spinner:
+                    id: district_spinner
+                    text: "Select District"
+                    values: root.district_values()
+                    size_hint_y: None
+                    height: dp(48)
 
                 Spinner:
                     id: gender_spinner

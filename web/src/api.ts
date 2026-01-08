@@ -41,6 +41,7 @@ export function registerUser(input: {
   password: string;
   name: string;
   state: string;
+  district: string;
   gender: string;
 }) {
   return api<{ ok: boolean; user_id: number }>("/auth/register", {

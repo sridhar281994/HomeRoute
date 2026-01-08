@@ -8,6 +8,7 @@ from kivy.uix.screenmanager import Screen
 
 from frontend_app.utils.api import ApiError, api_register
 from frontend_app.utils.countries import COUNTRIES
+from frontend_app.utils.india_locations import districts_for_state
 
 # Email regex
 EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
@@ -50,6 +51,7 @@ class RegisterScreen(Screen):
         email = self._get("email_input")
         password = self._get("password_input")
         state = (self.ids.get("country_spinner").text or "").strip() if self.ids.get("country_spinner") else ""
+        district = (self.ids.get("district_spinner").text or "").strip() if self.ids.get("district_spinner") else ""
         gender = (self.ids.get("gender_spinner").text or "").strip() if self.ids.get("gender_spinner") else ""
 
         err = self._validate(username, email, password)
@@ -66,6 +68,9 @@ class RegisterScreen(Screen):
         if not state or state in {"Select Country", "Select State"}:
             self._popup("Invalid", "Please select your state.")
             return
+        if not district or district in {"Select District"}:
+            self._popup("Invalid", "Please select your district.")
+            return
         if gender.lower() not in {"male", "female", "cross"}:
             self._popup("Invalid", "Please select gender: male/female/cross.")
             return
@@ -81,6 +86,7 @@ class RegisterScreen(Screen):
                     password=password_safe,
                     name=name.strip(),
                     state=state,
+                    district=district,
                     gender=gender.lower(),
                 )
 
@@ -103,3 +109,15 @@ class RegisterScreen(Screen):
 
     def country_values(self):
         return COUNTRIES
+
+    def district_values(self):
+        state = (self.ids.get("country_spinner").text or "").strip() if self.ids.get("country_spinner") else ""
+        return districts_for_state(state)
+
+    def on_state_changed(self, *_):
+        # When state changes, reset district.
+        try:
+            if "district_spinner" in self.ids:
+                self.ids["district_spinner"].text = "Select District"
+        except Exception:
+            pass

@@ -107,6 +107,7 @@ class RegisterIn(BaseModel):
     password: str = Field(min_length=6)
     name: str = ""
     state: str = ""
+    district: str = ""
     gender: str = ""
 
 
@@ -173,6 +174,7 @@ def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
         username=username,
         name=(data.name or "").strip(),
         state=(data.state or "").strip(),
+        district=(data.district or "").strip(),
         gender=(data.gender or "").strip(),
         role="user",
         password_hash=hash_password(data.password),
