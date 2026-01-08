@@ -1,5 +1,7 @@
 import { Link, Route, Routes, useNavigate } from "react-router-dom";
 import { clearSession, getSession } from "./api";
+import SplashPage from "./pages/SplashPage";
+import WelcomePage from "./pages/WelcomePage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
@@ -23,7 +25,7 @@ export default function App() {
         </div>
         <div className="spacer" />
         <div className="row nav" style={{ gap: 10 }}>
-          <Link to="/">Home</Link>
+          <Link to="/home">Home</Link>
           <Link to="/subscription">Subscription</Link>
           <Link to="/profile">Profile</Link>
           <Link to="/owner/add">Owner</Link>
@@ -48,7 +50,9 @@ export default function App() {
       </div>
 
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<SplashPage />} />
+        <Route path="/welcome" element={<WelcomePage />} />
+        <Route path="/home" element={<HomePage />} />
         <Route path="/property/:id" element={<PropertyPage />} />
         <Route path="/subscription" element={<SubscriptionPage />} />
         <Route path="/profile" element={<ProfilePage />} />
