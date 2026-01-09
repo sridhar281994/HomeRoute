@@ -97,6 +97,7 @@ export function listProperties(params: {
   max_price?: string;
   state?: string;
   district?: string;
+  sort_budget?: string;
 }) {
   const sp = new URLSearchParams();
   if (params.q) sp.set("q", params.q);
@@ -106,6 +107,7 @@ export function listProperties(params: {
   // Location is mandatory for guest browsing; backend enforces this too.
   if (params.state) sp.set("state", params.state);
   if (params.district) sp.set("district", params.district);
+  if (params.sort_budget) sp.set("sort_budget", params.sort_budget);
   const qs = sp.toString() ? `?${sp.toString()}` : "";
   return api<{ items: any[] }>(`/properties${qs}`);
 }

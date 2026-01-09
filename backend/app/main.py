@@ -621,6 +621,7 @@ def list_properties(
     max_price: int | None = Query(default=None),
     state: str | None = Query(default=None),
     district: str | None = Query(default=None),
+    sort_budget: str | None = Query(default=None),  # top|bottom|asc|desc
 ):
     state_in = (state or "").strip()
     district_in = (district or "").strip()
@@ -643,8 +644,14 @@ def list_properties(
         select(Property)
         .join(User, Property.owner_id == User.id)
         .where((Property.status == "approved") & (User.approval_status == "approved"))
-        .order_by(Property.id.desc())
     )
+    sb = (sort_budget or "").strip().lower()
+    if sb in {"top", "desc", "high"}:
+        stmt = stmt.order_by(Property.price.desc(), Property.id.desc())
+    elif sb in {"bottom", "asc", "low"}:
+        stmt = stmt.order_by(Property.price.asc(), Property.id.desc())
+    else:
+        stmt = stmt.order_by(Property.id.desc())
     if state_norm and district_norm:
         stmt = stmt.where((Property.state_normalized == state_norm) & (Property.district_normalized == district_norm))
     if q:

@@ -5,19 +5,21 @@ import { INDIA_STATES } from "../indiaStates";
 import { districtsForState } from "../indiaDistricts";
 
 export default function HomePage() {
+  const session = getSession();
   const [q, setQ] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
   const [propertyType, setPropertyType] = useState("");
   const [state, setState] = useState<string>(() => localStorage.getItem("pd_state") || "");
   const [district, setDistrict] = useState<string>(() => localStorage.getItem("pd_district") || "");
+  const [sortBudget, setSortBudget] = useState<string>("top");
   const [items, setItems] = useState<any[]>([]);
   const [err, setErr] = useState<string>("");
 
   async function load() {
     setErr("");
     try {
-      const isGuest = !getSession().token;
+      const isGuest = !session.token;
       if (isGuest && (!state || !district)) {
         setItems([]);
         throw new Error("Select State and District to search as guest.");
@@ -27,8 +29,10 @@ export default function HomePage() {
         max_price: maxPrice || undefined,
         rent_sale: rentSale || undefined,
         property_type: propertyType || undefined,
-        state: state || undefined,
+        // For registered users: state is auto-picked from profile by backend if omitted.
+        state: isGuest ? state || undefined : undefined,
         district: district || undefined,
+        sort_budget: sortBudget || undefined,
       });
       setItems(res.items || []);
     } catch (e: any) {
@@ -49,7 +53,18 @@ export default function HomePage() {
     localStorage.setItem("pd_district", district || "");
   }, [district]);
 
-  const districts = districtsForState(state);
+  useEffect(() => {
+    // Auto-pull registered user's state into the Location filter.
+    const userState = (session.user as any)?.state || "";
+    if (session.token && userState) {
+      setState(userState);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.token]);
+
+  const isGuest = !session.token;
+  const effectiveState = isGuest ? state : state || ((session.user as any)?.state || "");
+  const districts = districtsForState(effectiveState);
 
   return (
     <div className="page-home">
@@ -64,32 +79,57 @@ export default function HomePage() {
       </div>
 
       <div className="grid" style={{ marginTop: 12 }}>
+        {isGuest ? (
+          <div className="col-6">
+            <label className="muted">State (required for Guest)</label>
+            <select
+              value={state}
+              onChange={(e) => {
+                setState(e.target.value);
+                setDistrict("");
+              }}
+            >
+              <option value="">Select state…</option>
+              {INDIA_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="col-6">
+            <label className="muted">State (auto from your registration)</label>
+            <input value={effectiveState || ""} disabled />
+          </div>
+        )}
         <div className="col-6">
-          <label className="muted">State (required for Guest)</label>
-          <select
-            value={state}
-            onChange={(e) => {
-              setState(e.target.value);
-              setDistrict("");
-            }}
-          >
-            <option value="">Select state…</option>
-            {INDIA_STATES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="col-6">
-          <label className="muted">District (required for Guest)</label>
+          <label className="muted">District {isGuest ? "(required for Guest)" : ""}</label>
           <select value={district} onChange={(e) => setDistrict(e.target.value)} disabled={!state}>
-            <option value="">{state ? "Select district…" : "Select state first"}</option>
+            <option value="">{effectiveState ? "Select district…" : "Select state first"}</option>
             {districts.map((d) => (
               <option key={d} value={d}>
                 {d}
               </option>
             ))}
+          </select>
+        </div>
+        <div className="col-6">
+          <label className="muted">Building / Home Category</label>
+          <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
+            <option value="">Any</option>
+            <option value="apartment">apartment</option>
+            <option value="house">house</option>
+            <option value="villa">villa</option>
+            <option value="studio">studio</option>
+            <option value="land">land</option>
+          </select>
+        </div>
+        <div className="col-6">
+          <label className="muted">Sort (by budget)</label>
+          <select value={sortBudget} onChange={(e) => setSortBudget(e.target.value)}>
+            <option value="top">Top (high to low)</option>
+            <option value="bottom">Bottom (low to high)</option>
           </select>
         </div>
         <div className="col-6">
@@ -106,17 +146,6 @@ export default function HomePage() {
             <option value="">Any</option>
             <option value="rent">rent</option>
             <option value="sale">sale</option>
-          </select>
-        </div>
-        <div className="col-6">
-          <label className="muted">Type</label>
-          <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
-            <option value="">Any</option>
-            <option value="apartment">apartment</option>
-            <option value="house">house</option>
-            <option value="villa">villa</option>
-            <option value="studio">studio</option>
-            <option value="land">land</option>
           </select>
         </div>
         <div className="col-12 row">
