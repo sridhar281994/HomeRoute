@@ -60,11 +60,33 @@ class RegisterScreen(Screen):
         """
         try:
             if "country_spinner" in self.ids:
-                self.ids["country_spinner"].values = self.country_values()
+                state_spinner = self.ids["country_spinner"]
+                state_spinner.values = self.country_values()
+
+                # Make sure changes always refresh districts (more robust than KV-only bindings).
+                try:
+                    state_spinner.unbind(text=self.on_state_changed)  # type: ignore[arg-type]
+                except Exception:
+                    pass
+                try:
+                    state_spinner.bind(text=self.on_state_changed)  # type: ignore[arg-type]
+                except Exception:
+                    pass
+
+                # If user hasn't selected a state yet, choose a sensible default so
+                # the District dropdown is never empty.
+                if (state_spinner.text or "").strip() in {"Select Country", "Select State", ""}:
+                    default_state = "Tamil Nadu" if "Tamil Nadu" in state_spinner.values else (state_spinner.values[0] if state_spinner.values else "")
+                    if default_state:
+                        state_spinner.text = default_state
+
+            # Default districts based on current state selection (if any).
             if "district_spinner" in self.ids:
-                # Default districts based on current state selection (if any).
                 self.ids["district_spinner"].values = self.district_values()
+                if (self.ids["district_spinner"].text or "").strip() in {"", "Select District"}:
+                    self.ids["district_spinner"].text = "Select District"
         except Exception:
+            # Never crash UI during screen enter.
             pass
 
     def go_back(self) -> None:
