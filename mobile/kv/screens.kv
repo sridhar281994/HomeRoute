@@ -2,6 +2,47 @@
 #:set SHINE_PURPLE (0.70, 0.25, 0.95, 0.18)
 #:set SHINE_WHITE (1, 1, 1, 0.05)
 
+<PrettySpinnerOption@SpinnerOption>:
+    background_normal: ""
+    background_down: ""
+    background_color: (0, 0, 0, 0)
+    color: 1, 1, 1, 1
+    size_hint_y: None
+    height: dp(44)
+    canvas.before:
+        Color:
+            rgba: (0.20, 0.14, 0.30, 0.98) if self.state == "normal" else (0.30, 0.20, 0.42, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [10]
+        Color:
+            rgba: (1, 1, 1, 0.10)
+        Line:
+            width: 1.0
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
+
+<PrettySpinner@Spinner>:
+    option_cls: "PrettySpinnerOption"
+    background_normal: ""
+    background_down: ""
+    background_color: (0, 0, 0, 0)
+    color: 1, 1, 1, 1
+    font_size: sp(16)
+    padding: [dp(12), dp(10)]
+    canvas.before:
+        Color:
+            rgba: (0.12, 0.16, 0.30, 0.86) if self.state == "normal" else (0.16, 0.20, 0.36, 0.95)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [12]
+        Color:
+            rgba: (1, 1, 1, 0.10)
+        Line:
+            width: 1.0
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 12]
+
 <SplashScreen>:
     name: "splash"
     FloatLayout:
@@ -728,7 +769,7 @@
                     size_hint_y: None
                     height: dp(48)
 
-                Spinner:
+                PrettySpinner:
                     id: country_spinner
                     text: "Select State"
                     values: root.country_values()
@@ -736,14 +777,14 @@
                     height: dp(48)
                     on_text: root.on_state_changed()
 
-                Spinner:
+                PrettySpinner:
                     id: district_spinner
                     text: "Select District"
                     values: root.district_values()
                     size_hint_y: None
                     height: dp(48)
 
-                Spinner:
+                PrettySpinner:
                     id: gender_spinner
                     text: "male"
                     values: ["male", "female", "cross"]
@@ -883,13 +924,13 @@
                     size_hint_y: None
                     height: dp(42)
 
-                Spinner:
+                PrettySpinner:
                     text: root.rent_sale
                     values: ["Any", "rent", "sale"]
                     on_text: root.rent_sale = self.text
                     size_hint_y: None
                     height: dp(42)
-                Spinner:
+                PrettySpinner:
                     text: root.property_type
                     values: ["Any", "apartment", "house", "villa", "studio", "land"]
                     on_text: root.property_type = self.text
