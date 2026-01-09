@@ -35,6 +35,15 @@ def _handle(resp: requests.Response) -> dict[str, Any]:
 
 
 # -----------------------
+# Metadata
+# -----------------------
+def api_meta_categories() -> dict[str, Any]:
+    url = f"{_base_url()}/meta/categories"
+    resp = requests.get(url, timeout=15)
+    return _handle(resp)
+
+
+# -----------------------
 # Auth
 # -----------------------
 def api_register(

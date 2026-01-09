@@ -15,6 +15,14 @@ export type Session = {
   user?: User;
 };
 
+export type CategoryCatalog = {
+  version: string;
+  updated: string;
+  categories: Array<{ group: string; items: string[] }>;
+  owner_categories: string[];
+  flat_items: Array<{ id: string; label: string; group_id: string; group: string; search: string }>;
+};
+
 const KEY = "pd_session_v1";
 
 export function getSession(): Session {
@@ -224,5 +232,9 @@ export function adminImageSuspend(id: number, reason = "") {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason }),
   });
+}
+
+export function getCategoryCatalog() {
+  return api<CategoryCatalog>(`/meta/categories`);
 }
 
