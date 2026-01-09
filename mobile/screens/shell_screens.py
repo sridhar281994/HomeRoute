@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -68,6 +69,7 @@ class HomeScreen(Screen):
     rent_sale = StringProperty("Any")
     property_type = StringProperty("Any")
     max_price = StringProperty("")
+    bg_image = StringProperty("")
 
     is_loading = BooleanProperty(False)
     is_logged_in = BooleanProperty(False)
@@ -80,6 +82,16 @@ class HomeScreen(Screen):
             self.is_logged_in = bool(token)
         except Exception:
             self.is_logged_in = False
+
+        # Optional fabulous background image (local asset).
+        # If missing, KV keeps the glossy orange base.
+        try:
+            here = os.path.dirname(os.path.dirname(__file__))  # .../mobile/screens -> .../mobile
+            candidate = os.path.join(here, "assets", "home_bg.jpg")
+            self.bg_image = "assets/home_bg.jpg" if os.path.exists(candidate) else ""
+        except Exception:
+            self.bg_image = ""
+
         Clock.schedule_once(lambda _dt: self.refresh(), 0)
 
     def refresh(self):
@@ -396,15 +408,4 @@ class OwnerAddPropertyScreen(Screen):
         if self.manager:
             self.manager.current = "owner_dashboard"
 
-
-class AdminReviewScreen(Screen):
-    def approve_demo(self):
-        _popup("Approved", "Listing approved (demo UI).")
-
-    def reject_demo(self):
-        _popup("Rejected", "Listing rejected/flagged (demo UI).")
-
-    def go_back(self):
-        if self.manager:
-            self.manager.current = "home"
 

@@ -53,6 +53,20 @@ class RegisterScreen(Screen):
             ).open()
         Clock.schedule_once(_open, 0)
 
+    def on_pre_enter(self, *args) -> None:
+        """
+        Ensure spinners have values whenever the screen opens.
+        This avoids cases where District dropdown stays empty until state changes.
+        """
+        try:
+            if "country_spinner" in self.ids:
+                self.ids["country_spinner"].values = self.country_values()
+            if "district_spinner" in self.ids:
+                # Default districts based on current state selection (if any).
+                self.ids["district_spinner"].values = self.district_values()
+        except Exception:
+            pass
+
     def go_back(self) -> None:
         """Navigate back to login or stage screen."""
         self.manager.current = "login"
@@ -150,12 +164,17 @@ class RegisterScreen(Screen):
 
     def on_state_changed(self, *_):
         # When state changes, reset district and refresh district values.
+        if "district_spinner" not in self.ids:
+            return
         try:
-            if "district_spinner" in self.ids:
-                self.ids["district_spinner"].text = "Select District"
-                self.ids["district_spinner"].values = self.district_values()
+            self.ids["district_spinner"].text = "Select District"
         except Exception:
             pass
+        try:
+            self.ids["district_spinner"].values = self.district_values()
+        except Exception:
+            # Do not crash the UI if a dataset entry is missing.
+            self.ids["district_spinner"].values = []
 
     def owner_category_values(self):
         return list(self.OWNER_CATEGORIES)

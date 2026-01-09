@@ -7,7 +7,7 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 
-from frontend_app.utils.api import ApiError, api_guest, api_login_request_otp, api_login_verify_otp
+from frontend_app.utils.api import ApiError, api_login_request_otp, api_login_verify_otp
 from frontend_app.utils.storage import get_remember_me, set_remember_me, set_session
 
 
@@ -163,20 +163,4 @@ class LoginScreen(Screen):
 
         Thread(target=work, daemon=True).start()
 
-    def login_as_guest(self):
-        def work():
-            try:
-                data = api_guest()
-                # Guests should not be persisted by default.
-                set_remember_me(False)
-                set_session(
-                    token=(data.get("access_token") or ""),
-                    user=(data.get("user") or {}),
-                    remember=False,
-                )
-                Clock.schedule_once(lambda *_: setattr(self.manager, "current", "home"), 0)
-            except ApiError as exc:
-                msg = str(exc)
-                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
-
-        Thread(target=work, daemon=True).start()
+    # Guest login removed from UI as requested.

@@ -1,17 +1,19 @@
 # Orange glossy theme (shiny)
 # NOTE: keep names stable to avoid touching every screen rule.
-#:set BG_PURPLE (0.14, 0.06, 0.02, 1)               # deep warm base
-#:set SHINE_PURPLE (1.00, 0.52, 0.12, 0.22)          # orange shine
-#:set SHINE_WHITE (1, 1, 1, 0.07)
+#:set BG_PURPLE (0.12, 0.06, 0.02, 1)               # deep warm base (orange-brown)
+#:set SHINE_PURPLE (1.00, 0.55, 0.12, 0.30)          # orange shine
+#:set SHINE_WHITE (1, 1, 1, 0.09)
 
 # Global typography (bold-ish via markup)
 <Label>:
     markup: True
+    bold: True
     color: 1, 1, 1, 1
 
 <Button>:
     markup: True
     font_size: sp(16)
+    bold: True
 
 <PrettySpinnerOption@SpinnerOption>:
     background_normal: ""
@@ -69,13 +71,18 @@
                 size: self.width * 1.25, self.height * 0.9
                 pos: self.x - self.width * 0.25, self.top - self.height * 0.65
             Color:
+                rgba: (1.0, 0.72, 0.25, 0.16)
+            Ellipse:
+                size: self.width * 0.9, self.height * 0.6
+                pos: self.center_x - self.width * 0.45, self.center_y - self.height * 0.25
+            Color:
                 rgba: SHINE_WHITE
             Ellipse:
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         Label:
-            text: "[b]Property Discovery[/b]  ✨"
+            text: "[b]Property Discovery[/b]  🏠✨"
             font_size: sp(30)
             pos_hint: {"center_x": 0.5, "center_y": 0.55}
 
@@ -100,6 +107,11 @@
             Ellipse:
                 size: self.width * 1.25, self.height * 0.9
                 pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: (1.0, 0.72, 0.25, 0.14)
+            Ellipse:
+                size: self.width * 0.9, self.height * 0.6
+                pos: self.center_x - self.width * 0.45, self.center_y - self.height * 0.25
             Color:
                 rgba: SHINE_WHITE
             Ellipse:
@@ -344,13 +356,6 @@
                         height: dp(48)
                         background_color: (0.3, 0.8, 0.4, 1)
                         on_release: root.verify_and_login()
-
-                    Button:
-                        text: "Continue as Guest  👤"
-                        size_hint_y: None
-                        height: dp(44)
-                        background_color: (0.3, 0.5, 0.9, 1)
-                        on_release: root.login_as_guest()
 
                     Button:
                         text: "Forgot Password?"
@@ -949,9 +954,7 @@
             Rectangle:
                 pos: self.pos
                 size: self.size
-                # Provide your own image at mobile/assets/home_bg.jpg for a fabulous building/interior/garden background.
-                # If missing, Kivy will gracefully fall back to the color base.
-                source: "assets/home_bg.jpg"
+                source: root.bg_image
             Color:
                 rgba: SHINE_PURPLE
             Ellipse:
@@ -982,7 +985,7 @@
                 height: dp(44)
                 spacing: dp(8)
                 Label:
-                    text: "[b]Home[/b]  🏡  [color=cccccc]Discover services & properties[/color]"
+                    text: "[b]Home[/b]  🏡✨  [color=cccccc]Discover services & properties[/color]"
                     halign: "left"
                     valign: "middle"
                     text_size: self.size
@@ -993,6 +996,7 @@
                     on_release: root.go_profile()
                     disabled: not root.is_logged_in
                     opacity: 1 if root.is_logged_in else 0
+                    width: dp(90) if root.is_logged_in else 0
 
             GridLayout:
                 cols: 2
@@ -1044,6 +1048,7 @@
                     on_release: root.go_owner()
                     disabled: not root.is_logged_in
                     opacity: 1 if root.is_logged_in else 0
+                    width: dp(90) if root.is_logged_in else 0
 
             Label:
                 text: "Loading..." if root.is_loading else "Listings"
@@ -1326,66 +1331,6 @@
                 height: dp(50)
                 background_color: (0.3, 0.8, 0.3, 1)
                 on_release: root.submit_listing()
-            Button:
-                text: "Back"
-                size_hint_y: None
-                height: dp(44)
-                background_color: (0.7, 0.2, 0.2, 1)
-                on_release: root.go_back()
-
-<AdminReviewScreen>:
-    name: "admin_review"
-    FloatLayout:
-        canvas.before:
-            Color:
-                rgba: BG_PURPLE
-            Rectangle:
-                pos: self.pos
-                size: self.size
-            Color:
-                rgba: SHINE_PURPLE
-            Ellipse:
-                size: self.width * 1.25, self.height * 0.9
-                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
-            Color:
-                rgba: SHINE_WHITE
-            Ellipse:
-                size: self.width * 0.75, self.height * 0.5
-                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
-        BoxLayout:
-            orientation: "vertical"
-            size_hint: 0.9, 0.8
-            pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            spacing: dp(12)
-            padding: dp(16)
-            canvas.before:
-                Color:
-                    rgba: 0, 0, 0, 0.55
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [16]
-            Label:
-                text: "Admin Review"
-                font_size: sp(24)
-                size_hint_y: None
-                height: dp(40)
-                color: 1, 1, 1, 1
-            Label:
-                text: "Review new listings (demo)"
-                color: 1, 1, 1, 0.85
-            BoxLayout:
-                size_hint_y: None
-                height: dp(50)
-                spacing: dp(10)
-                Button:
-                    text: "Approve"
-                    background_color: (0.3, 0.8, 0.3, 1)
-                    on_release: root.approve_demo()
-                Button:
-                    text: "Reject / Flag"
-                    background_color: (0.8, 0.2, 0.2, 1)
-                    on_release: root.reject_demo()
             Button:
                 text: "Back"
                 size_hint_y: None
