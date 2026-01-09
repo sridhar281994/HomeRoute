@@ -4,7 +4,12 @@ India locations dataset for registration.
 This is intentionally static for offline/mobile compatibility.
 """
 
-{  
+from __future__ import annotations
+
+import re
+
+
+INDIA_LOCATIONS = {
    "states":[  
       {  
          "state":"Andhra Pradesh",
@@ -907,6 +912,33 @@ This is intentionally static for offline/mobile compatibility.
 }
 
 
+def _clean_label(value: str) -> str:
+    """
+    Normalize labels for UI display and stable lookups.
+
+    - Collapses repeated whitespace (some entries have double spaces / trailing spaces)
+    - Converts HTML entity '&amp;' to '&' (present in one district)
+    """
+    s = (value or "").replace("&amp;", "&")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+STATES: list[str] = [
+    _clean_label(item.get("state", ""))
+    for item in (INDIA_LOCATIONS.get("states") or [])
+    if _clean_label(item.get("state", ""))
+]
+
+DISTRICTS_BY_STATE: dict[str, tuple[str, ...]] = {
+    _clean_label(item.get("state", "")): tuple(
+        _clean_label(d) for d in (item.get("districts") or []) if _clean_label(d)
+    )
+    for item in (INDIA_LOCATIONS.get("states") or [])
+    if _clean_label(item.get("state", ""))
+}
+
+
 def districts_for_state(state: str) -> list[str]:
-    return list(DISTRICTS_BY_STATE.get(state, []))
+    return list(DISTRICTS_BY_STATE.get(_clean_label(state), ()))
 
