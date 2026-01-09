@@ -16,7 +16,10 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
-    phone: Mapped[str] = mapped_column(String(20), default="", index=True)
+    # Phone is indexed here; uniqueness is enforced via a partial unique index in migrations
+    # so that empty strings don't collide.
+    phone: Mapped[str] = mapped_column(String(32), default="", index=True)
+    phone_normalized: Mapped[str] = mapped_column(String(32), default="", index=True)
     name: Mapped[str] = mapped_column(String(255), default="")
     state: Mapped[str] = mapped_column(String(80), default="")
     district: Mapped[str] = mapped_column(String(120), default="")
@@ -24,6 +27,17 @@ class User(Base):
     gender: Mapped[str] = mapped_column(String(32), default="")
     role: Mapped[str] = mapped_column(String(32), default="user")  # user | owner | admin
     owner_category: Mapped[str] = mapped_column(String(120), default="")  # business type (for owners)
+    # Owner/company profile fields
+    company_name: Mapped[str] = mapped_column(String(255), default="", index=True)
+    company_name_normalized: Mapped[str] = mapped_column(String(255), default="", index=True)
+    company_description: Mapped[str] = mapped_column(Text, default="")
+    company_address: Mapped[str] = mapped_column(String(512), default="", index=True)
+    company_address_normalized: Mapped[str] = mapped_column(String(512), default="", index=True)
+
+    # Admin approval workflow for owners (role=owner)
+    approval_status: Mapped[str] = mapped_column(String(40), default="approved")  # approved|pending|rejected|suspended
+    approval_reason: Mapped[str] = mapped_column(Text, default="")
+
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 
@@ -68,16 +82,33 @@ class Property(Base):
     rent_sale: Mapped[str] = mapped_column(String(10), default="rent")  # rent/sale
     price: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Display location (legacy) and normalized address fields for duplicate detection.
     location: Mapped[str] = mapped_column(String(255), default="")
+    address: Mapped[str] = mapped_column(String(512), default="")
+    address_normalized: Mapped[str] = mapped_column(String(512), default="", index=True)
+
+    # Mandatory search filters (guest users must provide state+district)
+    state: Mapped[str] = mapped_column(String(80), default="", index=True)
+    district: Mapped[str] = mapped_column(String(120), default="", index=True)
+    state_normalized: Mapped[str] = mapped_column(String(80), default="", index=True)
+    district_normalized: Mapped[str] = mapped_column(String(120), default="", index=True)
+
     amenities_json: Mapped[str] = mapped_column(Text, default="[]")  # JSON-encoded list of strings
 
     availability: Mapped[str] = mapped_column(String(40), default="available")
-    status: Mapped[str] = mapped_column(String(40), default="pending")  # pending/approved/rejected
+    status: Mapped[str] = mapped_column(String(40), default="pending")  # pending/approved/rejected/suspended
+    moderation_reason: Mapped[str] = mapped_column(Text, default="")
 
     contact_phone: Mapped[str] = mapped_column(String(40), default="")
+    contact_phone_normalized: Mapped[str] = mapped_column(String(40), default="", index=True)
     contact_email: Mapped[str] = mapped_column(String(255), default="")
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+
+    # Duplicate overrides (admin-controlled)
+    allow_duplicate_address: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_duplicate_phone: Mapped[bool] = mapped_column(Boolean, default=False)
 
     owner = relationship("User", back_populates="properties")
     images = relationship("PropertyImage", back_populates="property", cascade="all, delete-orphan")
@@ -101,7 +132,27 @@ class PropertyImage(Base):
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"), index=True)
     file_path: Mapped[str] = mapped_column(String(512))  # relative path or URL
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # Metadata for duplicate detection and review.
+    image_hash: Mapped[str] = mapped_column(String(64), default="", index=True)  # sha256 hex
+    original_filename: Mapped[str] = mapped_column(String(255), default="")
+    content_type: Mapped[str] = mapped_column(String(100), default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(40), default="pending")  # pending/approved/rejected/suspended
+    moderation_reason: Mapped[str] = mapped_column(Text, default="")
+    uploaded_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 
     property = relationship("Property", back_populates="images")
+
+
+class ModerationLog(Base):
+    __tablename__ = "moderation_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    entity_type: Mapped[str] = mapped_column(String(40), index=True)  # user|property|property_image
+    entity_id: Mapped[int] = mapped_column(Integer, index=True)
+    action: Mapped[str] = mapped_column(String(40), index=True)  # approve|reject|suspend|create|upload
+    reason: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
+import re
 import secrets
 from typing import Annotated, Any
 
@@ -15,7 +17,7 @@ from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.db import session_scope
-from app.models import OtpCode, Property, PropertyImage, Subscription, User
+from app.models import ModerationLog, OtpCode, Property, PropertyImage, Subscription, User
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
 
 
@@ -84,6 +86,56 @@ def _public_image_url(file_path: str) -> str:
     return f"/uploads/{fp}"
 
 
+def _norm_key(s: str) -> str:
+    """
+    Normalize human-entered values for duplicate detection and strict matching.
+    - lowercase
+    - strip
+    - replace non-alphanumeric with spaces
+    - collapse whitespace
+    """
+    s = (s or "").strip().lower()
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _norm_phone(s: str) -> str:
+    s = (s or "").strip()
+    if not s:
+        return ""
+    # Keep digits; preserve a leading '+' if present.
+    plus = s.startswith("+")
+    digits = re.sub(r"[^0-9]", "", s)
+    if not digits:
+        return ""
+    return f"+{digits}" if plus else digits
+
+
+def _image_sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _log_moderation(
+    db: Session,
+    *,
+    actor_user_id: int,
+    entity_type: str,
+    entity_id: int,
+    action: str,
+    reason: str = "",
+) -> None:
+    db.add(
+        ModerationLog(
+            actor_user_id=int(actor_user_id),
+            entity_type=(entity_type or "").strip(),
+            entity_id=int(entity_id),
+            action=(action or "").strip(),
+            reason=(reason or "").strip(),
+        )
+    )
+
+
 os.makedirs(_uploads_dir(), exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=_uploads_dir()), name="uploads")
 
@@ -150,6 +202,23 @@ def get_current_user(
     return user
 
 
+def get_optional_user(
+    db: Annotated[Session, Depends(get_db)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> User | None:
+    token = _bearer_token(authorization)
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+        user_id = int(payload.get("sub") or 0)
+    except Exception:
+        return None
+    if not user_id:
+        return None
+    return db.get(User, user_id)
+
+
 # -----------------------
 # Schemas
 # -----------------------
@@ -165,6 +234,9 @@ class RegisterIn(BaseModel):
     district: str = ""
     role: str = "user"  # user | owner
     owner_category: str = ""  # required when role=owner (enforced softly)
+    company_name: str = ""
+    company_description: str = ""
+    company_address: str = ""
     gender: str = ""  # legacy (old clients)
 
 
@@ -195,11 +267,31 @@ class PropertyCreateIn(BaseModel):
     property_type: str = "apartment"
     rent_sale: str = "rent"
     price: int = 0
+    # Backward compatibility: `location` is still accepted and used as a display string.
     location: str = ""
+    # New: structured location filtering + normalized address duplication checks.
+    state: str = ""
+    district: str = ""
+    address: str = ""
     amenities: list[str] = Field(default_factory=list)
     availability: str = "available"
     contact_phone: str = ""
     contact_email: str = ""
+
+
+class ModerateIn(BaseModel):
+    reason: str = ""
+
+
+class AllowDuplicatesIn(BaseModel):
+    allow_duplicate_address: bool | None = None
+    allow_duplicate_phone: bool | None = None
+    reason: str = ""
+
+
+class AdminLoginIn(BaseModel):
+    identifier: str
+    password: str
 
 
 # -----------------------
@@ -241,9 +333,15 @@ def meta_categories() -> dict[str, Any]:
 def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
     email = data.email.strip().lower()
     phone = (data.phone or "").strip()
+    phone_norm = _norm_phone(phone)
     username = (phone or data.username or "").strip()
     role = (data.role or "user").strip().lower()
     owner_category = (data.owner_category or "").strip()
+    company_name = (data.company_name or "").strip()
+    company_name_norm = _norm_key(company_name)
+    company_description = (data.company_description or "").strip()
+    company_address = (data.company_address or "").strip()
+    company_address_norm = _norm_key(company_address)
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Invalid email")
     if len(username) < 3:
@@ -251,20 +349,35 @@ def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
     if role not in {"user", "owner"}:
         raise HTTPException(status_code=400, detail="Invalid role")
 
-    exists = db.execute(select(User).where((User.email == email) | (User.username == username) | (User.phone == phone))).scalar_one_or_none()
+    exists = db.execute(
+        select(User).where(
+            (User.email == email)
+            | (User.username == username)
+            | ((User.phone_normalized == phone_norm) & (User.phone_normalized != ""))
+            | ((User.company_name_normalized == company_name_norm) & (User.company_name_normalized != ""))
+        )
+    ).scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=409, detail="User already exists")
 
+    approval_status = "pending" if role == "owner" else "approved"
     user = User(
         email=email,
         username=username,
         phone=phone,
+        phone_normalized=phone_norm,
         name=(data.name or "").strip(),
         state=(data.state or "").strip(),
         district=(data.district or "").strip(),
         gender=(data.gender or "").strip(),
         role=role,
         owner_category=owner_category,
+        company_name=company_name,
+        company_name_normalized=company_name_norm,
+        company_description=company_description,
+        company_address=company_address,
+        company_address_normalized=company_address_norm,
+        approval_status=approval_status,
         password_hash=hash_password(data.password),
     )
     db.add(user)
@@ -277,8 +390,14 @@ def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
 @app.post("/auth/login/request-otp")
 def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
+    phone_norm = _norm_phone(identifier)
     user = db.execute(
-        select(User).where((User.email == identifier.lower()) | (User.username == identifier) | (User.phone == identifier))
+        select(User).where(
+            (User.email == identifier.lower())
+            | (User.username == identifier)
+            | (User.phone == identifier)
+            | ((User.phone_normalized == phone_norm) & (User.phone_normalized != ""))
+        )
     ).scalar_one_or_none()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -293,8 +412,14 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
 @app.post("/auth/login/verify-otp")
 def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
+    phone_norm = _norm_phone(identifier)
     user = db.execute(
-        select(User).where((User.email == identifier.lower()) | (User.username == identifier) | (User.phone == identifier))
+        select(User).where(
+            (User.email == identifier.lower())
+            | (User.username == identifier)
+            | (User.phone == identifier)
+            | ((User.phone_normalized == phone_norm) & (User.phone_normalized != ""))
+        )
     ).scalar_one_or_none()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -362,8 +487,14 @@ def guest(db: Annotated[Session, Depends(get_db)]):
 @app.post("/auth/forgot/request-otp")
 def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
+    phone_norm = _norm_phone(identifier)
     user = db.execute(
-        select(User).where((User.email == identifier.lower()) | (User.username == identifier) | (User.phone == identifier))
+        select(User).where(
+            (User.email == identifier.lower())
+            | (User.username == identifier)
+            | (User.phone == identifier)
+            | ((User.phone_normalized == phone_norm) & (User.phone_normalized != ""))
+        )
     ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -376,8 +507,14 @@ def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(
 @app.post("/auth/forgot/reset")
 def forgot_reset(data: ForgotResetIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
+    phone_norm = _norm_phone(identifier)
     user = db.execute(
-        select(User).where((User.email == identifier.lower()) | (User.username == identifier) | (User.phone == identifier))
+        select(User).where(
+            (User.email == identifier.lower())
+            | (User.username == identifier)
+            | (User.phone == identifier)
+            | ((User.phone_normalized == phone_norm) & (User.phone_normalized != ""))
+        )
     ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -422,7 +559,12 @@ def me_subscription(
 # -----------------------
 # Properties (browse is free; contact is subscription-gated)
 # -----------------------
-def _property_out(p: Property) -> dict[str, Any]:
+def _property_out(
+    p: Property,
+    *,
+    include_unapproved_images: bool = False,
+    include_internal: bool = False,
+) -> dict[str, Any]:
     try:
         amenities = json.loads(p.amenities_json or "[]") if p.amenities_json else []
     except Exception:
@@ -430,10 +572,17 @@ def _property_out(p: Property) -> dict[str, Any]:
     images = []
     try:
         for i in (p.images or []):
-            images.append({"id": i.id, "url": _public_image_url(i.file_path), "sort_order": i.sort_order})
+            if not include_unapproved_images and (i.status or "") != "approved":
+                continue
+            img_out: dict[str, Any] = {"id": i.id, "url": _public_image_url(i.file_path), "sort_order": i.sort_order}
+            if include_internal:
+                img_out["status"] = i.status
+                img_out["image_hash"] = i.image_hash
+            images.append(img_out)
     except Exception:
         images = []
-    return {
+    location_display = p.address or p.location
+    out: dict[str, Any] = {
         "id": p.id,
         "title": p.title,
         "description": p.description,
@@ -442,23 +591,62 @@ def _property_out(p: Property) -> dict[str, Any]:
         "price": p.price,
         "price_display": f"{p.price:,}",
         "location": p.location,
-        "location_display": p.location,
+        "location_display": location_display,
+        "state": p.state,
+        "district": p.district,
         "amenities": amenities,
         "availability": p.availability,
         "status": p.status,
         "images": images,
     }
+    if include_internal:
+        out["moderation_reason"] = p.moderation_reason
+        out["address"] = p.address
+        out["address_normalized"] = p.address_normalized
+        out["contact_phone_normalized"] = p.contact_phone_normalized
+        out["state_normalized"] = p.state_normalized
+        out["district_normalized"] = p.district_normalized
+        out["allow_duplicate_address"] = p.allow_duplicate_address
+        out["allow_duplicate_phone"] = p.allow_duplicate_phone
+    return out
 
 
 @app.get("/properties")
 def list_properties(
     db: Annotated[Session, Depends(get_db)],
+    me: Annotated[User | None, Depends(get_optional_user)],
     q: str | None = Query(default=None),
     rent_sale: str | None = Query(default=None),
     property_type: str | None = Query(default=None),
     max_price: int | None = Query(default=None),
+    state: str | None = Query(default=None),
+    district: str | None = Query(default=None),
 ):
-    stmt = select(Property).where(Property.status == "approved").order_by(Property.id.desc())
+    state_in = (state or "").strip()
+    district_in = (district or "").strip()
+    if not me:
+        # Guest/unauthenticated browsing must be scoped to a location.
+        if not state_in or not district_in:
+            raise HTTPException(status_code=400, detail="State and District are required for guest search")
+    else:
+        # If a logged-in user didn't pass filters, fall back to their profile.
+        if not state_in and (me.state or "").strip():
+            state_in = (me.state or "").strip()
+        if not district_in and (me.district or "").strip():
+            district_in = (me.district or "").strip()
+
+    state_norm = _norm_key(state_in)
+    district_norm = _norm_key(district_in)
+
+    # Only approved listings from approved (non-suspended) owners are visible.
+    stmt = (
+        select(Property)
+        .join(User, Property.owner_id == User.id)
+        .where((Property.status == "approved") & (User.approval_status == "approved"))
+        .order_by(Property.id.desc())
+    )
+    if state_norm and district_norm:
+        stmt = stmt.where((Property.state_normalized == state_norm) & (Property.district_normalized == district_norm))
     if q:
         q_like = f"%{q.strip()}%"
         stmt = stmt.where((Property.title.ilike(q_like)) | (Property.location.ilike(q_like)))
@@ -469,7 +657,7 @@ def list_properties(
     if max_price is not None:
         stmt = stmt.where(Property.price <= int(max_price))
 
-    items = [ _property_out(p) for p in db.execute(stmt).scalars().all() ]
+    items = [_property_out(p) for p in db.execute(stmt).scalars().all()]
     # Seed demo data if empty (first run).
     if not items:
         demo_owner = db.execute(select(User).where(User.username == "demo_owner")).scalar_one_or_none()
@@ -480,6 +668,7 @@ def list_properties(
                 name="Demo Owner",
                 role="owner",
                 password_hash=hash_password("password123"),
+                approval_status="approved",
             )
             db.add(demo_owner)
             db.flush()
@@ -493,10 +682,17 @@ def list_properties(
             rent_sale="rent",
             price=1200,
             location="Downtown",
+            state="Karnataka",
+            district="Bengaluru (Bangalore) Urban",
+            state_normalized=_norm_key("Karnataka"),
+            district_normalized=_norm_key("Bengaluru (Bangalore) Urban"),
+            address="Downtown",
+            address_normalized=_norm_key("Downtown"),
             amenities_json='["wifi","parking","gym"]',
             status="approved",
             contact_phone="+1 555 0100",
             contact_email="owner@demo.local",
+            contact_phone_normalized=_norm_phone("+1 555 0100"),
         )
         p2 = Property(
             owner_id=demo_owner.id,
@@ -506,14 +702,22 @@ def list_properties(
             rent_sale="sale",
             price=250000,
             location="Greenwood",
+            state="Karnataka",
+            district="Bengaluru (Bangalore) Urban",
+            state_normalized=_norm_key("Karnataka"),
+            district_normalized=_norm_key("Bengaluru (Bangalore) Urban"),
+            address="Greenwood",
+            address_normalized=_norm_key("Greenwood"),
             amenities_json='["garden","parking"]',
             status="approved",
             contact_phone="+1 555 0200",
             contact_email="owner@demo.local",
+            contact_phone_normalized=_norm_phone("+1 555 0200"),
         )
         db.add_all([p1, p2])
         db.flush()
-        items = [_property_out(p2), _property_out(p1)]
+        # Only return demo results if they match the requested filter.
+        items = [_property_out(p) for p in db.execute(stmt).scalars().all()]
 
     return {"items": items}
 
@@ -522,6 +726,9 @@ def list_properties(
 def get_property(property_id: int, db: Annotated[Session, Depends(get_db)]):
     p = db.get(Property, int(property_id))
     if not p or p.status != "approved":
+        raise HTTPException(status_code=404, detail="Property not found")
+    owner = db.get(User, int(p.owner_id))
+    if not owner or owner.approval_status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
     return _property_out(p)
 
@@ -534,6 +741,9 @@ def get_property_contact(
 ):
     p = db.get(Property, int(property_id))
     if not p or p.status != "approved":
+        raise HTTPException(status_code=404, detail="Property not found")
+    owner = db.get(User, int(p.owner_id))
+    if not owner or owner.approval_status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
 
     sub = db.execute(select(Subscription).where(Subscription.user_id == me.id)).scalar_one_or_none()
@@ -554,6 +764,37 @@ def owner_create_property(
 ):
     if me.role not in {"owner", "admin"}:
         raise HTTPException(status_code=403, detail="Owner account required")
+    if me.role == "owner" and (me.approval_status or "") != "approved":
+        raise HTTPException(status_code=403, detail="Owner account is pending admin approval")
+
+    state = (data.state or "").strip() or (me.state or "").strip()
+    district = (data.district or "").strip() or (me.district or "").strip()
+    if not state or not district:
+        raise HTTPException(status_code=400, detail="State and District are required")
+    address = (data.address or "").strip() or (data.location or "").strip()
+    address_norm = _norm_key(address)
+    contact_phone = (data.contact_phone or "").strip()
+    contact_phone_norm = _norm_phone(contact_phone)
+
+    # Duplicate prevention: address + phone (admin can create duplicates explicitly).
+    if me.role != "admin":
+        if address_norm:
+            dup_addr = db.execute(
+                select(Property.id).where(
+                    (Property.address_normalized == address_norm) & (Property.allow_duplicate_address == False)  # noqa: E712
+                )
+            ).first()
+            if dup_addr:
+                raise HTTPException(status_code=409, detail="Duplicate address detected (admin override required)")
+        if contact_phone_norm:
+            dup_phone = db.execute(
+                select(Property.id).where(
+                    (Property.contact_phone_normalized == contact_phone_norm) & (Property.allow_duplicate_phone == False)  # noqa: E712
+                )
+            ).first()
+            if dup_phone:
+                raise HTTPException(status_code=409, detail="Duplicate listing phone detected (admin override required)")
+
     p = Property(
         owner_id=me.id,
         title=(data.title or "").strip() or "Untitled",
@@ -562,14 +803,23 @@ def owner_create_property(
         rent_sale=(data.rent_sale or "rent").strip(),
         price=int(data.price or 0),
         location=(data.location or "").strip(),
+        address=address,
+        address_normalized=address_norm,
+        state=state,
+        district=district,
+        state_normalized=_norm_key(state),
+        district_normalized=_norm_key(district),
         amenities_json=json.dumps(list(data.amenities or [])),
         availability=(data.availability or "available").strip(),
         status="pending",
-        contact_phone=(data.contact_phone or "").strip(),
+        contact_phone=contact_phone,
+        contact_phone_normalized=contact_phone_norm,
         contact_email=(data.contact_email or "").strip(),
+        updated_at=dt.datetime.now(dt.timezone.utc),
     )
     db.add(p)
     db.flush()
+    _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="create", reason="")
     return {"id": p.id, "status": p.status}
 
 
@@ -583,7 +833,10 @@ def admin_pending_properties(
 ):
     if me.role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
-    items = [_property_out(p) for p in db.execute(select(Property).where(Property.status == "pending").order_by(Property.id.desc())).scalars().all()]
+    items = [
+        _property_out(p, include_unapproved_images=True, include_internal=True)
+        for p in db.execute(select(Property).where(Property.status == "pending").order_by(Property.id.desc())).scalars().all()
+    ]
     return {"items": items}
 
 
@@ -592,6 +845,7 @@ def admin_approve_property(
     property_id: int,
     me: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
 ):
     if me.role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
@@ -599,7 +853,10 @@ def admin_approve_property(
     if not p:
         raise HTTPException(status_code=404, detail="Property not found")
     p.status = "approved"
+    p.moderation_reason = ""
+    p.updated_at = dt.datetime.now(dt.timezone.utc)
     db.add(p)
+    _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="approve", reason="")
     return {"ok": True}
 
 
@@ -608,6 +865,7 @@ def admin_reject_property(
     property_id: int,
     me: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
 ):
     if me.role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
@@ -615,8 +873,305 @@ def admin_reject_property(
     if not p:
         raise HTTPException(status_code=404, detail="Property not found")
     p.status = "rejected"
+    p.moderation_reason = (data.reason if data else "") or ""
+    p.updated_at = dt.datetime.now(dt.timezone.utc)
     db.add(p)
+    _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="reject", reason=p.moderation_reason)
     return {"ok": True}
+
+
+@app.post("/admin/properties/{property_id}/suspend")
+def admin_suspend_property(
+    property_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    p = db.get(Property, int(property_id))
+    if not p:
+        raise HTTPException(status_code=404, detail="Property not found")
+    p.status = "suspended"
+    p.moderation_reason = (data.reason if data else "") or ""
+    p.updated_at = dt.datetime.now(dt.timezone.utc)
+    db.add(p)
+    _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="suspend", reason=p.moderation_reason)
+    return {"ok": True}
+
+
+@app.post("/admin/properties/{property_id}/allow-duplicates")
+def admin_allow_duplicates(
+    property_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: AllowDuplicatesIn,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    p = db.get(Property, int(property_id))
+    if not p:
+        raise HTTPException(status_code=404, detail="Property not found")
+    changed = False
+    if data.allow_duplicate_address is not None:
+        p.allow_duplicate_address = bool(data.allow_duplicate_address)
+        changed = True
+    if data.allow_duplicate_phone is not None:
+        p.allow_duplicate_phone = bool(data.allow_duplicate_phone)
+        changed = True
+    if changed:
+        p.updated_at = dt.datetime.now(dt.timezone.utc)
+        db.add(p)
+        _log_moderation(
+            db,
+            actor_user_id=me.id,
+            entity_type="property",
+            entity_id=p.id,
+            action="allow_duplicates",
+            reason=(data.reason or "").strip(),
+        )
+    return {
+        "ok": True,
+        "allow_duplicate_address": p.allow_duplicate_address,
+        "allow_duplicate_phone": p.allow_duplicate_phone,
+    }
+
+
+@app.get("/admin/owners/pending")
+def admin_pending_owners(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    owners = (
+        db.execute(
+            select(User)
+            .where((User.role == "owner") & (User.approval_status == "pending"))
+            .order_by(User.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": o.id,
+                "email": o.email,
+                "username": o.username,
+                "phone": o.phone,
+                "name": o.name,
+                "state": o.state,
+                "district": o.district,
+                "owner_category": o.owner_category,
+                "company_name": o.company_name,
+                "company_description": o.company_description,
+                "company_address": o.company_address,
+                "approval_status": o.approval_status,
+                "approval_reason": o.approval_reason,
+            }
+            for o in owners
+        ]
+    }
+
+
+@app.post("/admin/owners/{owner_id}/approve")
+def admin_approve_owner(
+    owner_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    u = db.get(User, int(owner_id))
+    if not u or u.role != "owner":
+        raise HTTPException(status_code=404, detail="Owner not found")
+    u.approval_status = "approved"
+    u.approval_reason = ""
+    db.add(u)
+    _log_moderation(db, actor_user_id=me.id, entity_type="user", entity_id=u.id, action="approve", reason="")
+    return {"ok": True}
+
+
+@app.post("/admin/owners/{owner_id}/reject")
+def admin_reject_owner(
+    owner_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    u = db.get(User, int(owner_id))
+    if not u or u.role != "owner":
+        raise HTTPException(status_code=404, detail="Owner not found")
+    u.approval_status = "rejected"
+    u.approval_reason = (data.reason if data else "") or ""
+    db.add(u)
+    _log_moderation(db, actor_user_id=me.id, entity_type="user", entity_id=u.id, action="reject", reason=u.approval_reason)
+    return {"ok": True}
+
+
+@app.post("/admin/owners/{owner_id}/suspend")
+def admin_suspend_owner(
+    owner_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    u = db.get(User, int(owner_id))
+    if not u or u.role != "owner":
+        raise HTTPException(status_code=404, detail="Owner not found")
+    u.approval_status = "suspended"
+    u.approval_reason = (data.reason if data else "") or ""
+    db.add(u)
+    _log_moderation(db, actor_user_id=me.id, entity_type="user", entity_id=u.id, action="suspend", reason=u.approval_reason)
+    return {"ok": True}
+
+
+@app.get("/admin/images/pending")
+def admin_pending_images(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    imgs = (
+        db.execute(select(PropertyImage).where(PropertyImage.status == "pending").order_by(PropertyImage.id.desc()))
+        .scalars()
+        .all()
+    )
+    out: list[dict[str, Any]] = []
+    for img in imgs:
+        p = db.get(Property, int(img.property_id))
+        owner = db.get(User, int(p.owner_id)) if p else None
+        out.append(
+            {
+                "id": img.id,
+                "property_id": img.property_id,
+                "property_title": p.title if p else "",
+                "owner_id": owner.id if owner else None,
+                "owner_company_name": owner.company_name if owner else "",
+                "url": _public_image_url(img.file_path),
+                "image_hash": img.image_hash,
+                "status": img.status,
+                "original_filename": img.original_filename,
+                "content_type": img.content_type,
+                "size_bytes": img.size_bytes,
+                "moderation_reason": img.moderation_reason,
+            }
+        )
+    return {"items": out}
+
+
+@app.post("/admin/images/{image_id}/approve")
+def admin_approve_image(
+    image_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    img = db.get(PropertyImage, int(image_id))
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    img.status = "approved"
+    img.moderation_reason = ""
+    db.add(img)
+    _log_moderation(db, actor_user_id=me.id, entity_type="property_image", entity_id=img.id, action="approve", reason="")
+    return {"ok": True}
+
+
+@app.post("/admin/images/{image_id}/reject")
+def admin_reject_image(
+    image_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    img = db.get(PropertyImage, int(image_id))
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    img.status = "rejected"
+    img.moderation_reason = (data.reason if data else "") or ""
+    db.add(img)
+    _log_moderation(db, actor_user_id=me.id, entity_type="property_image", entity_id=img.id, action="reject", reason=img.moderation_reason)
+    return {"ok": True}
+
+
+@app.post("/admin/images/{image_id}/suspend")
+def admin_suspend_image(
+    image_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    img = db.get(PropertyImage, int(image_id))
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    img.status = "suspended"
+    img.moderation_reason = (data.reason if data else "") or ""
+    db.add(img)
+    _log_moderation(db, actor_user_id=me.id, entity_type="property_image", entity_id=img.id, action="suspend", reason=img.moderation_reason)
+    return {"ok": True}
+
+
+@app.get("/admin/logs")
+def admin_logs(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    entity_type: str | None = Query(default=None),
+    entity_id: int | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    stmt = select(ModerationLog).order_by(ModerationLog.id.desc()).limit(int(limit))
+    if entity_type:
+        stmt = stmt.where(ModerationLog.entity_type == entity_type)
+    if entity_id is not None:
+        stmt = stmt.where(ModerationLog.entity_id == int(entity_id))
+    logs = db.execute(stmt).scalars().all()
+    return {
+        "items": [
+            {
+                "id": l.id,
+                "actor_user_id": l.actor_user_id,
+                "entity_type": l.entity_type,
+                "entity_id": l.entity_id,
+                "action": l.action,
+                "reason": l.reason,
+                "created_at": l.created_at,
+            }
+            for l in logs
+        ]
+    }
+
+
+@app.post("/admin/auth/login")
+def admin_login(data: AdminLoginIn, db: Annotated[Session, Depends(get_db)]):
+    identifier = (data.identifier or "").strip()
+    phone_norm = _norm_phone(identifier)
+    user = db.execute(
+        select(User).where(
+            (User.email == identifier.lower())
+            | (User.username == identifier)
+            | (User.phone == identifier)
+            | ((User.phone_normalized == phone_norm) & (User.phone_normalized != ""))
+        )
+    ).scalar_one_or_none()
+    if not user or user.role != "admin" or not verify_password(data.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    token = create_access_token(user_id=user.id, role=user.role)
+    return {"access_token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role}}
 
 
 @app.post("/properties/{property_id}/images")
@@ -634,8 +1189,10 @@ def upload_property_image(
     p = db.get(Property, int(property_id))
     if not p:
         raise HTTPException(status_code=404, detail="Property not found")
-    if me.role not in {"owner", "admin"} and p.owner_id != me.id:
+    if me.role != "admin" and p.owner_id != me.id:
         raise HTTPException(status_code=403, detail="Not allowed")
+    if me.role == "owner" and (me.approval_status or "") != "approved":
+        raise HTTPException(status_code=403, detail="Owner account is pending admin approval")
 
     content_type = (file.content_type or "").lower()
     if not content_type.startswith("image/"):
@@ -645,18 +1202,48 @@ def upload_property_image(
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         ext = ".jpg" if content_type in {"image/jpeg", "image/jpg"} else ".png"
 
+    # Read bytes once to compute hash and store on disk.
+    try:
+        raw = file.file.read()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid upload")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty upload")
+
+    img_hash = _image_sha256_hex(raw)
+    existing = db.execute(select(PropertyImage).where(PropertyImage.image_hash == img_hash)).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="Duplicate image detected (hash already exists)")
+
     safe_name = f"p{p.id}_{secrets.token_hex(8)}{ext}"
     disk_path = os.path.join(_uploads_dir(), safe_name)
     try:
         with open(disk_path, "wb") as out:
-            out.write(file.file.read())
+            out.write(raw)
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to save upload")
 
-    img = PropertyImage(property_id=p.id, file_path=safe_name, sort_order=int(sort_order))
+    img = PropertyImage(
+        property_id=p.id,
+        file_path=safe_name,
+        sort_order=int(sort_order),
+        image_hash=img_hash,
+        original_filename=(file.filename or "").strip(),
+        content_type=(file.content_type or "").strip(),
+        size_bytes=int(len(raw)),
+        status="pending",
+        uploaded_by_user_id=me.id,
+    )
     db.add(img)
     db.flush()
-    return {"id": img.id, "url": _public_image_url(img.file_path), "sort_order": img.sort_order}
+    _log_moderation(db, actor_user_id=me.id, entity_type="property_image", entity_id=img.id, action="upload", reason="")
+    return {
+        "id": img.id,
+        "url": _public_image_url(img.file_path),
+        "sort_order": img.sort_order,
+        "status": img.status,
+        "image_hash": img.image_hash,
+    }
 
 
 # -----------------------
