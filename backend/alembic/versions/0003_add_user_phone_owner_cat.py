@@ -1,6 +1,6 @@
 """add phone and owner category to users
 
-Revision ID: 0003_add_user_phone_and_owner_category
+Revision ID: 0003_add_user_phone_owner_cat
 Revises: 0002_add_user_district
 Create Date: 2026-01-09
 """
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0003_add_user_phone_and_owner_category"
+revision = "0003_add_user_phone_owner_cat"
 down_revision = "0002_add_user_district"
 branch_labels = None
 depends_on = None
