@@ -16,6 +16,26 @@ def database_url() -> str:
 def jwt_secret() -> str:
     return os.environ.get("JWT_SECRET") or "dev-secret-change-me"
 
+def is_local_dev() -> bool:
+    """
+    Heuristic for local/dev runs.
+
+    We treat the app as "local dev" when DATABASE_URL is not set, because
+    `database_url()` falls back to sqlite in that case.
+    """
+    return not (os.environ.get("DATABASE_URL") or "").strip()
+
+
+def email_backend() -> str:
+    """
+    Email backend selector:
+    - "auto" (default): prefer Brevo if configured, else SMTP
+    - "brevo": force Brevo (requires BREVO_API_KEY + sender)
+    - "smtp": force SMTP (requires SMTP_HOST + sender)
+    - "console": log email contents instead of sending (dev-only)
+    """
+    return (os.environ.get("EMAIL_BACKEND") or "auto").strip().lower()
+
 
 def otp_exp_minutes() -> int:
     """
