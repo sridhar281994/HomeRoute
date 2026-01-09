@@ -1,6 +1,18 @@
+export type User = {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+  username?: string;
+  phone?: string;
+  owner_category?: string;
+  image_url?: string;
+  locations?: string[];
+};
+
 export type Session = {
   token: string;
-  user?: { id: number; email: string; name: string; role: string };
+  user?: User;
 };
 
 const KEY = "pd_session_v1";
@@ -37,17 +49,28 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function registerUser(input: {
   email: string;
-  username: string;
+  phone: string;
   password: string;
   name: string;
   state: string;
   district: string;
-  gender: string;
+  role: string;
+  owner_category?: string;
 }) {
   return api<{ ok: boolean; user_id: number }>("/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      email: input.email,
+      phone: input.phone,
+      username: input.phone, // keep server-side uniqueness/compatibility
+      password: input.password,
+      name: input.name,
+      state: input.state,
+      district: input.district,
+      role: input.role,
+      owner_category: input.owner_category || "",
+    }),
   });
 }
 

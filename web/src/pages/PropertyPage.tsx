@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getContact, getProperty } from "../api";
+import { getContact, getProperty, getSession } from "../api";
 import { Link, useParams } from "react-router-dom";
 
 export default function PropertyPage() {
@@ -26,7 +26,7 @@ export default function PropertyPage() {
         <div className="row">
           <p className="h1">Property</p>
           <div className="spacer" />
-          <Link to="/">Back</Link>
+          <Link to="/home">Back</Link>
         </div>
         <p className="muted">{msg || "Loading..."}</p>
       </div>
@@ -40,7 +40,7 @@ export default function PropertyPage() {
           {p.title}
         </p>
         <div className="spacer" />
-        <Link to="/">Back</Link>
+        <Link to="/home">Back</Link>
       </div>
       <p className="muted">
         {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display}
@@ -78,9 +78,9 @@ export default function PropertyPage() {
               }
             }}
           >
-            Unlock Contact
+            Unlock Contact  🔓
           </button>
-          <Link to="/subscription">Subscription</Link>
+          {getSession().token ? <Link to="/subscription">Subscription</Link> : <Link to="/login">Login</Link>}
           <span className="muted">{msg}</span>
         </div>
       </div>

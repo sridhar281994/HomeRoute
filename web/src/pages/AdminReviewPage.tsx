@@ -21,10 +21,7 @@ export default function AdminReviewPage() {
 
   return (
     <div className="panel">
-      <p className="h1">Admin: Review New Listings</p>
-      <p className="muted">
-        Login with <b>Admin</b> / <b>Admin@123</b> to use these endpoints.
-      </p>
+      <p className="h1">Review New Listings</p>
       <div className="row">
         <button className="primary" onClick={load}>
           Refresh

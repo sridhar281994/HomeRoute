@@ -4,14 +4,41 @@ import { INDIA_STATES } from "../indiaStates";
 import { districtsForState } from "../indiaDistricts";
 import { Link, useNavigate } from "react-router-dom";
 
+const OWNER_CATEGORIES = [
+  // Property & Real Estate
+  "Apartment Owner",
+  "Villa Owner",
+  "Plot Owner",
+  "PG Owner",
+  "Marriage Hall Owner",
+  "Party Hall Owner",
+  // Construction & Materials
+  "Retailer / Hardware Shop",
+  "Steel Supplier",
+  "Brick Supplier",
+  "Sand Supplier",
+  "M-Sand Supplier",
+  "Cement Supplier",
+  // Services & Workforce
+  "Interior Designer",
+  "Carpenter / Wood Works",
+  "Mason / Labor Contractor",
+  "Electrician",
+  "Plumber",
+  "Painter",
+  "Gardener / Landscaping",
+  "Cleaning Services",
+] as const;
+
 export default function RegisterPage() {
   const nav = useNavigate();
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [state, setState] = useState(INDIA_STATES[0] || "");
   const [district, setDistrict] = useState("");
-  const [gender, setGender] = useState("male");
+  const [role, setRole] = useState<"customer" | "owner">("customer");
+  const [ownerCategory, setOwnerCategory] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string>("");
 
@@ -20,7 +47,7 @@ export default function RegisterPage() {
 
   return (
     <div className="panel">
-      <p className="h1">Register (India only)</p>
+      <p className="h1">Create Account  ✨</p>
       <p className="muted">
         Already have an account? <Link to="/login">Login</Link>
       </p>
@@ -31,13 +58,40 @@ export default function RegisterPage() {
           <input value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="col-6">
-          <label className="muted">Username</label>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} />
+          <label className="muted">Phone number</label>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Eg: 9876543210" />
         </div>
         <div className="col-6">
           <label className="muted">Email</label>
           <input value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
+        <div className="col-6">
+          <label className="muted">Role</label>
+          <div className="row" style={{ gap: 10 }}>
+            <button className={`chip ${role === "owner" ? "chip-on" : ""}`} onClick={() => setRole("owner")}>
+              Owner  🏢
+            </button>
+            <button
+              className={`chip ${role === "customer" ? "chip-on" : ""}`}
+              onClick={() => setRole("customer")}
+            >
+              Customer  🧍
+            </button>
+          </div>
+        </div>
+        {role === "owner" ? (
+          <div className="col-12">
+            <label className="muted">Owner category</label>
+            <select value={ownerCategory} onChange={(e) => setOwnerCategory(e.target.value)}>
+              <option value="">Select category</option>
+              {OWNER_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="col-6">
           <label className="muted">State</label>
           <select
@@ -66,14 +120,6 @@ export default function RegisterPage() {
           </select>
         </div>
         <div className="col-6">
-          <label className="muted">Gender</label>
-          <select value={gender} onChange={(e) => setGender(e.target.value)}>
-            <option value="male">male</option>
-            <option value="female">female</option>
-            <option value="cross">cross</option>
-          </select>
-        </div>
-        <div className="col-6">
           <label className="muted">Password</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
@@ -83,14 +129,26 @@ export default function RegisterPage() {
             onClick={async () => {
               try {
                 if (!district) throw new Error("Please select your district.");
-                await registerUser({ email, username, password, name, state, district, gender });
+                const digits = (phone || "").replace(/\D/g, "");
+                if (digits.length < 8 || digits.length > 15) throw new Error("Enter a valid phone number.");
+                if (role === "owner" && !ownerCategory) throw new Error("Please select your owner category.");
+                await registerUser({
+                  email,
+                  phone,
+                  password,
+                  name,
+                  state,
+                  district,
+                  role: role === "owner" ? "owner" : "user",
+                  owner_category: role === "owner" ? ownerCategory : "",
+                });
                 nav("/login");
               } catch (e: any) {
                 setMsg(e.message || "Failed");
               }
             }}
           >
-            Create account
+            Create account  ✅
           </button>
           <span className="muted">{msg}</span>
         </div>

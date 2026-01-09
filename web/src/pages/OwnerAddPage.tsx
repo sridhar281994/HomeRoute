@@ -1,7 +1,10 @@
-import { useState } from "react";
-import { ownerCreateProperty, uploadPropertyImage } from "../api";
+import { useEffect, useState } from "react";
+import { getSession, ownerCreateProperty, uploadPropertyImage } from "../api";
+import { Link, useNavigate } from "react-router-dom";
 
 export default function OwnerAddPage() {
+  const nav = useNavigate();
+  const s = getSession();
   const [title, setTitle] = useState("");
   const [location, setLocation] = useState("");
   const [price, setPrice] = useState("");
@@ -13,9 +16,29 @@ export default function OwnerAddPage() {
   const [msg, setMsg] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
 
+  useEffect(() => {
+    if (!s.token) nav("/login");
+  }, [nav, s.token]);
+
+  if ((s.user?.role || "").toLowerCase() !== "owner") {
+    return (
+      <div className="panel">
+        <p className="h1">Owner Dashboard  🏢</p>
+        <p className="muted">Owner access only. Please login/register as an Owner account.</p>
+        <Link to="/home">Back</Link>
+      </div>
+    );
+  }
+
   return (
     <div className="panel">
-      <p className="h1">Owner: Add Listing</p>
+      <div className="row">
+        <p className="h1" style={{ margin: 0 }}>
+          Owner: Add Listing  ➕
+        </p>
+        <div className="spacer" />
+        <Link to="/home">Back</Link>
+      </div>
       <p className="muted">
         Create the listing first, then upload photos (plot/rent/floor accessories/etc).
       </p>

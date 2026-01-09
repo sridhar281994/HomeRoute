@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { subscriptionStatus } from "../api";
+import { getSession, subscriptionStatus } from "../api";
+import { Link, useNavigate } from "react-router-dom";
 
 export default function SubscriptionPage() {
+  const nav = useNavigate();
   const [status, setStatus] = useState("Unknown");
   const [msg, setMsg] = useState("");
 
@@ -16,12 +18,22 @@ export default function SubscriptionPage() {
   }
 
   useEffect(() => {
+    if (!getSession().token) {
+      nav("/login");
+      return;
+    }
     load();
   }, []);
 
   return (
     <div className="panel">
-      <p className="h1">Subscription</p>
+      <div className="row">
+        <p className="h1" style={{ margin: 0 }}>
+          Subscription  💎
+        </p>
+        <div className="spacer" />
+        <Link to="/home">Back</Link>
+      </div>
       <p className="muted">Status: {status}</p>
       <p className="muted">
         Payments are handled by <b>Google Play Billing</b>. This web UI only demonstrates the paywall + status check.
