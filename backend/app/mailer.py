@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -8,6 +9,8 @@ from email.message import EmailMessage
 from app.config import (
     brevo_api_key,
     brevo_from_email,
+    email_backend,
+    is_local_dev,
     otp_exp_minutes,
     smtp_from_email,
     smtp_host,
@@ -15,6 +18,8 @@ from app.config import (
     smtp_port,
     smtp_user,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class EmailSendError(RuntimeError):
@@ -104,11 +109,49 @@ def send_email(*, to_email: str, subject: str, text: str) -> None:
     if not to_email or "@" not in to_email:
         raise EmailSendError("Invalid recipient email")
 
-    # Prefer Brevo when API key is present.
+    backend = email_backend()
+    if backend in ("console", "log"):
+        logger.warning(
+            "EMAIL_BACKEND=console: to=%s subject=%s\n%s",
+            to_email,
+            subject,
+            text,
+        )
+        return
+
+    if backend == "brevo":
+        _send_via_brevo(to_email=to_email, subject=subject, text=text)
+        return
+
+    if backend == "smtp":
+        _send_via_smtp(to_email=to_email, subject=subject, text=text)
+        return
+
+    # "auto" (default): prefer Brevo when API key is present.
     if brevo_api_key():
         _send_via_brevo(to_email=to_email, subject=subject, text=text)
         return
-    _send_via_smtp(to_email=to_email, subject=subject, text=text)
+
+    # If SMTP is configured, try it; otherwise we may fall back in local dev.
+    if smtp_host():
+        _send_via_smtp(to_email=to_email, subject=subject, text=text)
+        return
+
+    # Dev-friendly fallback (no external email service configured).
+    if is_local_dev():
+        logger.warning(
+            "No email provider configured; falling back to console output in local dev. "
+            "Set EMAIL_BACKEND=smtp/brevo (or configure SMTP_/BREVO_ env vars) for real delivery.\n"
+            "to=%s subject=%s\n%s",
+            to_email,
+            subject,
+            text,
+        )
+        return
+
+    raise EmailSendError(
+        "Email provider not configured. Set BREVO_API_KEY+BREVO_FROM (Brevo) or SMTP_HOST+SMTP_FROM (SMTP)."
+    )
 
 
 def send_otp_email(*, to_email: str, otp: str, purpose: str) -> None:
