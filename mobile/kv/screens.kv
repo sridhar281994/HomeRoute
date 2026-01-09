@@ -1027,6 +1027,12 @@
                     size_hint_y: None
                     height: dp(42)
                 PrettySpinner:
+                    text: root.need_category
+                    values: root.need_values
+                    on_text: root.need_category = self.text
+                    size_hint_y: None
+                    height: dp(42)
+                PrettySpinner:
                     text: root.property_type
                     values: ["Any", "apartment", "villa", "plot", "pg", "marriage_hall", "party_hall", "retailer", "steel_supplier", "brick_supplier", "sand_supplier", "msand_supplier", "cement_supplier", "interior_designer", "carpenter", "labor_contractor", "electrician", "plumber", "painter", "gardener", "cleaning_services"]
                     on_text: root.property_type = self.text

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { getSession, listProperties } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { getCategoryCatalog, getSession, listProperties } from "../api";
 import { Link } from "react-router-dom";
 import { INDIA_STATES } from "../indiaStates";
 import { districtsForState } from "../indiaDistricts";
@@ -7,6 +7,7 @@ import { districtsForState } from "../indiaDistricts";
 export default function HomePage() {
   const session = getSession();
   const [q, setQ] = useState("");
+  const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
   const [propertyType, setPropertyType] = useState("");
@@ -15,6 +16,14 @@ export default function HomePage() {
   const [sortBudget, setSortBudget] = useState<string>("top");
   const [items, setItems] = useState<any[]>([]);
   const [err, setErr] = useState<string>("");
+  const [catalog, setCatalog] = useState<any>(null);
+
+  const needGroups = useMemo(() => {
+    const cats = (catalog?.categories || []) as Array<{ group: string; items: string[] }>;
+    return cats
+      .map((g) => ({ group: String(g.group || "").trim(), items: (g.items || []).map((x) => String(x || "").trim()).filter(Boolean) }))
+      .filter((g) => g.group && g.items.length);
+  }, [catalog]);
 
   async function load() {
     setErr("");
@@ -24,8 +33,9 @@ export default function HomePage() {
         setItems([]);
         throw new Error("Select State and District to search as guest.");
       }
+      const qCombined = [need, q].map((x) => (x || "").trim()).filter(Boolean).join(" ");
       const res = await listProperties({
-        q: q || undefined,
+        q: qCombined || undefined,
         max_price: maxPrice || undefined,
         rent_sale: rentSale || undefined,
         property_type: propertyType || undefined,
@@ -43,6 +53,17 @@ export default function HomePage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const c = await getCategoryCatalog();
+        setCatalog(c);
+      } catch {
+        // Non-fatal: search still works without category metadata.
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -123,6 +144,21 @@ export default function HomePage() {
             <option value="villa">villa</option>
             <option value="studio">studio</option>
             <option value="land">land</option>
+          </select>
+        </div>
+        <div className="col-6">
+          <label className="muted">Need category (materials / services / property)</label>
+          <select value={need} onChange={(e) => setNeed(e.target.value)}>
+            <option value="">Any</option>
+            {needGroups.map((g) => (
+              <optgroup key={g.group} label={g.group}>
+                {g.items.map((it) => (
+                  <option key={`${g.group}:${it}`} value={it}>
+                    {it}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         </div>
         <div className="col-6">

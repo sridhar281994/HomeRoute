@@ -16,6 +16,7 @@ from frontend_app.utils.api import (
     api_get_property,
     api_get_property_contact,
     api_list_properties,
+    api_meta_categories,
     api_subscription_status,
 )
 from frontend_app.utils.storage import clear_session, get_session, get_user
@@ -66,6 +67,8 @@ class HomeScreen(Screen):
 
     items = ListProperty([])
     query = StringProperty("")
+    need_category = StringProperty("Any")
+    need_values = ListProperty(["Any"])
     rent_sale = StringProperty("Any")
     property_type = StringProperty("Any")
     max_price = StringProperty("")
@@ -92,7 +95,44 @@ class HomeScreen(Screen):
         except Exception:
             self.bg_image = ""
 
+        # Load customer "need" categories (non-fatal if offline).
+        self._load_need_categories()
+
         Clock.schedule_once(lambda _dt: self.refresh(), 0)
+
+    def _load_need_categories(self):
+        def work():
+            try:
+                data = api_meta_categories()
+                cats = data.get("categories") or []
+                values: list[str] = ["Any"]
+                for g in cats:
+                    group = str((g or {}).get("group") or "").strip()
+                    items = (g or {}).get("items") or []
+                    for it in items:
+                        label = str(it or "").strip()
+                        if not label:
+                            continue
+                        # Keep labels unique + understandable without optgroup support.
+                        values.append(f"{group} — {label}" if group else label)
+
+                # De-dup while keeping order
+                seen: set[str] = set()
+                deduped = []
+                for v in values:
+                    if v in seen:
+                        continue
+                    seen.add(v)
+                    deduped.append(v)
+
+                Clock.schedule_once(lambda *_: setattr(self, "need_values", deduped), 0)
+            except Exception:
+                # Keep default values.
+                return
+
+        from threading import Thread
+
+        Thread(target=work, daemon=True).start()
 
     def refresh(self):
         if self.is_loading:
@@ -101,8 +141,14 @@ class HomeScreen(Screen):
 
         def work():
             try:
+                need = (self.need_category or "").strip()
+                # If values are "Group — Label", use only the label for matching.
+                if "—" in need:
+                    need = need.split("—", 1)[1].strip()
+                q = (self.query or "").strip()
+                combined_q = " ".join([x for x in [need if need and need.lower() != "any" else "", q] if x]).strip()
                 data = api_list_properties(
-                    q=(self.query or "").strip(),
+                    q=combined_q,
                     rent_sale=(self.rent_sale or "").strip(),
                     property_type=(self.property_type or "").strip(),
                     max_price=(self.max_price or "").strip(),
