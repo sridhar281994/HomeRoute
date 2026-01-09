@@ -5,7 +5,8 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "backend/**"
+      - "backend/alembic/**"
+      - "backend/alembic.ini"
       - ".github/workflows/db-migrate.yml"
 
 jobs:
@@ -13,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    concurrency:
+      group: db-migrate
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -30,5 +34,7 @@ jobs:
         working-directory: backend
         run: |
           test -n "$DATABASE_URL"
+          alembic -c alembic.ini current
           alembic -c alembic.ini upgrade head
+          alembic -c alembic.ini current
 
