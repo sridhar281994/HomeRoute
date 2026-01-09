@@ -7,10 +7,12 @@ import secrets
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.db import session_scope
 from app.models import OtpCode, Property, PropertyImage, Subscription, User
@@ -537,4 +539,92 @@ def upload_property_image(
     db.add(img)
     db.flush()
     return {"id": img.id, "url": _public_image_url(img.file_path), "sort_order": img.sort_order}
+
+
+# -----------------------
+# Optional: serve the web UI (React build) from /
+# -----------------------
+def _web_dist_dir() -> str:
+    # backend/app/main.py -> /workspace/backend/app
+    # ../../web/dist -> /workspace/web/dist
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "dist"))
+
+
+def _web_index_html() -> str:
+    return os.path.join(_web_dist_dir(), "index.html")
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    """
+    If the React app is built (web/dist), serve it.
+    Otherwise show a small help page instead of JSON 404.
+    """
+    index_path = _web_index_html()
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return HTMLResponse(
+        """
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Property Discovery</title>
+            <style>
+              body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; line-height: 1.4; }
+              code { background: #f5f5f5; padding: 2px 6px; border-radius: 6px; }
+              pre { background: #f5f5f5; padding: 12px; border-radius: 10px; overflow: auto; }
+              a { color: #0b57d0; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+            </style>
+          </head>
+          <body>
+            <h2>Backend is running (API)</h2>
+            <p>
+              You opened the API server root (<code>/</code>). The web UI is a separate React app in <code>web/</code>.
+            </p>
+            <h3>Run the web UI (dev)</h3>
+            <pre><code>cd web
+npm install
+npm run dev</code></pre>
+            <p>
+              Then open the URL for the dev server (default port <code>5173</code>).
+            </p>
+            <h3>API docs</h3>
+            <p>See interactive docs at <a href="/docs"><code>/docs</code></a>.</p>
+          </body>
+        </html>
+        """.strip()
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def spa_fallback_404(request, exc: StarletteHTTPException):
+    """
+    SPA fallback:
+    - If the React build exists and a GET path isn't an API/static path, serve index.html.
+    - Otherwise keep FastAPI's normal JSON error response.
+    """
+    if exc.status_code == 404 and request.method == "GET":
+        index_path = _web_index_html()
+        if os.path.exists(index_path):
+            path = request.url.path
+            is_api_or_static = path.startswith(
+                (
+                    "/auth",
+                    "/properties",
+                    "/owner",
+                    "/admin",
+                    "/uploads",
+                    "/health",
+                    "/docs",
+                    "/openapi",
+                    "/redoc",
+                )
+            )
+            if not is_api_or_static:
+                return FileResponse(index_path)
+    # Fall back to the default FastAPI JSON shape.
+    return HTMLResponse(status_code=exc.status_code, content=str({"detail": exc.detail}))
 
