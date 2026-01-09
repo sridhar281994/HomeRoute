@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 import { getSession, ownerCreateProperty, uploadPropertyImage } from "../api";
 import { Link, useNavigate } from "react-router-dom";
+import { INDIA_STATES } from "../indiaStates";
+import { districtsForState } from "../indiaDistricts";
 
 export default function OwnerAddPage() {
   const nav = useNavigate();
   const s = getSession();
   const [title, setTitle] = useState("");
   const [location, setLocation] = useState("");
+  const [state, setState] = useState<string>(s.user?.state || localStorage.getItem("pd_state") || "");
+  const [district, setDistrict] = useState<string>(s.user?.district || localStorage.getItem("pd_district") || "");
+  const [address, setAddress] = useState("");
   const [price, setPrice] = useState("");
   const [rentSale, setRentSale] = useState("rent");
   const [propertyType, setPropertyType] = useState("apartment");
@@ -20,6 +25,13 @@ export default function OwnerAddPage() {
     if (!s.token) nav("/login");
   }, [nav, s.token]);
 
+  useEffect(() => {
+    localStorage.setItem("pd_state", state || "");
+  }, [state]);
+  useEffect(() => {
+    localStorage.setItem("pd_district", district || "");
+  }, [district]);
+
   if ((s.user?.role || "").toLowerCase() !== "owner") {
     return (
       <div className="panel">
@@ -29,6 +41,8 @@ export default function OwnerAddPage() {
       </div>
     );
   }
+
+  const districts = districtsForState(state);
 
   return (
     <div className="panel">
@@ -45,12 +59,44 @@ export default function OwnerAddPage() {
 
       <div className="grid" style={{ marginTop: 12 }}>
         <div className="col-6">
+          <label className="muted">State</label>
+          <select
+            value={state}
+            onChange={(e) => {
+              setState(e.target.value);
+              setDistrict("");
+            }}
+          >
+            <option value="">Select state…</option>
+            {INDIA_STATES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-6">
+          <label className="muted">District</label>
+          <select value={district} onChange={(e) => setDistrict(e.target.value)} disabled={!state}>
+            <option value="">{state ? "Select district…" : "Select state first"}</option>
+            {districts.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-6">
           <label className="muted">Title</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
         <div className="col-6">
           <label className="muted">Location</label>
           <input value={location} onChange={(e) => setLocation(e.target.value)} />
+        </div>
+        <div className="col-12">
+          <label className="muted">Address (used for duplicate detection)</label>
+          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, area, landmark…" />
         </div>
         <div className="col-6">
           <label className="muted">Price</label>
@@ -89,8 +135,11 @@ export default function OwnerAddPage() {
               setMsg("");
               try {
                 const res = await ownerCreateProperty({
+                  state,
+                  district,
                   title,
                   location,
+                  address,
                   price: Number(price || 0),
                   rent_sale: rentSale,
                   property_type: propertyType,

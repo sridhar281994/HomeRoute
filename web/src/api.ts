@@ -90,12 +90,24 @@ export function verifyOtp(identifier: string, password: string, otp: string) {
   });
 }
 
-export function listProperties(params: { q?: string; rent_sale?: string; property_type?: string; max_price?: string }) {
+export function listProperties(params: {
+  q?: string;
+  rent_sale?: string;
+  property_type?: string;
+  max_price?: string;
+  state?: string;
+  district?: string;
+  sort_budget?: string;
+}) {
   const sp = new URLSearchParams();
   if (params.q) sp.set("q", params.q);
   if (params.rent_sale) sp.set("rent_sale", params.rent_sale);
   if (params.property_type) sp.set("property_type", params.property_type);
   if (params.max_price) sp.set("max_price", params.max_price);
+  // Location is mandatory for guest browsing; backend enforces this too.
+  if (params.state) sp.set("state", params.state);
+  if (params.district) sp.set("district", params.district);
+  if (params.sort_budget) sp.set("sort_budget", params.sort_budget);
   const qs = sp.toString() ? `?${sp.toString()}` : "";
   return api<{ items: any[] }>(`/properties${qs}`);
 }
@@ -144,5 +156,61 @@ export function adminApprove(id: number) {
 
 export function adminReject(id: number) {
   return api<{ ok: boolean }>(`/admin/properties/${id}/reject`, { method: "POST" });
+}
+
+export function adminSuspend(id: number, reason = "") {
+  return api<{ ok: boolean }>(`/admin/properties/${id}/suspend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function adminOwnersPending() {
+  return api<{ items: any[] }>(`/admin/owners/pending`);
+}
+
+export function adminOwnerApprove(id: number) {
+  return api<{ ok: boolean }>(`/admin/owners/${id}/approve`, { method: "POST" });
+}
+
+export function adminOwnerReject(id: number, reason = "") {
+  return api<{ ok: boolean }>(`/admin/owners/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function adminOwnerSuspend(id: number, reason = "") {
+  return api<{ ok: boolean }>(`/admin/owners/${id}/suspend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function adminImagesPending() {
+  return api<{ items: any[] }>(`/admin/images/pending`);
+}
+
+export function adminImageApprove(id: number) {
+  return api<{ ok: boolean }>(`/admin/images/${id}/approve`, { method: "POST" });
+}
+
+export function adminImageReject(id: number, reason = "") {
+  return api<{ ok: boolean }>(`/admin/images/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function adminImageSuspend(id: number, reason = "") {
+  return api<{ ok: boolean }>(`/admin/images/${id}/suspend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
 }
 
