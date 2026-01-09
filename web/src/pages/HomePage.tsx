@@ -6,7 +6,6 @@ import { districtsForState } from "../indiaDistricts";
 
 export default function HomePage() {
   const session = getSession();
-  const [q, setQ] = useState("");
   const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
@@ -33,9 +32,8 @@ export default function HomePage() {
         setItems([]);
         throw new Error("Select State and District to search as guest.");
       }
-      const qCombined = [need, q].map((x) => (x || "").trim()).filter(Boolean).join(" ");
       const res = await listProperties({
-        q: qCombined || undefined,
+        q: (need || "").trim() || undefined,
         max_price: maxPrice || undefined,
         rent_sale: rentSale || undefined,
         property_type: propertyType || undefined,
@@ -167,10 +165,6 @@ export default function HomePage() {
             <option value="top">Top (high to low)</option>
             <option value="bottom">Bottom (low to high)</option>
           </select>
-        </div>
-        <div className="col-6">
-          <label className="muted">Search</label>
-          <input value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <div className="col-6">
           <label className="muted">Max budget</label>

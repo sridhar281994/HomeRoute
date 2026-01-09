@@ -12,9 +12,7 @@ export default function LoginPage() {
   return (
     <div className="panel">
       <p className="h1">Login</p>
-      <p className="muted">
-        Demo OTP is <b>123456</b> (until you wire SMS/email).
-      </p>
+      <p className="muted">Request an OTP, then verify to login.</p>
 
       <div className="grid" style={{ marginTop: 12 }}>
         <div className="col-6">

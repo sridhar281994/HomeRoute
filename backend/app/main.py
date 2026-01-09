@@ -13,11 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.config import otp_exp_minutes
 from app.db import session_scope
+from app.mailer import EmailSendError, send_otp_email
 from app.models import ModerationLog, OtpCode, Property, PropertyImage, Subscription, User
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
 
@@ -429,11 +431,18 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Demo OTP (replace with SMS/email provider).
-    code = "123456"
-    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=otp_exp_minutes())
+    # Keep at most one active code per (identifier, purpose).
+    db.execute(delete(OtpCode).where((OtpCode.identifier == identifier) & (OtpCode.purpose == "login")))
     db.add(OtpCode(identifier=identifier, purpose="login", code=code, expires_at=expires))
-    return {"ok": True, "message": "OTP sent (demo OTP: 123456)"}
+    try:
+        send_otp_email(to_email=user.email, otp=code, purpose="login")
+    except EmailSendError:
+        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send OTP")
+    return {"ok": True, "message": "OTP sent to your registered email."}
 
 
 @app.post("/auth/login/verify-otp")
@@ -468,6 +477,8 @@ def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_
     )
     if not otp:
         raise HTTPException(status_code=401, detail="Invalid OTP")
+    # One-time: consume the OTP.
+    db.execute(delete(OtpCode).where(OtpCode.id == otp.id))
 
     token = create_access_token(user_id=user.id, role=user.role)
     return {
@@ -525,10 +536,17 @@ def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(
     ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    code = "123456"
-    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=otp_exp_minutes())
+    db.execute(delete(OtpCode).where((OtpCode.identifier == identifier) & (OtpCode.purpose == "forgot")))
     db.add(OtpCode(identifier=identifier, purpose="forgot", code=code, expires_at=expires))
-    return {"ok": True, "message": "OTP sent (demo OTP: 123456)"}
+    try:
+        send_otp_email(to_email=user.email, otp=code, purpose="forgot")
+    except EmailSendError:
+        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send OTP")
+    return {"ok": True, "message": "OTP sent to your registered email."}
 
 
 @app.post("/auth/forgot/reset")
@@ -562,6 +580,7 @@ def forgot_reset(data: ForgotResetIn, db: Annotated[Session, Depends(get_db)]):
     )
     if not otp:
         raise HTTPException(status_code=401, detail="Invalid OTP")
+    db.execute(delete(OtpCode).where(OtpCode.id == otp.id))
     user.password_hash = hash_password(data.new_password)
     db.add(user)
     return {"ok": True}
