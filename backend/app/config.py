@@ -3,6 +3,27 @@ from __future__ import annotations
 import os
 
 
+def _load_dotenv_if_present() -> None:
+    """
+    Load environment variables from a local `.env` file (dev convenience).
+
+    Production deployments should set real environment variables instead.
+    This is intentionally best-effort and does nothing if python-dotenv
+    is not installed.
+    """
+    try:
+        from dotenv import load_dotenv  # type: ignore
+
+        # Do not override existing environment variables.
+        load_dotenv(override=False)
+    except Exception:
+        return
+
+
+# Load .env as early as possible (dev only).
+_load_dotenv_if_present()
+
+
 def database_url() -> str:
     # Your GitHub secret should provide this in production/CI.
     # Fallback for local dev:
@@ -61,6 +82,10 @@ def brevo_api_key() -> str:
 
 def brevo_from_email() -> str:
     return (os.environ.get("BREVO_FROM") or "").strip()
+
+
+def brevo_sender_name() -> str:
+    return (os.environ.get("BREVO_SENDER_NAME") or "Property Discovery").strip()
 
 
 def smtp_host() -> str:

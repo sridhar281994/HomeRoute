@@ -9,6 +9,7 @@ from email.message import EmailMessage
 from app.config import (
     brevo_api_key,
     brevo_from_email,
+    brevo_sender_name,
     email_backend,
     is_local_dev,
     otp_exp_minutes,
@@ -45,7 +46,7 @@ def _send_via_brevo(*, to_email: str, subject: str, text: str) -> None:
         raise EmailSendError(f"requests package not available: {e}") from e
 
     payload = {
-        "sender": {"email": sender_email, "name": "Property Discovery"},
+        "sender": {"email": sender_email, "name": brevo_sender_name()},
         "to": [{"email": to_email}],
         "subject": subject,
         "textContent": text,
