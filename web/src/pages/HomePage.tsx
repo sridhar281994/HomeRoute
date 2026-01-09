@@ -31,10 +31,12 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="panel">
+    <div className="page-home">
+      <div className="home-bg" aria-hidden="true" />
+      <div className="panel">
       <div className="row">
         <p className="h1" style={{ margin: 0 }}>
-          Home / Property Feed
+          Home  🏡✨  <span className="muted">Discover amazing places</span>
         </p>
         <div className="spacer" />
         <button onClick={load}>Refresh</button>
@@ -88,7 +90,7 @@ export default function HomePage() {
                   </div>
                 </div>
                 <div className="spacer" />
-                <Link to={`/property/${p.id}`}>Open</Link>
+                <Link to={`/property/${p.id}`}>Open ➜</Link>
               </div>
             </div>
           </div>
@@ -98,6 +100,7 @@ export default function HomePage() {
             No properties yet (demo data will seed on first run).
           </div>
         ) : null}
+      </div>
       </div>
     </div>
   );

@@ -14,23 +14,26 @@ import AdminReviewPage from "./pages/AdminReviewPage";
 export default function App() {
   const nav = useNavigate();
   const s = getSession();
-  const role = s.user?.role || "guest";
+  const role = (s.user?.role || "").toLowerCase();
+  const isLoggedIn = !!s.token;
 
   return (
     <div className="shell">
       <div className="panel nav row" style={{ marginBottom: 14 }}>
         <div className="row" style={{ gap: 10 }}>
-          <div className="h2">Property Discovery (India)</div>
-          <span className="muted">Role: {role}</span>
+          <div className="h2">Property Discovery (India)  🏠✨</div>
         </div>
         <div className="spacer" />
         <div className="row nav" style={{ gap: 10 }}>
           <Link to="/home">Home</Link>
-          <Link to="/subscription">Subscription</Link>
-          <Link to="/profile">Profile</Link>
-          <Link to="/owner/add">Owner</Link>
-          <Link to="/admin/review">Admin</Link>
-          {!s.token ? (
+          {isLoggedIn ? (
+            <>
+              <Link to="/subscription">Subscription</Link>
+              <Link to="/profile">Settings</Link>
+              {role === "owner" ? <Link to="/owner/add">Owner</Link> : null}
+            </>
+          ) : null}
+          {!isLoggedIn ? (
             <>
               <Link to="/login">Login</Link>
               <Link to="/register">Register</Link>

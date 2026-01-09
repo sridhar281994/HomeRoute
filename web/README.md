@@ -4,7 +4,14 @@ This folder contains the browser UI with the same core flow:
 
 - Splash → Welcome → Login/Register → Home feed → Property detail → Subscription paywall → Profile
 - Owner: create listing + upload photos
-- Admin: review/approve/reject pending listings
+- Review/approve/reject pending listings (Admin link is hidden in UI)
+
+### Optional UI assets
+
+- **Home background image**: put your image at `web/public/home_bg.jpg`
+  - Suggested content: **fabulous fully constructed building + interiors + gardens**
+  - Suggested size: 1080×1920 or higher
+  - If missing, the UI falls back to the glossy orange theme
 
 ### Run locally
 
