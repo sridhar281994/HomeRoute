@@ -1,4 +1,4 @@
-import { Link, Route, Routes, useNavigate } from "react-router-dom";
+import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { clearSession, getSession } from "./api";
 import SplashPage from "./pages/SplashPage";
 import WelcomePage from "./pages/WelcomePage";
@@ -12,13 +12,16 @@ import OwnerAddPage from "./pages/OwnerAddPage";
 import AdminReviewPage from "./pages/AdminReviewPage";
 
 export default function App() {
+  const loc = useLocation();
   const nav = useNavigate();
   const s = getSession();
   const role = (s.user?.role || "").toLowerCase();
   const isLoggedIn = !!s.token;
+  const isHome = loc.pathname === "/home";
 
   return (
     <div className="shell">
+      {!isHome ? <div className="app-bg" aria-hidden="true" /> : null}
       <div className="panel nav row" style={{ marginBottom: 14 }}>
         <div className="row" style={{ gap: 10 }}>
           <div className="h2">Property Discovery (India)  🏠✨</div>
