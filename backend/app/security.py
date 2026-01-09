@@ -3,21 +3,27 @@ from __future__ import annotations
 import datetime as dt
 
 import jwt
-from passlib.context import CryptContext
+import bcrypt
 
 from app.config import jwt_secret
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # bcrypt stores algorithm + cost + salt in the resulting hash string.
+    password_bytes = password.encode("utf-8")
+    salt = bcrypt.gensalt(rounds=12)
+    return bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     try:
-        return pwd_context.verify(password, password_hash)
+        return bcrypt.checkpw(
+            password.encode("utf-8"),
+            password_hash.encode("utf-8"),
+        )
+    except ValueError:
+        # Invalid hash format.
+        return False
     except Exception:
         return False
 
