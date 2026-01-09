@@ -9,6 +9,7 @@ import secrets
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -22,6 +23,32 @@ from app.security import create_access_token, decode_access_token, hash_password
 
 
 app = FastAPI(title="Property Discovery API")
+
+def _cors_origins() -> list[str]:
+    """
+    CORS is required when the web UI is served from a different origin (e.g. Vite dev server).
+    Configure with env `CORS_ORIGINS` as a comma-separated list.
+    """
+    raw = (os.environ.get("CORS_ORIGINS") or "").strip()
+    if raw:
+        origins = [o.strip() for o in raw.split(",") if o.strip()]
+        return origins
+    # Reasonable local defaults (dev).
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _CATEGORY_CATALOG_PATH = os.path.join(os.path.dirname(__file__), "category_catalog.json")
 

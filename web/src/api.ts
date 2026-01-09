@@ -33,16 +33,28 @@ export function clearSession() {
   localStorage.removeItem(KEY);
 }
 
-export const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const _envBase: string | undefined = (import.meta as any).env?.VITE_API_BASE_URL;
+const _defaultBase: string = (import.meta as any).env?.DEV ? "http://127.0.0.1:8000" : "";
+export const API_BASE = String(_envBase ?? _defaultBase).replace(/\/+$/, "");
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const s = getSession();
   const headers = new Headers(init?.headers || {});
   headers.set("Accept", "application/json");
   if (s.token) headers.set("Authorization", `Bearer ${s.token}`);
-  const resp = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  let resp: Response;
+  try {
+    resp = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  } catch {
+    throw new Error(`Network error (cannot reach API). Check API URL/CORS. Tried: ${(API_BASE || window.location.origin) + path}`);
+  }
   const text = await resp.text();
-  const data = text ? JSON.parse(text) : {};
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { detail: text };
+  }
   if (!resp.ok) throw new Error(data?.detail || data?.message || `HTTP ${resp.status}`);
   return data as T;
 }
