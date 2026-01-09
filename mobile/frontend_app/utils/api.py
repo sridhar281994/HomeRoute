@@ -37,18 +37,30 @@ def _handle(resp: requests.Response) -> dict[str, Any]:
 # -----------------------
 # Auth
 # -----------------------
-def api_register(*, email: str, username: str, password: str, name: str, state: str, district: str, gender: str) -> dict[str, Any]:
+def api_register(
+    *,
+    email: str,
+    phone: str,
+    password: str,
+    name: str,
+    state: str,
+    district: str,
+    role: str,
+    owner_category: str = "",
+) -> dict[str, Any]:
     url = f"{_base_url()}/auth/register"
     resp = requests.post(
         url,
         json={
             "email": email,
-            "username": username,
+            "phone": phone,
+            "username": phone,  # keep server-side compatibility / uniqueness
             "password": password,
             "name": name,
             "state": state,
             "district": district,
-            "gender": gender,
+            "role": role,
+            "owner_category": owner_category,
         },
         timeout=15,
     )

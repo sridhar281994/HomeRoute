@@ -70,8 +70,16 @@ class HomeScreen(Screen):
     max_price = StringProperty("")
 
     is_loading = BooleanProperty(False)
+    is_logged_in = BooleanProperty(False)
 
     def on_pre_enter(self, *args):
+        # Gate buttons until user logs in.
+        try:
+            sess = get_session() or {}
+            token = str(sess.get("token") or "")
+            self.is_logged_in = bool(token)
+        except Exception:
+            self.is_logged_in = False
         Clock.schedule_once(lambda _dt: self.refresh(), 0)
 
     def refresh(self):
@@ -154,16 +162,30 @@ class HomeScreen(Screen):
         self.manager.current = "property_detail"
 
     def go_profile(self):
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to open Profile/Settings.")
+            if self.manager:
+                self.manager.current = "login"
+            return
         if self.manager:
             self.manager.current = "profile"
 
     def go_owner(self):
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to open Owner dashboard.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        u = get_user() or {}
+        if (u.get("role") or "").lower() != "owner":
+            _popup("Owner account required", "Please register/login as Owner to access this dashboard.")
+            return
         if self.manager:
             self.manager.current = "owner_dashboard"
 
     def go_admin(self):
-        if self.manager:
-            self.manager.current = "admin_review"
+        # Removed from home page UI; keep method for backward KV compatibility.
+        _popup("Not available", "Admin entry is hidden in the app UI.")
 
 
 class PropertyDetailScreen(Screen):
@@ -196,6 +218,13 @@ class PropertyDetailScreen(Screen):
         - If subscribed: fetch contact
         - Else: show Subscription page
         """
+        sess = get_session() or {}
+        if not (sess.get("token") or ""):
+            _popup("Login required", "Please login to view contact details.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+
         def work():
             try:
                 sub = api_subscription_status()
@@ -254,12 +283,64 @@ class SubscriptionScreen(Screen):
 
 class SettingsScreen(Screen):
     user_summary = StringProperty("")
+    name_value = StringProperty("")
+    phone_value = StringProperty("")
+    email_value = StringProperty("")
+    image_value = StringProperty("")
+    locations_text = StringProperty("")
     subscription_status = StringProperty("Unknown")
 
     def on_pre_enter(self, *args):
+        sess = get_session() or {}
+        if not (sess.get("token") or ""):
+            _popup("Login required", "Please login to open Settings.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+
         u = get_user() or {}
-        self.user_summary = f"{u.get('name') or 'User'} ({u.get('role') or 'user'})"
+        # Do not show role in UI as requested.
+        self.user_summary = f"{u.get('name') or 'User'}"
+        self.name_value = str(u.get("name") or "")
+        self.phone_value = str(u.get("phone") or "")
+        self.email_value = str(u.get("email") or "")
+        # Local-only fields (not yet stored on backend)
+        self.image_value = str(u.get("image_url") or "")
+        locs = u.get("locations") or []
+        if isinstance(locs, list):
+            self.locations_text = "\n".join(str(x) for x in locs if str(x).strip())
+        else:
+            self.locations_text = ""
         self.refresh_subscription()
+
+    def save_settings(self):
+        """
+        Local profile editing (offline-friendly).
+        Server sync can be added later with a /me endpoint.
+        """
+        u = get_user() or {}
+        name = (self.ids.get("name_input").text or "").strip() if self.ids.get("name_input") else ""
+        phone = (self.ids.get("phone_input").text or "").strip() if self.ids.get("phone_input") else ""
+        email = (self.ids.get("email_input").text or "").strip() if self.ids.get("email_input") else ""
+        image_url = (self.ids.get("image_url_input").text or "").strip() if self.ids.get("image_url_input") else ""
+        raw_locations = (self.ids.get("locations_input").text or "") if self.ids.get("locations_input") else ""
+        locations = [ln.strip() for ln in raw_locations.splitlines() if ln.strip()]
+
+        # Update session user dict (local).
+        u["name"] = name
+        u["phone"] = phone
+        u["email"] = email
+        u["image_url"] = image_url
+        u["locations"] = locations
+
+        try:
+            sess = get_session() or {}
+            from frontend_app.utils.storage import set_session
+
+            set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
+            _popup("Saved", "Settings updated.")
+        except Exception:
+            _popup("Saved", "Settings updated (local).")
 
     def refresh_subscription(self):
         def work():
@@ -290,6 +371,12 @@ class SettingsScreen(Screen):
 
 
 class OwnerDashboardScreen(Screen):
+    owner_category = StringProperty("")
+
+    def on_pre_enter(self, *args):
+        u = get_user() or {}
+        self.owner_category = str(u.get("owner_category") or "")
+
     def go_add(self):
         if self.manager:
             self.manager.current = "owner_add_property"

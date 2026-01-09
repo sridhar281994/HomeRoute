@@ -1,6 +1,17 @@
-#:set BG_PURPLE (0.12, 0.02, 0.18, 1)
-#:set SHINE_PURPLE (0.70, 0.25, 0.95, 0.18)
-#:set SHINE_WHITE (1, 1, 1, 0.05)
+# Orange glossy theme (shiny)
+# NOTE: keep names stable to avoid touching every screen rule.
+#:set BG_PURPLE (0.14, 0.06, 0.02, 1)               # deep warm base
+#:set SHINE_PURPLE (1.00, 0.52, 0.12, 0.22)          # orange shine
+#:set SHINE_WHITE (1, 1, 1, 0.07)
+
+# Global typography (bold-ish via markup)
+<Label>:
+    markup: True
+    color: 1, 1, 1, 1
+
+<Button>:
+    markup: True
+    font_size: sp(16)
 
 <PrettySpinnerOption@SpinnerOption>:
     background_normal: ""
@@ -64,9 +75,8 @@
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         Label:
-            text: "Property Discovery"
+            text: "[b]Property Discovery[/b]  ✨"
             font_size: sp(30)
-            color: 1, 1, 1, 1
             pos_hint: {"center_x": 0.5, "center_y": 0.55}
 
         Label:
@@ -114,9 +124,8 @@
                     radius: [20]
 
             Label:
-                text: "Find Your Perfect Match"
+                text: "[b]Find Your Perfect Match[/b]  🏠✨"
                 font_size: min(root.width * 0.08, sp(28))
-                color: 1, 1, 1, 1
                 size_hint_y: None
                 halign: "center"
                 valign: "middle"
@@ -193,9 +202,8 @@
                         radius: [20]
 
                 Label:
-                    text: "Secure Login"
+                    text: "[b]Secure Login[/b]  🔐"
                     font_size: sp(24)
-                    color: 1, 1, 1, 1
                     halign: "center"
                     valign: "middle"
                     size_hint_y: None
@@ -338,7 +346,7 @@
                         on_release: root.verify_and_login()
 
                     Button:
-                        text: "Login as Guest"
+                        text: "Continue as Guest  👤"
                         size_hint_y: None
                         height: dp(44)
                         background_color: (0.3, 0.5, 0.9, 1)
@@ -608,29 +616,69 @@
                         radius: [20]
 
                 Label:
-                    text: "Profile / Settings"
+                    text: "[b]Settings[/b]  ⚙️"
                     font_size: sp(24)
                     size_hint_y: None
                     height: dp(40)
 
                 TextInput:
                     id: name_input
-                    text: root.user_summary
-                    hint_text: ""
+                    text: root.name_value
+                    hint_text: "Full Name"
                     size_hint_y: None
                     height: dp(48)
                     font_size: sp(16)
                     multiline: False
-                    disabled: True
+                    disabled: False
+
+                TextInput:
+                    id: phone_input
+                    text: root.phone_value
+                    hint_text: "Phone Number"
+                    size_hint_y: None
+                    height: dp(48)
+                    font_size: sp(16)
+                    multiline: False
+
+                TextInput:
+                    id: email_input
+                    text: root.email_value
+                    hint_text: "Email"
+                    size_hint_y: None
+                    height: dp(48)
+                    font_size: sp(16)
+                    multiline: False
 
                 TextInput:
                     id: image_url_input
-                    text: ""
-                    hint_text: ""
+                    text: root.image_value
+                    hint_text: "Profile image URL (optional)"
                     size_hint_y: None
-                    height: 0
-                    opacity: 0
-                    disabled: True
+                    height: dp(48)
+                    opacity: 1
+                    disabled: False
+
+                Label:
+                    text: "[b]Branches / Locations[/b]  📍 (one per line)"
+                    size_hint_y: None
+                    height: dp(26)
+                    color: 1, 1, 1, 0.9
+
+                TextInput:
+                    id: locations_input
+                    text: root.locations_text
+                    hint_text: "Eg: Chennai - T Nagar\\nCoimbatore - RS Puram"
+                    size_hint_y: None
+                    height: dp(120)
+                    font_size: sp(16)
+                    multiline: True
+
+                Button:
+                    text: "Save Settings  💾"
+                    size_hint_y: None
+                    height: dp(48)
+                    background_color: (0.3, 0.8, 0.4, 1)
+                    on_release: root.save_settings()
 
                 Button:
                     text: "Refresh Subscription Status"
@@ -746,7 +794,7 @@
                         radius: [20]
 
                 Label:
-                    text: "Create Account"
+                    text: "[b]Create Account[/b]  ✨"
                     font_size: sp(26)
                     size_hint_y: None
                     height: dp(50)
@@ -759,7 +807,7 @@
 
                 TextInput:
                     id: phone_input
-                    hint_text: "Username"
+                    hint_text: "Phone Number"
                     size_hint_y: None
                     height: dp(48)
 
@@ -768,6 +816,53 @@
                     hint_text: "Email"
                     size_hint_y: None
                     height: dp(48)
+
+                # Role selection: Owner / Customer
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(48)
+                    spacing: dp(10)
+                    ToggleButton:
+                        text: "[b]Owner[/b]  🏢"
+                        group: "role_group"
+                        on_state:
+                            if self.state == "down": root.set_role("owner")
+                    ToggleButton:
+                        text: "[b]Customer[/b]  🧍"
+                        group: "role_group"
+                        state: "down"
+                        on_state:
+                            if self.state == "down": root.set_role("customer")
+
+                # Hidden role holder used by python (simple + reliable)
+                TextInput:
+                    id: role_value
+                    text: "customer"
+                    size_hint_y: None
+                    height: 0
+                    opacity: 0
+                    disabled: True
+
+                # Owner category (only for Owner)
+                BoxLayout:
+                    id: owner_category_box
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: 0
+                    opacity: 0
+                    disabled: True
+                    spacing: dp(8)
+                    Label:
+                        text: "[b]Owner Category Selection[/b]  🏗️"
+                        size_hint_y: None
+                        height: dp(24)
+                        color: 1, 1, 1, 0.9
+                    PrettySpinner:
+                        id: owner_category_spinner
+                        text: "Select Category"
+                        values: root.owner_category_values()
+                        size_hint_y: None
+                        height: dp(48)
 
                 PrettySpinner:
                     id: country_spinner
@@ -781,13 +876,6 @@
                     id: district_spinner
                     text: "Select District"
                     values: root.district_values()
-                    size_hint_y: None
-                    height: dp(48)
-
-                PrettySpinner:
-                    id: gender_spinner
-                    text: "male"
-                    values: ["male", "female", "cross"]
                     size_hint_y: None
                     height: dp(48)
 
@@ -825,7 +913,7 @@
                                 width: 1.2
 
                 Button:
-                    text: "Register"
+                    text: "[b]Register[/b]  ✅"
                     size_hint_y: None
                     height: dp(50)
                     background_color: (0.3, 0.7, 0.3, 1)
@@ -861,6 +949,9 @@
             Rectangle:
                 pos: self.pos
                 size: self.size
+                # Provide your own image at mobile/assets/home_bg.jpg for a fabulous building/interior/garden background.
+                # If missing, Kivy will gracefully fall back to the color base.
+                source: "assets/home_bg.jpg"
             Color:
                 rgba: SHINE_PURPLE
             Ellipse:
@@ -891,16 +982,17 @@
                 height: dp(44)
                 spacing: dp(8)
                 Label:
-                    text: "Home / Property Feed"
-                    color: 1, 1, 1, 1
+                    text: "[b]Home[/b]  🏡  [color=cccccc]Discover services & properties[/color]"
                     halign: "left"
                     valign: "middle"
                     text_size: self.size
                 Button:
-                    text: "Profile"
+                    text: "Profile  👤"
                     size_hint_x: None
                     width: dp(90)
                     on_release: root.go_profile()
+                    disabled: not root.is_logged_in
+                    opacity: 1 if root.is_logged_in else 0
 
             GridLayout:
                 cols: 2
@@ -932,7 +1024,7 @@
                     height: dp(42)
                 PrettySpinner:
                     text: root.property_type
-                    values: ["Any", "apartment", "house", "villa", "studio", "land"]
+                    values: ["Any", "apartment", "villa", "plot", "pg", "marriage_hall", "party_hall", "retailer", "steel_supplier", "brick_supplier", "sand_supplier", "msand_supplier", "cement_supplier", "interior_designer", "carpenter", "labor_contractor", "electrician", "plumber", "painter", "gardener", "cleaning_services"]
                     on_text: root.property_type = self.text
                     size_hint_y: None
                     height: dp(42)
@@ -946,15 +1038,12 @@
                     background_color: (0.2, 0.6, 0.9, 1)
                     on_release: root.refresh()
                 Button:
-                    text: "Owner"
+                    text: "Owner  🏢"
                     size_hint_x: None
                     width: dp(90)
                     on_release: root.go_owner()
-                Button:
-                    text: "Admin"
-                    size_hint_x: None
-                    width: dp(90)
-                    on_release: root.go_admin()
+                    disabled: not root.is_logged_in
+                    opacity: 1 if root.is_logged_in else 0
 
             Label:
                 text: "Loading..." if root.is_loading else "Listings"
@@ -1145,13 +1234,24 @@
                     size: self.size
                     radius: [16]
             Label:
-                text: "Owner Dashboard"
+                text: "[b]Owner Dashboard[/b]  🏢"
                 font_size: sp(24)
                 size_hint_y: None
                 height: dp(40)
                 color: 1, 1, 1, 1
+
+            Label:
+                text: ("[color=cccccc]Category:[/color] " + (root.owner_category if root.owner_category else "—"))
+                color: 1, 1, 1, 0.9
+                size_hint_y: None
+                height: dp(26)
+
+            Label:
+                text: "[b]Owner Capabilities[/b]\\n• Profile Management\\n• Listing Management\\n• Lead Management"
+                color: 1, 1, 1, 0.85
+
             Button:
-                text: "Add Property"
+                text: "Create Listing  ➕"
                 size_hint_y: None
                 height: dp(50)
                 background_color: (0.2, 0.6, 0.9, 1)

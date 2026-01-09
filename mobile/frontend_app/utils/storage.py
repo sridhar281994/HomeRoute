@@ -59,7 +59,7 @@ def clear_session() -> None:
 
 def get_session() -> dict[str, Any]:
     d = _read()
-    return {"token": d.get("token") or "", "user": d.get("user") or {}}
+    return {"token": d.get("token") or "", "user": d.get("user") or {}, "remember_me": bool(d.get("remember_me", False))}
 
 
 def get_token() -> str:
