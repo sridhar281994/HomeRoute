@@ -105,12 +105,17 @@ def get_current_user(
 # -----------------------
 class RegisterIn(BaseModel):
     email: str
-    username: str
+    # We keep `username` for backward compatibility, but the mobile UI will use phone.
+    # If `phone` is present, server will treat it as the primary identifier.
+    username: str = ""
+    phone: str = ""
     password: str = Field(min_length=6)
     name: str = ""
     state: str = ""
     district: str = ""
-    gender: str = ""
+    role: str = "user"  # user | owner
+    owner_category: str = ""  # required when role=owner (enforced softly)
+    gender: str = ""  # legacy (old clients)
 
 
 class LoginRequestOtpIn(BaseModel):
@@ -161,24 +166,31 @@ def health():
 @app.post("/auth/register")
 def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
     email = data.email.strip().lower()
-    username = data.username.strip()
+    phone = (data.phone or "").strip()
+    username = (phone or data.username or "").strip()
+    role = (data.role or "user").strip().lower()
+    owner_category = (data.owner_category or "").strip()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Invalid email")
     if len(username) < 3:
         raise HTTPException(status_code=400, detail="Invalid username")
+    if role not in {"user", "owner"}:
+        raise HTTPException(status_code=400, detail="Invalid role")
 
-    exists = db.execute(select(User).where((User.email == email) | (User.username == username))).scalar_one_or_none()
+    exists = db.execute(select(User).where((User.email == email) | (User.username == username) | (User.phone == phone))).scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=409, detail="User already exists")
 
     user = User(
         email=email,
         username=username,
+        phone=phone,
         name=(data.name or "").strip(),
         state=(data.state or "").strip(),
         district=(data.district or "").strip(),
         gender=(data.gender or "").strip(),
-        role="user",
+        role=role,
+        owner_category=owner_category,
         password_hash=hash_password(data.password),
     )
     db.add(user)
@@ -191,7 +203,9 @@ def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
 @app.post("/auth/login/request-otp")
 def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
-    user = db.execute(select(User).where((User.email == identifier.lower()) | (User.username == identifier))).scalar_one_or_none()
+    user = db.execute(
+        select(User).where((User.email == identifier.lower()) | (User.username == identifier) | (User.phone == identifier))
+    ).scalar_one_or_none()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -205,7 +219,9 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
 @app.post("/auth/login/verify-otp")
 def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
-    user = db.execute(select(User).where((User.email == identifier.lower()) | (User.username == identifier))).scalar_one_or_none()
+    user = db.execute(
+        select(User).where((User.email == identifier.lower()) | (User.username == identifier) | (User.phone == identifier))
+    ).scalar_one_or_none()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -228,7 +244,19 @@ def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_
         raise HTTPException(status_code=401, detail="Invalid OTP")
 
     token = create_access_token(user_id=user.id, role=user.role)
-    return {"access_token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role}}
+    return {
+        "access_token": token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "phone": user.phone,
+            "state": user.state,
+            "district": user.district,
+            "owner_category": user.owner_category,
+        },
+    }
 
 
 @app.post("/auth/guest")
@@ -242,13 +270,27 @@ def guest(db: Annotated[Session, Depends(get_db)]):
     db.flush()
     db.add(Subscription(user_id=user.id, status="inactive", provider="google_play"))
     token = create_access_token(user_id=user.id, role=user.role)
-    return {"access_token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role}}
+    return {
+        "access_token": token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "phone": user.phone,
+            "state": user.state,
+            "district": user.district,
+            "owner_category": user.owner_category,
+        },
+    }
 
 
 @app.post("/auth/forgot/request-otp")
 def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
-    user = db.execute(select(User).where((User.email == identifier.lower()) | (User.username == identifier))).scalar_one_or_none()
+    user = db.execute(
+        select(User).where((User.email == identifier.lower()) | (User.username == identifier) | (User.phone == identifier))
+    ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     code = "123456"
@@ -260,7 +302,9 @@ def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(
 @app.post("/auth/forgot/reset")
 def forgot_reset(data: ForgotResetIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
-    user = db.execute(select(User).where((User.email == identifier.lower()) | (User.username == identifier))).scalar_one_or_none()
+    user = db.execute(
+        select(User).where((User.email == identifier.lower()) | (User.username == identifier) | (User.phone == identifier))
+    ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     now = dt.datetime.now(dt.timezone.utc)

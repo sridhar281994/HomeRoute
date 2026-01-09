@@ -16,11 +16,14 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    phone: Mapped[str] = mapped_column(String(20), default="", index=True)
     name: Mapped[str] = mapped_column(String(255), default="")
     state: Mapped[str] = mapped_column(String(80), default="")
     district: Mapped[str] = mapped_column(String(120), default="")
+    # NOTE: Kept for backward compatibility with older mobile clients.
     gender: Mapped[str] = mapped_column(String(32), default="")
     role: Mapped[str] = mapped_column(String(32), default="user")  # user | owner | admin
+    owner_category: Mapped[str] = mapped_column(String(120), default="")  # business type (for owners)
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 

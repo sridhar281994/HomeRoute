@@ -15,6 +15,32 @@ EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
 
 
 class RegisterScreen(Screen):
+    OWNER_CATEGORIES: list[str] = [
+        # Property & Real Estate
+        "Apartment Owner",
+        "Villa Owner",
+        "Plot Owner",
+        "PG Owner",
+        "Marriage Hall Owner",
+        "Party Hall Owner",
+        # Construction & Materials
+        "Retailer / Hardware Shop",
+        "Steel Supplier",
+        "Brick Supplier",
+        "Sand Supplier",
+        "M-Sand Supplier",
+        "Cement Supplier",
+        # Services & Workforce
+        "Interior Designer",
+        "Carpenter / Wood Works",
+        "Mason / Labor Contractor",
+        "Electrician",
+        "Plumber",
+        "Painter",
+        "Gardener / Landscaping",
+        "Cleaning Services",
+    ]
+
     @staticmethod
     def _popup(title: str, msg: str) -> None:
         """Non-blocking popup helper (safe from worker threads)."""
@@ -40,6 +66,11 @@ class RegisterScreen(Screen):
         """Basic validation for registration fields."""
         if not EMAIL_RE.match(email):
             return "Enter a valid email address."
+        if not phone:
+            return "Enter your phone number."
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        if len(digits) < 8 or len(digits) > 15:
+            return "Enter a valid phone number."
         if len(password) < 6:
             return "Password must be at least 6 characters."
         return None
@@ -47,14 +78,15 @@ class RegisterScreen(Screen):
     def save_profile(self) -> None:
         """Collects input, validates, and calls register API."""
         name = self._get("name_input")
-        username = self._get("phone_input")  # reusing existing field id as "username"
+        phone = self._get("phone_input")
         email = self._get("email_input")
         password = self._get("password_input")
         state = (self.ids.get("country_spinner").text or "").strip() if self.ids.get("country_spinner") else ""
         district = (self.ids.get("district_spinner").text or "").strip() if self.ids.get("district_spinner") else ""
-        gender = (self.ids.get("gender_spinner").text or "").strip() if self.ids.get("gender_spinner") else ""
+        role = (self._get("role_value") or "customer").strip().lower()
+        owner_category = (self.ids.get("owner_category_spinner").text or "").strip() if self.ids.get("owner_category_spinner") else ""
 
-        err = self._validate(username, email, password)
+        err = self._validate(phone, email, password)
         if err:
             self._popup("Invalid", err)
             return
@@ -62,17 +94,18 @@ class RegisterScreen(Screen):
         if not name:
             self._popup("Invalid", "Please enter your full name.")
             return
-        if not username or len(username) < 3:
-            self._popup("Invalid", "Please enter a username (min 3 chars).")
-            return
         if not state or state in {"Select Country", "Select State"}:
             self._popup("Invalid", "Please select your state.")
             return
         if not district or district in {"Select District"}:
             self._popup("Invalid", "Please select your district.")
             return
-        if gender.lower() not in {"male", "female", "cross"}:
-            self._popup("Invalid", "Please select gender: male/female/cross.")
+        if role not in {"owner", "customer"}:
+            self._popup("Invalid", "Please select role: Owner or Customer.")
+            return
+        api_role = "owner" if role == "owner" else "user"
+        if api_role == "owner" and (not owner_category or owner_category in {"Select Category"}):
+            self._popup("Invalid", "Please select your business category.")
             return
 
         # Truncate password safely to 72 bytes for bcrypt
@@ -82,12 +115,13 @@ class RegisterScreen(Screen):
             try:
                 res = api_register(
                     email=email,
-                    username=username,
+                    phone=phone,
                     password=password_safe,
                     name=name.strip(),
                     state=state,
                     district=district,
-                    gender=gender.lower(),
+                    role=api_role,
+                    owner_category=(owner_category if api_role == "owner" else ""),
                 )
 
                 if res.get("ok"):
@@ -115,9 +149,29 @@ class RegisterScreen(Screen):
         return districts_for_state(state)
 
     def on_state_changed(self, *_):
-        # When state changes, reset district.
+        # When state changes, reset district and refresh district values.
         try:
             if "district_spinner" in self.ids:
                 self.ids["district_spinner"].text = "Select District"
+                self.ids["district_spinner"].values = self.district_values()
+        except Exception:
+            pass
+
+    def owner_category_values(self):
+        return list(self.OWNER_CATEGORIES)
+
+    def set_role(self, role_value: str) -> None:
+        """
+        KV helper: store role in a hidden TextInput id `role_value` and toggle owner-category UI.
+        """
+        role_value = (role_value or "").strip().lower()
+        if "role_value" in self.ids:
+            self.ids["role_value"].text = role_value
+        try:
+            is_owner = role_value == "owner"
+            if "owner_category_box" in self.ids:
+                self.ids["owner_category_box"].opacity = 1 if is_owner else 0
+                self.ids["owner_category_box"].height = self.ids["owner_category_box"].minimum_height if is_owner else 0
+                self.ids["owner_category_box"].disabled = not is_owner
         except Exception:
             pass
