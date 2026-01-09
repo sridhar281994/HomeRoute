@@ -1,0 +1,144 @@
+{
+  "version": "1.0",
+  "updated": "2026-01-09",
+  "categories": [
+    {
+      "group": "Property & Space",
+      "items": [
+        "Apartment",
+        "Individual House / Villa",
+        "Plot / Land",
+        "Commercial Shop",
+        "Office Space",
+        "Warehouse / Godown",
+        "PG / Hostel",
+        "Marriage Hall",
+        "Party Hall",
+        "Farm House"
+      ]
+    },
+    {
+      "group": "Construction Materials",
+      "items": [
+        "Cement Supplier",
+        "Steel / TMT Supplier",
+        "Brick Supplier",
+        "Fly Ash Brick Supplier",
+        "AAC Block Supplier",
+        "Sand Supplier",
+        "M-Sand Supplier",
+        "Jelly / Aggregate Supplier",
+        "Ready Mix Concrete (RMC)",
+        "White Cement Supplier",
+        "Waterproofing Material Supplier",
+        "Chemical Admixture Supplier",
+        "Roofing Sheet Supplier",
+        "Tile & Marble Supplier",
+        "Granite Supplier",
+        "Glass Supplier",
+        "Plywood Supplier",
+        "Paint Supplier",
+        "Hardware Retailer"
+      ]
+    },
+    {
+      "group": "Construction Services",
+      "items": [
+        "Building Contractor",
+        "Civil Contractor",
+        "Turnkey Contractor",
+        "Renovation Contractor",
+        "Demolition Contractor",
+        "Waterproofing Contractor",
+        "Excavation Contractor",
+        "Earth Moving Contractor"
+      ]
+    },
+    {
+      "group": "Labor & Skilled Workers",
+      "items": [
+        "Mason / Masonry Worker",
+        "General Labor Contractor",
+        "Carpenter / Wood Works",
+        "Electrician",
+        "Plumber",
+        "Tile Fitter",
+        "Painter",
+        "Welder",
+        "POP / Gypsum Worker",
+        "Glass Installer",
+        "Aluminium Fabricator",
+        "False Ceiling Worker",
+        "Stone Cutter",
+        "Polish Worker"
+      ]
+    },
+    {
+      "group": "Interior & Decor",
+      "items": [
+        "Interior Designer",
+        "Modular Kitchen Designer",
+        "Wardrobe Designer",
+        "Furniture Maker",
+        "Curtain & Blinds Supplier",
+        "Wallpaper Supplier",
+        "Lighting Designer",
+        "Home Automation Installer",
+        "Flooring Specialist"
+      ]
+    },
+    {
+      "group": "Utilities & Fittings",
+      "items": [
+        "Sanitaryware Supplier",
+        "Bathroom Fittings Supplier",
+        "Water Tank Supplier",
+        "Pump & Motor Supplier",
+        "Borewell Drilling Service",
+        "Water Purifier Dealer",
+        "Solar Panel Installer",
+        "CCTV Installer",
+        "Elevator / Lift Dealer",
+        "Generator Dealer",
+        "Inverter Dealer"
+      ]
+    },
+    {
+      "group": "Outdoor & Landscaping",
+      "items": [
+        "Gardener",
+        "Landscaping Contractor",
+        "Nursery / Plant Supplier",
+        "Lawn Maintenance Service",
+        "Tree Cutting Service",
+        "Paving Block Supplier",
+        "Compound Wall Builder"
+      ]
+    },
+    {
+      "group": "Maintenance & Support",
+      "items": [
+        "Cleaning Service",
+        "Pest Control Service",
+        "Security Service",
+        "Waste Management Service",
+        "House Shifting / Packers",
+        "Scrap Buyer",
+        "Septic Tank Cleaning"
+      ]
+    },
+    {
+      "group": "Home Finishing & Accessories",
+      "items": [
+        "Door & Window Supplier",
+        "UPVC Windows Dealer",
+        "Mosquito Net Supplier",
+        "Glass Partition Dealer",
+        "Kitchen Accessories Dealer",
+        "Bathroom Accessories Dealer",
+        "Smart Lock Dealer"
+      ]
+    }
+  ]
+}
+

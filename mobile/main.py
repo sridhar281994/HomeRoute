@@ -8,7 +8,6 @@ from screens.login_screen import LoginScreen
 from screens.register_screen import RegisterScreen
 from screens.reset_password_screen import ForgotPasswordScreen, ResetPasswordScreen
 from screens.shell_screens import (
-    AdminReviewScreen,
     HomeScreen,
     OwnerAddPropertyScreen,
     OwnerDashboardScreen,
@@ -41,7 +40,6 @@ class PropertyDiscoveryApp(App):
 
         sm.add_widget(OwnerDashboardScreen(name="owner_dashboard"))
         sm.add_widget(OwnerAddPropertyScreen(name="owner_add_property"))
-        sm.add_widget(AdminReviewScreen(name="admin_review"))
 
         sm.current = "splash"
         return sm

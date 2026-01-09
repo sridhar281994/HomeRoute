@@ -21,6 +21,56 @@ from app.security import create_access_token, decode_access_token, hash_password
 
 app = FastAPI(title="Property Discovery API")
 
+_CATEGORY_CATALOG_PATH = os.path.join(os.path.dirname(__file__), "category_catalog.json")
+
+
+def _load_category_catalog() -> dict[str, Any]:
+    try:
+        with open(_CATEGORY_CATALOG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        # Never break the API if the catalog file is missing/corrupt.
+        return {"version": "0", "updated": "", "categories": []}
+
+
+def _slugify(s: str) -> str:
+    import re
+
+    s = (s or "").strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s
+
+
+def _catalog_flat_items(catalog: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
+    for g in (catalog.get("categories") or []):
+        group_label = str(g.get("group") or "").strip()
+        group_id = _slugify(group_label) or "group"
+        for item in (g.get("items") or []):
+            label = str(item or "").strip()
+            if not label:
+                continue
+            base_id = _slugify(label) or "item"
+            item_id = base_id
+            # Ensure stable uniqueness even if labels collide after slugify.
+            n = 2
+            while item_id in used_ids:
+                item_id = f"{base_id}_{n}"
+                n += 1
+            used_ids.add(item_id)
+            out.append(
+                {
+                    "id": item_id,
+                    "label": label,
+                    "group_id": group_id,
+                    "group": group_label,
+                    "search": f"{label} {group_label}".strip().lower(),
+                }
+            )
+    return out
+
 
 def _uploads_dir() -> str:
     return os.environ.get("UPLOADS_DIR") or os.path.join(os.path.dirname(__file__), "..", "uploads")
@@ -158,6 +208,30 @@ class PropertyCreateIn(BaseModel):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+# -----------------------
+# Metadata (categories)
+# -----------------------
+@app.get("/meta/categories")
+def meta_categories() -> dict[str, Any]:
+    """
+    Single source of truth for:
+    - `category` filters (customer browsing/search)
+    - `owner_category` options (owner registration)
+
+    Mobile/web clients can use `flat_items` for search UIs.
+    """
+    catalog = _load_category_catalog()
+    flat_items = _catalog_flat_items(catalog)
+    return {
+        "version": str(catalog.get("version") or ""),
+        "updated": str(catalog.get("updated") or ""),
+        "categories": catalog.get("categories") or [],
+        # Owner categories are the same as selectable items.
+        "owner_categories": [x.get("label") for x in flat_items if x.get("label")],
+        "flat_items": flat_items,
+    }
 
 
 # -----------------------
