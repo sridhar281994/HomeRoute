@@ -550,8 +550,20 @@ def _web_dist_dir() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "dist"))
 
 
+def _web_assets_dir() -> str:
+    return os.path.join(_web_dist_dir(), "assets")
+
+
 def _web_index_html() -> str:
     return os.path.join(_web_dist_dir(), "index.html")
+
+
+# If the React build exists, serve its hashed assets from /assets.
+# Without this, the SPA fallback can accidentally return index.html for JS/CSS requests,
+# causing a blank white page (scripts never execute due to wrong content-type).
+_assets_dir = _web_assets_dir()
+if os.path.isdir(_assets_dir):
+    app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
 
 
 @app.get("/", include_in_schema=False)
@@ -613,6 +625,7 @@ async def spa_fallback_404(request, exc: StarletteHTTPException):
             is_api_or_static = path.startswith(
                 (
                     "/auth",
+                    "/assets",
                     "/properties",
                     "/owner",
                     "/admin",
