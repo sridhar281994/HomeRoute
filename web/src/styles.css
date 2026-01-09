@@ -90,7 +90,7 @@ button.danger{background: rgba(255,80,110,.18);}
   background: rgba(0,0,0,.20);
 }
 
-/* Home background image (optional): put `web/public/home_bg.jpg` */
+/* Home background image */
 .page-home{
   position: relative;
 }
@@ -99,7 +99,7 @@ button.danger{background: rgba(255,80,110,.18);}
   inset: 0;
   z-index: -1;
   background-image:
-    url("/home_bg.jpg"),
+    url("/home_bg.svg"),
     radial-gradient(900px 600px at 10% -10%, rgba(255,122,24,.28), transparent 60%),
     radial-gradient(760px 520px at 90% 110%, rgba(255,255,255,.10), transparent 55%),
     radial-gradient(820px 620px at 75% 15%, rgba(255,195,77,.14), transparent 58%),

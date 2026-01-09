@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070a12"/>
+      <stop offset="0.55" stop-color="#0b1022"/>
+      <stop offset="1" stop-color="#140803"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="15%" cy="10%" r="60%">
+      <stop offset="0" stop-color="#ffc34d" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#ffc34d" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="85%" cy="75%" r="70%">
+      <stop offset="0" stop-color="#ff7a18" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#ff7a18" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0V64" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+      <path d="M32 0V64M0 32H64" fill="none" stroke="#ffffff" stroke-opacity="0.035" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d7e3ff" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#d7e3ff" stop-opacity="0.06"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1.6"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#glowA)"/>
+  <rect width="1920" height="1080" fill="url(#glowB)"/>
+  <rect width="1920" height="1080" fill="url(#grid)"/>
+
+  <!-- Circuit lines -->
+  <g stroke="#ffc34d" stroke-opacity="0.14" stroke-width="2" fill="none">
+    <path d="M120 820H520c60 0 90-30 90-90V570c0-56 28-84 84-84h220"/>
+    <path d="M1540 260H1280c-68 0-102 34-102 102v128c0 56-28 84-84 84H890"/>
+    <path d="M1660 780H1500c-62 0-94-32-94-94V610c0-60-30-90-90-90h-190"/>
+  </g>
+  <g fill="#ffc34d" fill-opacity="0.22">
+    <circle cx="120" cy="820" r="5"/>
+    <circle cx="930" cy="486" r="4"/>
+    <circle cx="1540" cy="260" r="5"/>
+    <circle cx="1660" cy="780" r="5"/>
+  </g>
+
+  <!-- Futuristic skyline / construction silhouettes -->
+  <g transform="translate(0,0)">
+    <!-- Ground haze -->
+    <rect x="0" y="760" width="1920" height="320" fill="#000000" opacity="0.25"/>
+
+    <!-- Buildings -->
+    <g fill="url(#steel)" stroke="#ffffff" stroke-opacity="0.10" stroke-width="2">
+      <path d="M210 820V560l110-60 110 60v260z"/>
+      <path d="M520 820V460l160-90 160 90v360z"/>
+      <path d="M910 820V520l120-70 120 70v300z"/>
+      <path d="M1210 820V410l190-110 190 110v410z"/>
+      <path d="M1580 820V540l110-64 110 64v280z"/>
+    </g>
+
+    <!-- Window lines -->
+    <g stroke="#ffffff" stroke-opacity="0.08" stroke-width="1">
+      <path d="M260 590V820M320 560V820M380 590V820"/>
+      <path d="M580 510V820M650 470V820M720 510V820M790 550V820"/>
+      <path d="M960 560V820M1020 520V820M1080 560V820"/>
+      <path d="M1270 470V820M1360 420V820M1450 470V820M1540 520V820"/>
+      <path d="M1615 585V820M1670 552V820M1725 585V820"/>
+    </g>
+
+    <!-- Crane (high-tech construction) -->
+    <g stroke="#ffc34d" stroke-opacity="0.28" stroke-width="4" fill="none" filter="url(#soft)">
+      <path d="M1040 820V260"/>
+      <path d="M1040 300H1460"/>
+      <path d="M1460 300v90"/>
+      <path d="M1460 390l-70 90"/>
+      <path d="M1040 420l-70 70"/>
+      <path d="M1040 520l70 70"/>
+      <path d="M1040 620l-70 70"/>
+      <path d="M1040 720l70 70"/>
+    </g>
+    <g stroke="#ffffff" stroke-opacity="0.12" stroke-width="2" fill="none">
+      <path d="M1040 820V260"/>
+      <path d="M1040 300H1460"/>
+      <path d="M1460 300v90"/>
+      <path d="M1460 390l-80 100"/>
+      <path d="M1380 490h-90"/>
+      <path d="M1290 490v70h90v-70"/>
+      <path d="M1040 260l-50 40"/>
+      <path d="M1040 260l50 40"/>
+    </g>
+
+    <!-- Tech scan beams -->
+    <g opacity="0.25">
+      <path d="M0 760C320 720 520 740 820 700s560-40 1100-90v60C1440 760 1180 820 720 860S240 900 0 920z" fill="#ff7a18" opacity="0.10"/>
+      <path d="M0 840C300 810 520 820 860 790s600-50 1060-110v70c-420 80-720 140-1160 170S280 940 0 980z" fill="#ffc34d" opacity="0.07"/>
+    </g>
+  </g>
+</svg>
