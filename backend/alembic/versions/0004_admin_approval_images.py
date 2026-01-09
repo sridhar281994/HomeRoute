@@ -1,7 +1,7 @@
 """admin approval + company profile + image hash + duplicate prevention
 
-Revision ID: 0004_admin_approval_company_images_duplicates
-Revises: 0003_add_user_phone_and_owner_category
+Revision ID: 0004_admin_approval_images
+Revises: 0003_add_user_phone_owner_cat
 Create Date: 2026-01-09
 """
 
@@ -11,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0004_admin_approval_company_images_duplicates"
-down_revision = "0003_add_user_phone_and_owner_category"
+revision = "0004_admin_approval_images"
+down_revision = "0003_add_user_phone_owner_cat"
 branch_labels = None
 depends_on = None
 
