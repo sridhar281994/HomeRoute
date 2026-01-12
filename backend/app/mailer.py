@@ -27,6 +27,25 @@ class EmailSendError(RuntimeError):
     pass
 
 
+def _is_delivery_configuration_error(err: EmailSendError) -> bool:
+    """
+    Returns True when the email send failed because the delivery provider
+    isn't configured (missing credentials/host/dependencies), not because
+    the recipient is invalid or the provider actively rejected the request.
+    """
+    msg = (str(err) or "").lower()
+    needles = (
+        "not configured",
+        "provider not configured",
+        "brevo_api_key",
+        "brevo_from",
+        "smtp_host",
+        "smtp_from",
+        "requests package not available",
+    )
+    return any(n in msg for n in needles)
+
+
 def _send_via_brevo(*, to_email: str, subject: str, text: str) -> None:
     """
     Uses Brevo Transactional Email API:
@@ -155,7 +174,7 @@ def send_email(*, to_email: str, subject: str, text: str) -> None:
     )
 
 
-def send_otp_email(*, to_email: str, otp: str, purpose: str) -> None:
+def send_otp_email(*, to_email: str, otp: str, purpose: str) -> str:
     mins = otp_exp_minutes()
     purpose_label = "Login" if (purpose or "").strip().lower() == "login" else "Password reset"
     subject = f"{purpose_label} OTP"
@@ -164,4 +183,20 @@ def send_otp_email(*, to_email: str, otp: str, purpose: str) -> None:
         f"This code expires in {mins} minutes.\n\n"
         "If you did not request this, you can ignore this email."
     )
-    send_email(to_email=to_email, subject=subject, text=text)
+    try:
+        send_email(to_email=to_email, subject=subject, text=text)
+        return "email"
+    except EmailSendError as e:
+        # If email isn't configured, still allow OTP flows to work by logging
+        # the OTP to server logs (useful for initial deployments / staging).
+        if _is_delivery_configuration_error(e):
+            logger.warning(
+                "OTP delivery fallback (email not configured): purpose=%s to=%s otp=%s expires_in_minutes=%s error=%s",
+                purpose,
+                to_email,
+                otp,
+                mins,
+                str(e),
+            )
+            return "console"
+        raise
