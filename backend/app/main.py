@@ -437,11 +437,13 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
     db.execute(delete(OtpCode).where((OtpCode.identifier == identifier) & (OtpCode.purpose == "login")))
     db.add(OtpCode(identifier=identifier, purpose="login", code=code, expires_at=expires))
     try:
-        send_otp_email(to_email=user.email, otp=code, purpose="login")
+        delivery = send_otp_email(to_email=user.email, otp=code, purpose="login")
     except EmailSendError:
         raise HTTPException(status_code=500, detail="OTP service not configured")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
+    if delivery == "console":
+        return {"ok": True, "message": "OTP generated. Email service not configured; check server logs for the OTP."}
     return {"ok": True, "message": "OTP sent to your registered email."}
 
 
@@ -541,11 +543,13 @@ def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(
     db.execute(delete(OtpCode).where((OtpCode.identifier == identifier) & (OtpCode.purpose == "forgot")))
     db.add(OtpCode(identifier=identifier, purpose="forgot", code=code, expires_at=expires))
     try:
-        send_otp_email(to_email=user.email, otp=code, purpose="forgot")
+        delivery = send_otp_email(to_email=user.email, otp=code, purpose="forgot")
     except EmailSendError:
         raise HTTPException(status_code=500, detail="OTP service not configured")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
+    if delivery == "console":
+        return {"ok": True, "message": "OTP generated. Email service not configured; check server logs for the OTP."}
     return {"ok": True, "message": "OTP sent to your registered email."}
 
 
