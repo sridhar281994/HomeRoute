@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -715,66 +716,82 @@ def list_properties(
         stmt = stmt.where(Property.price <= int(max_price))
 
     items = [_property_out(p) for p in db.execute(stmt).scalars().all()]
-    # Seed demo data if empty (first run).
+    # Seed demo data on first-ever run (only if the *table* is empty).
+    #
+    # NOTE: We must NOT seed based on "no results" for a specific filter, otherwise any
+    # empty search would try to insert the same demo addresses again and trip the
+    # partial unique indexes (e.g. uq_properties_address_normalized_no_override).
     if not items:
-        demo_owner = db.execute(select(User).where(User.username == "demo_owner")).scalar_one_or_none()
-        if not demo_owner:
-            demo_owner = User(
-                email="owner@demo.local",
-                username="demo_owner",
-                name="Demo Owner",
-                role="owner",
-                password_hash=hash_password("password123"),
-                approval_status="approved",
-            )
-            db.add(demo_owner)
-            db.flush()
-            db.add(Subscription(user_id=demo_owner.id, status="inactive", provider="google_play"))
+        has_any_property = db.execute(select(Property.id).limit(1)).first() is not None
+        if not has_any_property:
+            try:
+                demo_owner = db.execute(select(User).where(User.username == "demo_owner")).scalar_one_or_none()
+                if not demo_owner:
+                    demo_owner = User(
+                        email="owner@demo.local",
+                        username="demo_owner",
+                        name="Demo Owner",
+                        role="owner",
+                        password_hash=hash_password("password123"),
+                        approval_status="approved",
+                    )
+                    db.add(demo_owner)
+                    db.flush()
 
-        p1 = Property(
-            owner_id=demo_owner.id,
-            title="Modern Studio Near Metro",
-            description="Bright studio with balcony.",
-            property_type="studio",
-            rent_sale="rent",
-            price=1200,
-            location="Downtown",
-            state="Karnataka",
-            district="Bengaluru (Bangalore) Urban",
-            state_normalized=_norm_key("Karnataka"),
-            district_normalized=_norm_key("Bengaluru (Bangalore) Urban"),
-            address="Downtown",
-            address_normalized=_norm_key("Downtown"),
-            amenities_json='["wifi","parking","gym"]',
-            status="approved",
-            contact_phone="+1 555 0100",
-            contact_email="owner@demo.local",
-            contact_phone_normalized=_norm_phone("+1 555 0100"),
-        )
-        p2 = Property(
-            owner_id=demo_owner.id,
-            title="Family House With Garden",
-            description="3BR house, quiet neighborhood.",
-            property_type="house",
-            rent_sale="sale",
-            price=250000,
-            location="Greenwood",
-            state="Karnataka",
-            district="Bengaluru (Bangalore) Urban",
-            state_normalized=_norm_key("Karnataka"),
-            district_normalized=_norm_key("Bengaluru (Bangalore) Urban"),
-            address="Greenwood",
-            address_normalized=_norm_key("Greenwood"),
-            amenities_json='["garden","parking"]',
-            status="approved",
-            contact_phone="+1 555 0200",
-            contact_email="owner@demo.local",
-            contact_phone_normalized=_norm_phone("+1 555 0200"),
-        )
-        db.add_all([p1, p2])
-        db.flush()
-        # Only return demo results if they match the requested filter.
-        items = [_property_out(p) for p in db.execute(stmt).scalars().all()]
+                # Ensure the demo owner has a subscription row (mobile/web expects it).
+                sub = db.execute(select(Subscription).where(Subscription.user_id == demo_owner.id)).scalar_one_or_none()
+                if not sub:
+                    db.add(Subscription(user_id=demo_owner.id, status="inactive", provider="google_play"))
+
+                p1 = Property(
+                    owner_id=demo_owner.id,
+                    title="Modern Studio Near Metro",
+                    description="Bright studio with balcony.",
+                    property_type="studio",
+                    rent_sale="rent",
+                    price=1200,
+                    location="Downtown",
+                    state="Karnataka",
+                    district="Bengaluru (Bangalore) Urban",
+                    state_normalized=_norm_key("Karnataka"),
+                    district_normalized=_norm_key("Bengaluru (Bangalore) Urban"),
+                    address="Downtown",
+                    address_normalized=_norm_key("Downtown"),
+                    amenities_json='["wifi","parking","gym"]',
+                    status="approved",
+                    contact_phone="+1 555 0100",
+                    contact_email="owner@demo.local",
+                    contact_phone_normalized=_norm_phone("+1 555 0100"),
+                )
+                p2 = Property(
+                    owner_id=demo_owner.id,
+                    title="Family House With Garden",
+                    description="3BR house, quiet neighborhood.",
+                    property_type="house",
+                    rent_sale="sale",
+                    price=250000,
+                    location="Greenwood",
+                    state="Karnataka",
+                    district="Bengaluru (Bangalore) Urban",
+                    state_normalized=_norm_key("Karnataka"),
+                    district_normalized=_norm_key("Bengaluru (Bangalore) Urban"),
+                    address="Greenwood",
+                    address_normalized=_norm_key("Greenwood"),
+                    amenities_json='["garden","parking"]',
+                    status="approved",
+                    contact_phone="+1 555 0200",
+                    contact_email="owner@demo.local",
+                    contact_phone_normalized=_norm_phone("+1 555 0200"),
+                )
+                db.add_all([p1, p2])
+                db.flush()
+            except IntegrityError:
+                # If two first-time requests race, one may violate unique indexes.
+                # Roll back the failed insert attempt and proceed with the normal query.
+                db.rollback()
+
+            # Only return demo results if they match the requested filter.
+            items = [_property_out(p) for p in db.execute(stmt).scalars().all()]
 
     return {"items": items}
 
