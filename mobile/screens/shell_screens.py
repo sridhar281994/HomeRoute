@@ -6,20 +6,30 @@ from typing import Any
 
 from kivy.clock import Clock
 from kivy.properties import BooleanProperty, DictProperty, ListProperty, NumericProperty, StringProperty
-from kivy.uix.button import Button
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 
+from screens.widgets import HoverButton
 from frontend_app.utils.api import (
     ApiError,
     api_get_property,
     api_get_property_contact,
     api_list_properties,
+    api_me,
+    api_me_change_email_request_otp,
+    api_me_change_email_verify,
+    api_me_change_phone_request_otp,
+    api_me_change_phone_verify,
+    api_me_delete,
+    api_me_update,
+    api_me_upload_profile_image,
     api_meta_categories,
     api_subscription_status,
 )
-from frontend_app.utils.storage import clear_session, get_session, get_user
+from frontend_app.utils.storage import clear_session, get_session, get_user, set_session
 
 
 def _popup(title: str, msg: str) -> None:
@@ -48,16 +58,32 @@ class PropertyCard:
 
 class SplashScreen(Screen):
     def on_enter(self, *args):
-        # Small delay then continue to Welcome.
-        Clock.schedule_once(lambda _dt: self._go_next(), 1.1)
+        # Small delay then continue to Welcome or Home (if already logged in).
+        Clock.schedule_once(lambda _dt: self._go_next(), 0.9)
 
     def _go_next(self):
-        if self.manager:
+        if not self.manager:
+            return
+        try:
+            sess = get_session() or {}
+            token = str(sess.get("token") or "")
+            self.manager.current = "home" if token else "welcome"
+        except Exception:
             self.manager.current = "welcome"
 
 
 class WelcomeScreen(Screen):
-    pass
+    def on_pre_enter(self, *args):
+        # If user is already authenticated, skip Welcome.
+        if not self.manager:
+            return
+        try:
+            sess = get_session() or {}
+            token = str(sess.get("token") or "")
+            if token:
+                self.manager.current = "home"
+        except Exception:
+            return
 
 
 class HomeScreen(Screen):
@@ -187,7 +213,7 @@ class HomeScreen(Screen):
                                         if x
                                     ]
                                 )
-                                btn = Button(
+                                btn = HoverButton(
                                     text=f"{title}\n{meta}",
                                     size_hint_y=None,
                                     height=88,
@@ -344,8 +370,8 @@ class SettingsScreen(Screen):
     name_value = StringProperty("")
     phone_value = StringProperty("")
     email_value = StringProperty("")
-    image_value = StringProperty("")
-    locations_text = StringProperty("")
+    role_value = StringProperty("")
+    profile_image_url = StringProperty("")
     subscription_status = StringProperty("Unknown")
 
     def on_pre_enter(self, *args):
@@ -356,49 +382,224 @@ class SettingsScreen(Screen):
                 self.manager.current = "login"
             return
 
-        u = get_user() or {}
-        # Do not show role in UI as requested.
+        # Load latest profile from server.
+        u_local = get_user() or {}
+        self._apply_user(u_local)
+        self._refresh_profile_from_server()
+        self.refresh_subscription()
+
+    def _apply_user(self, u: dict[str, Any]) -> None:
         self.user_summary = f"{u.get('name') or 'User'}"
         self.name_value = str(u.get("name") or "")
         self.phone_value = str(u.get("phone") or "")
         self.email_value = str(u.get("email") or "")
-        # Local-only fields (not yet stored on backend)
-        self.image_value = str(u.get("image_url") or "")
-        locs = u.get("locations") or []
-        if isinstance(locs, list):
-            self.locations_text = "\n".join(str(x) for x in locs if str(x).strip())
-        else:
-            self.locations_text = ""
-        self.refresh_subscription()
+        self.role_value = str(u.get("role") or "")
+        self.profile_image_url = str(u.get("profile_image_url") or "")
 
-    def save_settings(self):
-        """
-        Local profile editing (offline-friendly).
-        Server sync can be added later with a /me endpoint.
-        """
-        u = get_user() or {}
-        name = (self.ids.get("name_input").text or "").strip() if self.ids.get("name_input") else ""
-        phone = (self.ids.get("phone_input").text or "").strip() if self.ids.get("phone_input") else ""
-        email = (self.ids.get("email_input").text or "").strip() if self.ids.get("email_input") else ""
-        image_url = (self.ids.get("image_url_input").text or "").strip() if self.ids.get("image_url_input") else ""
-        raw_locations = (self.ids.get("locations_input").text or "") if self.ids.get("locations_input") else ""
-        locations = [ln.strip() for ln in raw_locations.splitlines() if ln.strip()]
-
-        # Update session user dict (local).
-        u["name"] = name
-        u["phone"] = phone
-        u["email"] = email
-        u["image_url"] = image_url
-        u["locations"] = locations
-
+        # Keep inputs in sync if KV ids exist.
         try:
-            sess = get_session() or {}
-            from frontend_app.utils.storage import set_session
-
-            set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
-            _popup("Saved", "Settings updated.")
+            if self.ids.get("name_input"):
+                self.ids["name_input"].text = self.name_value
+            if self.ids.get("phone_current"):
+                self.ids["phone_current"].text = self.phone_value
+            if self.ids.get("email_current"):
+                self.ids["email_current"].text = self.email_value
+            if self.ids.get("role_display"):
+                self.ids["role_display"].text = "Owner" if self.role_value.lower() == "owner" else "Customer"
         except Exception:
-            _popup("Saved", "Settings updated (local).")
+            pass
+
+    def _refresh_profile_from_server(self):
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_me()
+                u = data.get("user") or {}
+                sess = get_session() or {}
+                set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
+                Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
+    def save_name(self):
+        name = (self.ids.get("name_input").text or "").strip() if self.ids.get("name_input") else ""
+        if not name:
+            _popup("Error", "Name is required.")
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_me_update(name=name)
+                u = data.get("user") or {}
+                sess = get_session() or {}
+                set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
+                Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _popup("Saved", "Name updated."), 0)
+            except ApiError as e:
+                msg = str(e)
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+
+        Thread(target=work, daemon=True).start()
+
+    def open_image_picker(self):
+        chooser = FileChooserListView(path=os.path.expanduser("~"), filters=["*.png", "*.jpg", "*.jpeg", "*.webp"])
+
+        def do_upload(_btn):
+            if not chooser.selection:
+                _popup("Select image", "Please pick an image file.")
+                return
+            fp = chooser.selection[0]
+            popup.dismiss()
+            self.upload_profile_image(fp)
+
+        buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+        btn_upload = HoverButton(text="Upload", background_color=(0.3, 0.8, 0.4, 1))
+        btn_cancel = HoverButton(text="Cancel", background_color=(0.7, 0.2, 0.2, 1))
+        buttons.add_widget(btn_cancel)
+        buttons.add_widget(btn_upload)
+
+        root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+        root.add_widget(chooser)
+        root.add_widget(buttons)
+
+        popup = Popup(title="Choose Profile Image", content=root, size_hint=(0.9, 0.9), auto_dismiss=False)
+        btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+        btn_upload.bind(on_release=do_upload)
+        popup.open()
+
+    def upload_profile_image(self, file_path: str):
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_me_upload_profile_image(file_path=file_path)
+                u = data.get("user") or {}
+                sess = get_session() or {}
+                set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
+                Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _popup("Saved", "Profile image updated."), 0)
+            except ApiError as e:
+                msg = str(e)
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+
+        Thread(target=work, daemon=True).start()
+
+    def request_email_otp(self):
+        new_email = (self.ids.get("new_email_input").text or "").strip() if self.ids.get("new_email_input") else ""
+        if not new_email:
+            _popup("Error", "Enter new email.")
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_me_change_email_request_otp(new_email=new_email)
+                Clock.schedule_once(lambda *_: _popup("OTP", data.get("message") or "OTP sent."), 0)
+            except ApiError as e:
+                msg = str(e)
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+
+        Thread(target=work, daemon=True).start()
+
+    def verify_email_otp(self):
+        new_email = (self.ids.get("new_email_input").text or "").strip() if self.ids.get("new_email_input") else ""
+        otp = (self.ids.get("new_email_otp").text or "").strip() if self.ids.get("new_email_otp") else ""
+        if not new_email or not otp:
+            _popup("Error", "Enter new email and OTP.")
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_me_change_email_verify(new_email=new_email, otp=otp)
+                u = data.get("user") or {}
+                sess = get_session() or {}
+                set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
+                Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _popup("Saved", "Email updated."), 0)
+            except ApiError as e:
+                msg = str(e)
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+
+        Thread(target=work, daemon=True).start()
+
+    def request_phone_otp(self):
+        new_phone = (self.ids.get("new_phone_input").text or "").strip() if self.ids.get("new_phone_input") else ""
+        if not new_phone:
+            _popup("Error", "Enter new phone.")
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_me_change_phone_request_otp(new_phone=new_phone)
+                Clock.schedule_once(lambda *_: _popup("OTP", data.get("message") or "OTP sent."), 0)
+            except ApiError as e:
+                msg = str(e)
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+
+        Thread(target=work, daemon=True).start()
+
+    def verify_phone_otp(self):
+        new_phone = (self.ids.get("new_phone_input").text or "").strip() if self.ids.get("new_phone_input") else ""
+        otp = (self.ids.get("new_phone_otp").text or "").strip() if self.ids.get("new_phone_otp") else ""
+        if not new_phone or not otp:
+            _popup("Error", "Enter new phone and OTP.")
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_me_change_phone_verify(new_phone=new_phone, otp=otp)
+                u = data.get("user") or {}
+                sess = get_session() or {}
+                set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
+                Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _popup("Saved", "Phone updated."), 0)
+            except ApiError as e:
+                msg = str(e)
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+
+        Thread(target=work, daemon=True).start()
+
+    def delete_account(self):
+        def do_delete(*_):
+            from threading import Thread
+
+            def work():
+                try:
+                    api_me_delete()
+                    clear_session()
+                    Clock.schedule_once(lambda *_: _popup("Deleted", "Account deleted."), 0)
+                    Clock.schedule_once(lambda *_: setattr(self.manager, "current", "welcome") if self.manager else None, 0)
+                except ApiError as e:
+                    msg = str(e)
+                    Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+
+            Thread(target=work, daemon=True).start()
+            popup.dismiss()
+
+        buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+        btn_yes = HoverButton(text="Delete", background_color=(0.8, 0.2, 0.2, 1))
+        btn_no = HoverButton(text="Cancel", background_color=(0.2, 0.5, 0.9, 1))
+        buttons.add_widget(btn_no)
+        buttons.add_widget(btn_yes)
+        root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+        root.add_widget(Label(text="Delete your account permanently?\nThis cannot be undone."))
+        root.add_widget(buttons)
+        popup = Popup(title="Confirm", content=root, size_hint=(0.85, 0.4), auto_dismiss=False)
+        btn_no.bind(on_release=lambda *_: popup.dismiss())
+        btn_yes.bind(on_release=do_delete)
+        popup.open()
 
     def refresh_subscription(self):
         def work():

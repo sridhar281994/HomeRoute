@@ -141,3 +141,56 @@ def api_subscription_status() -> dict[str, Any]:
     resp = requests.get(url, headers=_headers(), timeout=15)
     return _handle(resp)
 
+
+# -----------------------
+# Me / Profile
+# -----------------------
+def api_me() -> dict[str, Any]:
+    url = f"{_base_url()}/me"
+    resp = requests.get(url, headers=_headers(), timeout=15)
+    return _handle(resp)
+
+
+def api_me_update(*, name: str) -> dict[str, Any]:
+    url = f"{_base_url()}/me"
+    resp = requests.patch(url, json={"name": name}, headers=_headers(), timeout=15)
+    return _handle(resp)
+
+
+def api_me_upload_profile_image(*, file_path: str) -> dict[str, Any]:
+    url = f"{_base_url()}/me/profile-image"
+    with open(file_path, "rb") as f:
+        files = {"file": (os.path.basename(file_path), f)}
+        resp = requests.post(url, files=files, headers=_headers(), timeout=30)
+    return _handle(resp)
+
+
+def api_me_change_email_request_otp(*, new_email: str) -> dict[str, Any]:
+    url = f"{_base_url()}/me/change-email/request-otp"
+    resp = requests.post(url, json={"new_email": new_email}, headers=_headers(), timeout=15)
+    return _handle(resp)
+
+
+def api_me_change_email_verify(*, new_email: str, otp: str) -> dict[str, Any]:
+    url = f"{_base_url()}/me/change-email/verify"
+    resp = requests.post(url, json={"new_email": new_email, "otp": otp}, headers=_headers(), timeout=15)
+    return _handle(resp)
+
+
+def api_me_change_phone_request_otp(*, new_phone: str) -> dict[str, Any]:
+    url = f"{_base_url()}/me/change-phone/request-otp"
+    resp = requests.post(url, json={"new_phone": new_phone}, headers=_headers(), timeout=15)
+    return _handle(resp)
+
+
+def api_me_change_phone_verify(*, new_phone: str, otp: str) -> dict[str, Any]:
+    url = f"{_base_url()}/me/change-phone/verify"
+    resp = requests.post(url, json={"new_phone": new_phone, "otp": otp}, headers=_headers(), timeout=15)
+    return _handle(resp)
+
+
+def api_me_delete() -> dict[str, Any]:
+    url = f"{_base_url()}/me"
+    resp = requests.delete(url, headers=_headers(), timeout=15)
+    return _handle(resp)
+

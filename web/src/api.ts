@@ -6,6 +6,9 @@ export type User = {
   username?: string;
   phone?: string;
   owner_category?: string;
+  // New backend field (preferred)
+  profile_image_url?: string;
+  // Legacy/local field (older UI stored this client-side)
   image_url?: string;
   locations?: string[];
 };
@@ -142,6 +145,68 @@ export function getContact(id: number) {
 
 export function subscriptionStatus() {
   return api<{ status: string }>(`/me/subscription`);
+}
+
+export function getMe() {
+  return api<{ user: User }>(`/me`);
+}
+
+export function updateMe(input: { name: string }) {
+  return api<{ ok: boolean; user: User }>(`/me`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: input.name }),
+  });
+}
+
+export async function uploadProfileImage(file: File) {
+  const s = getSession();
+  const form = new FormData();
+  form.append("file", file);
+  const resp = await fetch(`${API_BASE}/me/profile-image`, {
+    method: "POST",
+    headers: s.token ? { Authorization: `Bearer ${s.token}` } : undefined,
+    body: form,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data?.detail || `HTTP ${resp.status}`);
+  return data as { ok: boolean; user: User };
+}
+
+export function requestChangeEmailOtp(new_email: string) {
+  return api<{ ok: boolean; message: string }>(`/me/change-email/request-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ new_email }),
+  });
+}
+
+export function verifyChangeEmailOtp(new_email: string, otp: string) {
+  return api<{ ok: boolean; user: User }>(`/me/change-email/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ new_email, otp }),
+  });
+}
+
+export function requestChangePhoneOtp(new_phone: string) {
+  return api<{ ok: boolean; message: string }>(`/me/change-phone/request-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ new_phone }),
+  });
+}
+
+export function verifyChangePhoneOtp(new_phone: string, otp: string) {
+  return api<{ ok: boolean; user: User }>(`/me/change-phone/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ new_phone, otp }),
+  });
+}
+
+export function deleteAccount() {
+  return api<{ ok: boolean }>(`/me`, { method: "DELETE" });
 }
 
 export function ownerCreateProperty(input: any) {

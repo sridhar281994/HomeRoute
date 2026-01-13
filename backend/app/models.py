@@ -34,6 +34,9 @@ class User(Base):
     company_address: Mapped[str] = mapped_column(String(512), default="", index=True)
     company_address_normalized: Mapped[str] = mapped_column(String(512), default="", index=True)
 
+    # Profile image (optional). Stored as a relative uploads path or full URL.
+    profile_image_path: Mapped[str] = mapped_column(String(512), default="")
+
     # Admin approval workflow for owners (role=owner)
     approval_status: Mapped[str] = mapped_column(String(40), default="approved")  # approved|pending|rejected|suspended
     approval_reason: Mapped[str] = mapped_column(Text, default="")
