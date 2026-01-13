@@ -452,27 +452,36 @@ class SettingsScreen(Screen):
     def open_image_picker(self):
         chooser = FileChooserListView(path=os.path.expanduser("~"), filters=["*.png", "*.jpg", "*.jpeg", "*.webp"])
 
-        def do_upload(_btn):
-            if not chooser.selection:
-                _popup("Select image", "Please pick an image file.")
-                return
-            fp = chooser.selection[0]
-            popup.dismiss()
-            self.upload_profile_image(fp)
+        # Auto-upload on selection (no separate Save/Upload button).
+        popup = Popup(title="Choose Profile Image", size_hint=(0.9, 0.9), auto_dismiss=False)
+
+        def on_selection(*_args):
+            try:
+                if not chooser.selection:
+                    return
+                fp = chooser.selection[0]
+                popup.dismiss()
+                self.upload_profile_image(fp)
+            except Exception:
+                # Never crash UI due to picker errors.
+                popup.dismiss()
+
+        try:
+            chooser.bind(selection=lambda *_: on_selection())
+        except Exception:
+            pass
 
         buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
-        btn_upload = HoverButton(text="Upload", background_color=(0.3, 0.8, 0.4, 1))
         btn_cancel = HoverButton(text="Cancel", background_color=(0.7, 0.2, 0.2, 1))
         buttons.add_widget(btn_cancel)
-        buttons.add_widget(btn_upload)
 
         root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+        root.add_widget(Label(text="Tap an image to upload immediately."))
         root.add_widget(chooser)
         root.add_widget(buttons)
 
-        popup = Popup(title="Choose Profile Image", content=root, size_hint=(0.9, 0.9), auto_dismiss=False)
+        popup.content = root
         btn_cancel.bind(on_release=lambda *_: popup.dismiss())
-        btn_upload.bind(on_release=do_upload)
         popup.open()
 
     def upload_profile_image(self, file_path: str):
