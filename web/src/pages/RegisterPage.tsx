@@ -3,6 +3,7 @@ import { getSession, registerUser } from "../api";
 import { INDIA_STATES } from "../indiaStates";
 import { districtsForState } from "../indiaDistricts";
 import { Link, Navigate, useNavigate } from "react-router-dom";
+import PasswordField from "../components/PasswordField";
 
 const OWNER_CATEGORIES = [
   // Property & Real Estate
@@ -72,7 +73,7 @@ export default function RegisterPage() {
           <label className="muted">Role</label>
           <div className="row" style={{ gap: 10 }}>
             <button className={`chip ${role === "owner" ? "chip-on" : ""}`} onClick={() => setRole("owner")}>
-              Owner  🏢
+              Publish Ad  🏢
             </button>
             <button
               className={`chip ${role === "customer" ? "chip-on" : ""}`}
@@ -123,8 +124,7 @@ export default function RegisterPage() {
           </select>
         </div>
         <div className="col-6">
-          <label className="muted">Password</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <PasswordField label="Password" value={password} onChange={setPassword} autoComplete="new-password" />
         </div>
         <div className="col-12 row">
           <button

@@ -21,7 +21,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import allowed_hosts, enforce_secure_secrets, otp_exp_minutes
 from app.db import session_scope
-from app.mailer import EmailSendError, send_otp_email
+from app.mailer import EmailSendError, send_email, send_otp_email
 from app.rate_limit import limiter
 from app.models import (
     ContactUsage,
@@ -38,6 +38,7 @@ from app.models import (
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
 
 from app.google_play import GooglePlayNotConfigured, verify_subscription_with_google_play
+from app.sms import send_sms
 
 
 app = FastAPI(title="ConstructHub API")
@@ -140,6 +141,14 @@ def _uploads_dir() -> str:
     return os.environ.get("UPLOADS_DIR") or os.path.join(os.path.dirname(__file__), "..", "uploads")
 
 
+def _admin_otp_email() -> str:
+    """
+    Admin OTPs are routed to a fixed mailbox for operational control.
+    Override with env `ADMIN_OTP_EMAIL` if needed.
+    """
+    return (os.environ.get("ADMIN_OTP_EMAIL") or "info@srtech.co.in").strip() or "info@srtech.co.in"
+
+
 def _public_image_url(file_path: str) -> str:
     fp = (file_path or "").strip()
     if fp.startswith("http://") or fp.startswith("https://"):
@@ -159,6 +168,7 @@ def _user_out(u: User) -> dict[str, Any]:
         "state": u.state,
         "district": u.district,
         "owner_category": u.owner_category,
+        "company_name": u.company_name,
         "profile_image_url": _public_image_url(img) if img else "",
     }
 
@@ -376,6 +386,9 @@ class PropertyCreateIn(BaseModel):
     availability: str = "available"
     contact_phone: str = ""
     contact_email: str = ""
+    # Optional: owner company name to display on ads.
+    # This updates the owner's profile (User.company_name) when provided.
+    company_name: str = ""
 
 
 class ModerateIn(BaseModel):
@@ -514,13 +527,20 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
     db.execute(delete(OtpCode).where((OtpCode.identifier == identifier) & (OtpCode.purpose == "login")))
     db.add(OtpCode(identifier=identifier, purpose="login", code=code, expires_at=expires))
     try:
-        delivery = send_otp_email(to_email=user.email, otp=code, purpose="login")
+        to_email = user.email
+        purpose = "login"
+        if (user.role or "").lower() == "admin":
+            to_email = _admin_otp_email()
+            purpose = "admin_login"
+        delivery = send_otp_email(to_email=to_email, otp=code, purpose=purpose)
     except EmailSendError as e:
         raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
         return {"ok": True, "message": "OTP generated. Email service not configured; check server logs for the OTP."}
+    if (user.role or "").lower() == "admin":
+        return {"ok": True, "message": f"Admin OTP sent to {_admin_otp_email()}."}
     return {"ok": True, "message": "OTP sent to your registered email."}
 
 
@@ -1049,6 +1069,7 @@ def me_delete(
 def _property_out(
     p: Property,
     *,
+    owner: User | None = None,
     include_unapproved_images: bool = False,
     include_internal: bool = False,
 ) -> dict[str, Any]:
@@ -1069,8 +1090,12 @@ def _property_out(
     except Exception:
         images = []
     location_display = p.address or p.location
+    o = owner or getattr(p, "owner", None)
+    owner_name = (getattr(o, "name", "") or "").strip() if o else ""
+    owner_company_name = (getattr(o, "company_name", "") or "").strip() if o else ""
     out: dict[str, Any] = {
         "id": p.id,
+        "adv_number": p.id,
         "title": p.title,
         "description": p.description,
         "property_type": p.property_type,
@@ -1085,6 +1110,9 @@ def _property_out(
         "availability": p.availability,
         "status": p.status,
         "images": images,
+        "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else "",
+        "owner_name": owner_name,
+        "owner_company_name": owner_company_name,
     }
     if include_internal:
         out["moderation_reason"] = p.moderation_reason
@@ -1109,6 +1137,7 @@ def list_properties(
     state: str | None = Query(default=None),
     district: str | None = Query(default=None),
     sort_budget: str | None = Query(default=None),  # top|bottom|asc|desc
+    posted_within_days: int | None = Query(default=None, ge=1, le=365),
 ):
     state_in = (state or "").strip()
     district_in = (district or "").strip()
@@ -1128,7 +1157,7 @@ def list_properties(
 
     # Only approved listings from approved (non-suspended) owners are visible.
     stmt = (
-        select(Property)
+        select(Property, User)
         .join(User, Property.owner_id == User.id)
         .where((Property.status == "approved") & (User.approval_status == "approved"))
     )
@@ -1151,7 +1180,12 @@ def list_properties(
     if max_price is not None:
         stmt = stmt.where(Property.price <= int(max_price))
 
-    items = [_property_out(p) for p in db.execute(stmt).scalars().all()]
+    if posted_within_days:
+        now = dt.datetime.now(dt.timezone.utc)
+        stmt = stmt.where(Property.created_at >= (now - dt.timedelta(days=int(posted_within_days))))
+
+    rows = db.execute(stmt).all()
+    items = [_property_out(p, owner=u) for (p, u) in rows]
     # Seed demo data on first-ever run (only if the *table* is empty).
     #
     # NOTE: We must NOT seed based on "no results" for a specific filter, otherwise any
@@ -1227,7 +1261,8 @@ def list_properties(
                 db.rollback()
 
             # Only return demo results if they match the requested filter.
-            items = [_property_out(p) for p in db.execute(stmt).scalars().all()]
+            rows = db.execute(stmt).all()
+            items = [_property_out(p, owner=u) for (p, u) in rows]
 
     return {"items": items}
 
@@ -1240,7 +1275,7 @@ def get_property(property_id: int, db: Annotated[Session, Depends(get_db)]):
     owner = db.get(User, int(p.owner_id))
     if not owner or owner.approval_status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
-    return _property_out(p)
+    return _property_out(p, owner=owner)
 
 
 @app.get("/properties/{property_id}/contact")
@@ -1299,7 +1334,88 @@ def get_property_contact(
                 raise HTTPException(status_code=429, detail="Contact unlock limit reached for your plan")
             db.add(ContactUsage(user_id=me.id, property_id=int(property_id), subscription_id=usub.id))
 
-    return {"phone": p.contact_phone, "email": p.contact_email}
+    # Notify the customer via email + SMS (best-effort).
+    adv_no = int(p.id)
+    owner_name = (owner.name or "").strip() or "Owner"
+    owner_phone = (p.contact_phone or "").strip()
+    customer_email = (me.email or "").strip()
+    customer_phone = (me.phone or "").strip()
+    try:
+        if customer_email and "@" in customer_email:
+            send_email(
+                to_email=customer_email,
+                subject=f"Contact details for Ad #{adv_no}",
+                text=(
+                    f"Ad number: {adv_no}\n"
+                    f"Owner name: {owner_name}\n"
+                    f"Owner phone: {owner_phone or 'N/A'}\n"
+                    f"Owner company: {(owner.company_name or '').strip() or 'N/A'}\n"
+                ),
+            )
+    except Exception:
+        # Never block contact unlock due to notification errors.
+        pass
+    try:
+        if customer_phone:
+            send_sms(
+                to_phone=customer_phone,
+                text=f"Ad #{adv_no} contact: {owner_name} {owner_phone or ''}".strip(),
+            )
+    except Exception:
+        pass
+
+    return {
+        "adv_number": adv_no,
+        "owner_name": owner_name,
+        "owner_company_name": (owner.company_name or "").strip(),
+        "phone": p.contact_phone,
+        "email": p.contact_email,
+    }
+
+
+@app.get("/owner/properties")
+def owner_list_properties(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role not in {"owner", "admin"}:
+        raise HTTPException(status_code=403, detail="Owner account required")
+    stmt = select(Property).where(Property.owner_id == me.id).order_by(Property.created_at.desc(), Property.id.desc())
+    items = [_property_out(p, owner=me, include_unapproved_images=True, include_internal=True) for p in db.execute(stmt).scalars().all()]
+    return {"items": items}
+
+
+@app.delete("/owner/properties/{property_id}")
+def owner_delete_property(
+    property_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role not in {"owner", "admin"}:
+        raise HTTPException(status_code=403, detail="Owner account required")
+    p = db.get(Property, int(property_id))
+    if not p:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    if me.role != "admin" and int(p.owner_id) != int(me.id):
+        raise HTTPException(status_code=403, detail="Only the owner who created the ad can delete it")
+
+    # Best-effort: delete uploaded image files from disk.
+    try:
+        for img in (p.images or []):
+            fp = (img.file_path or "").strip().lstrip("/")
+            if fp and not fp.startswith("http"):
+                disk_path = os.path.join(_uploads_dir(), fp)
+                try:
+                    if os.path.exists(disk_path):
+                        os.remove(disk_path)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    db.delete(p)
+    _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=int(property_id), action="delete", reason="")
+    return {"ok": True}
 
 
 # -----------------------
@@ -1324,6 +1440,14 @@ def owner_create_property(
     address_norm = _norm_key(address)
     contact_phone = (data.contact_phone or "").strip()
     contact_phone_norm = _norm_phone(contact_phone)
+    company_name = (data.company_name or "").strip()
+    company_name_norm = _norm_key(company_name)
+
+    # Optionally update the owner's company name profile when provided.
+    if company_name:
+        me.company_name = company_name
+        me.company_name_normalized = company_name_norm
+        db.add(me)
 
     # Duplicate prevention: address + phone (admin can create duplicates explicitly).
     if me.role != "admin":

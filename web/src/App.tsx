@@ -18,23 +18,22 @@ export default function App() {
   const s = getSession();
   const role = (s.user?.role || "").toLowerCase();
   const isLoggedIn = !!s.token;
-  const isHome = loc.pathname === "/home";
 
   return (
     <div className="shell">
-      {!isHome ? <div className="app-bg" aria-hidden="true" /> : null}
-      <div className="panel nav row" style={{ marginBottom: 14 }}>
-        <div className="row" style={{ gap: 10 }}>
+      <div className="app-bg" aria-hidden="true" />
+      <div className="panel topbar" style={{ marginBottom: 14 }}>
+        <div className="topbar-brand">
           <div className="h2">ConstructHub  🏗️</div>
         </div>
         <div className="spacer" />
-        <div className="row nav" style={{ gap: 10 }}>
+        <div className="topbar-links">
           <Link to="/home">Home</Link>
           {isLoggedIn ? (
             <>
               <Link to="/subscription">Subscription</Link>
               <Link to="/profile">Settings</Link>
-              {role === "owner" ? <Link to="/owner/add">Owner</Link> : null}
+              {role === "owner" ? <Link to="/owner/add">Publish Ad</Link> : null}
             </>
           ) : null}
           {!isLoggedIn ? (

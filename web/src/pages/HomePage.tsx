@@ -12,6 +12,7 @@ export default function HomePage() {
   const [state, setState] = useState<string>(() => localStorage.getItem("pd_state") || "");
   const [district, setDistrict] = useState<string>(() => localStorage.getItem("pd_district") || "");
   const [sortBudget, setSortBudget] = useState<string>("top");
+  const [postedWithinDays, setPostedWithinDays] = useState<string>("");
   const [items, setItems] = useState<any[]>([]);
   const [err, setErr] = useState<string>("");
   const [catalog, setCatalog] = useState<any>(null);
@@ -39,6 +40,7 @@ export default function HomePage() {
         state: isGuest ? state || undefined : undefined,
         district: district || undefined,
         sort_budget: sortBudget || undefined,
+        posted_within_days: postedWithinDays || undefined,
       });
       setItems(res.items || []);
     } catch (e: any) {
@@ -85,7 +87,6 @@ export default function HomePage() {
 
   return (
     <div className="page-home">
-      <div className="home-bg" aria-hidden="true" />
       <div className="panel">
       <div className="row">
         <p className="h1" style={{ margin: 0 }}>
@@ -147,6 +148,16 @@ export default function HomePage() {
           </select>
         </div>
         <div className="col-6">
+          <label className="muted">Post date</label>
+          <select value={postedWithinDays} onChange={(e) => setPostedWithinDays(e.target.value)}>
+            <option value="">Any</option>
+            <option value="1">Today</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+        </div>
+        <div className="col-6">
           <label className="muted">Sort (by budget)</label>
           <select value={sortBudget} onChange={(e) => setSortBudget(e.target.value)}>
             <option value="top">Top (high to low)</option>
@@ -182,6 +193,7 @@ export default function HomePage() {
                   <div className="h2">{p.title}</div>
                   <div className="muted">
                     {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display}
+                    {p.created_at ? ` • ${new Date(p.created_at).toLocaleDateString()}` : ""}
                   </div>
                 </div>
                 <div className="spacer" />
