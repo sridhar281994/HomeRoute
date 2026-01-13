@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { registerUser } from "../api";
+import { getSession, registerUser } from "../api";
 import { INDIA_STATES } from "../indiaStates";
 import { districtsForState } from "../indiaDistricts";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 
 const OWNER_CATEGORIES = [
   // Property & Real Estate
@@ -32,6 +32,9 @@ const OWNER_CATEGORIES = [
 
 export default function RegisterPage() {
   const nav = useNavigate();
+  const s = getSession();
+  if (s.token) return <Navigate to="/home" replace />;
+
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");

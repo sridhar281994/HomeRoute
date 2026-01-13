@@ -157,6 +157,17 @@ button:focus-visible{
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,.12);
   background: rgba(0,0,0,.20);
+  transition: transform .10s ease, background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.nav a:hover{
+  background: rgba(255,122,24,.22);
+  border-color: rgba(255,195,77,.26);
+  box-shadow: 0 10px 28px rgba(0,0,0,.20);
+  transform: translateY(-1px);
+}
+.nav a:active{
+  transform: translateY(0px) scale(0.99);
+  background: rgba(255,122,24,.30);
 }
 
 /* Home background image */
