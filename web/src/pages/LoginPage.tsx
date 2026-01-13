@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { requestOtp, setSession, verifyOtp } from "../api";
-import { useNavigate } from "react-router-dom";
+import { getSession, requestOtp, setSession, verifyOtp } from "../api";
+import { Navigate, useNavigate } from "react-router-dom";
 
 export default function LoginPage() {
   const nav = useNavigate();
+  const s = getSession();
+  if (s.token) return <Navigate to="/home" replace />;
+
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
