@@ -88,12 +88,6 @@ def api_login_verify_otp(*, identifier: str, password: str, otp: str) -> dict[st
     return _handle(resp)
 
 
-def api_admin_login(*, identifier: str, password: str) -> dict[str, Any]:
-    url = f"{_base_url()}/admin/auth/login"
-    resp = requests.post(url, json={"identifier": identifier, "password": password}, timeout=15)
-    return _handle(resp)
-
-
 def api_guest() -> dict[str, Any]:
     url = f"{_base_url()}/auth/guest"
     resp = requests.post(url, json={}, timeout=15)
@@ -136,6 +130,16 @@ def api_get_property(property_id: int) -> dict[str, Any]:
 def api_get_property_contact(property_id: int) -> dict[str, Any]:
     url = f"{_base_url()}/properties/{int(property_id)}/contact"
     resp = requests.get(url, headers=_headers(), timeout=15)
+    return _handle(resp)
+
+
+def api_owner_create_property(*, payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Owner listing creation.
+    Backend endpoint: POST /owner/properties
+    """
+    url = f"{_base_url()}/owner/properties"
+    resp = requests.post(url, json=payload, headers=_headers(), timeout=20)
     return _handle(resp)
 
 

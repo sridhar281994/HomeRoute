@@ -352,35 +352,29 @@
                         size_hint_y: None
                         height: dp(32)
                         spacing: dp(10)
-                        CheckBox:
-                            id: admin_login
-                            size_hint: None, None
-                            size: dp(32), dp(32)
-                            active: root.is_admin_login
-                            on_active: root.is_admin_login = self.active
                         Label:
-                            text: "Admin login"
+                            text: "[color=cccccc]Admin login uses OTP to[/color]  info@srtech.co.in"
                             color: 1, 1, 1, 0.9
                             halign: "left"
                             valign: "middle"
                             text_size: self.size
 
                     AppButton:
-                        text: "Admin Login" if root.is_admin_login else "Request OTP"
+                        text: "Request OTP"
                         size_hint_y: None
                         height: dp(44)
                         background_color: (0.9, 0.6, 0.2, 1)
-                        on_release: root.login_as_admin() if root.is_admin_login else root.send_otp_to_user()
+                        on_release: root.send_otp_to_user()
 
                 # OTP Box
                 BoxLayout:
                     orientation: "vertical"
                     size_hint_y: None
-                    height: 0 if root.is_admin_login else self.minimum_height
+                    height: self.minimum_height
                     spacing: dp(10)
                     padding: dp(10)
-                    opacity: 0 if root.is_admin_login else 1
-                    disabled: root.is_admin_login
+                    opacity: 1
+                    disabled: False
                     canvas.before:
                         Color:
                             rgba: 0.2, 0.1, 0.25, 0.8
@@ -710,7 +704,7 @@
 
                         TextInput:
                             id: role_display
-                            text: "Owner" if root.role_value.lower() == "owner" else "Customer"
+                            text: "Publish Ad" if root.role_value.lower() == "owner" else "Customer"
                             hint_text: "Role"
                             size_hint_y: None
                             height: dp(42)
@@ -986,7 +980,7 @@
                     height: dp(48)
                     spacing: dp(10)
                     ToggleButton:
-                        text: "[b]Owner[/b]  🏢"
+                        text: "[b]Publish Ad[/b]  🏢"
                         group: "role_group"
                         on_state:
                             if self.state == "down": root.set_role("owner")
@@ -1197,22 +1191,25 @@
                     size_hint_y: None
                     height: dp(42)
 
-            BoxLayout:
+            GridLayout:
+                cols: 1 if root.width < dp(420) else 2
                 size_hint_y: None
-                height: dp(44)
+                height: self.minimum_height
                 spacing: dp(8)
                 AppButton:
                     text: "Apply Filters"
+                    size_hint_y: None
+                    height: dp(44)
                     background_color: (0.2, 0.6, 0.9, 1)
                     on_release: root.refresh()
                 AppButton:
-                    text: "Owner  🏢"
-                    size_hint_x: None
-                    width: dp(90)
+                    text: "Publish Ad  🏢"
+                    size_hint_y: None
+                    height: dp(44)
                     on_release: root.go_owner()
                     disabled: not root.is_logged_in
                     opacity: 1 if root.is_logged_in else 0
-                    width: dp(90) if root.is_logged_in else 0
+                    height: dp(44) if root.is_logged_in else 0
 
             Label:
                 text: "Loading..." if root.is_loading else "Listings"
@@ -1424,7 +1421,7 @@
                     size: self.size
                     radius: [16]
             Label:
-                text: "[b]Owner Dashboard[/b]  🏢"
+                text: "[b]Publish Ad Dashboard[/b]  🏢"
                 font_size: sp(24)
                 size_hint_y: None
                 height: dp(40)
@@ -1489,29 +1486,57 @@
                     size: self.size
                     radius: [16]
             Label:
-                text: "Add Property"
+                text: "Publish Ad"
                 font_size: sp(24)
                 size_hint_y: None
                 height: dp(40)
                 color: 1, 1, 1, 1
+            PrettySpinner:
+                id: state_spinner
+                text: "Select State"
+                values: root.state_values()
+                size_hint_y: None
+                height: dp(44)
+                on_text: root.on_state_changed()
+            PrettySpinner:
+                id: district_spinner
+                text: "Select District"
+                values: root.district_values()
+                size_hint_y: None
+                height: dp(44)
             TextInput:
+                id: title_input
                 hint_text: "Title"
                 multiline: False
                 size_hint_y: None
                 height: dp(44)
-            TextInput:
-                hint_text: "Location"
-                multiline: False
+            PrettySpinner:
+                id: category_spinner
+                text: "property"
+                values: ["materials", "services", "property"]
+                size_hint_y: None
+                height: dp(44)
+            PrettySpinner:
+                id: rent_sale_spinner
+                text: "rent"
+                values: ["rent", "sale"]
                 size_hint_y: None
                 height: dp(44)
             TextInput:
+                id: price_input
                 hint_text: "Price"
                 multiline: False
                 input_filter: "int"
                 size_hint_y: None
                 height: dp(44)
+            TextInput:
+                id: contact_phone_input
+                hint_text: "Contact phone"
+                multiline: False
+                size_hint_y: None
+                height: dp(44)
             AppButton:
-                text: "Submit Listing"
+                text: "Submit (goes to admin review)"
                 size_hint_y: None
                 height: dp(50)
                 background_color: (0.3, 0.8, 0.3, 1)

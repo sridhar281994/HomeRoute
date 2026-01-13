@@ -113,14 +113,8 @@ class HomeScreen(Screen):
         except Exception:
             self.is_logged_in = False
 
-        # Optional fabulous background image (local asset).
-        # If missing, KV keeps the glossy orange base.
-        try:
-            here = os.path.dirname(os.path.dirname(__file__))  # .../mobile/screens -> .../mobile
-            candidate = os.path.join(here, "assets", "home_bg.jpg")
-            self.bg_image = "assets/home_bg.jpg" if os.path.exists(candidate) else ""
-        except Exception:
-            self.bg_image = ""
+        # Revert to the glossy purple/orange background (no image).
+        self.bg_image = ""
 
         # Load customer "need" categories (non-fatal if offline).
         self._load_need_categories()
@@ -414,7 +408,7 @@ class SettingsScreen(Screen):
             if self.ids.get("email_current"):
                 self.ids["email_current"].text = self.email_value
             if self.ids.get("role_display"):
-                self.ids["role_display"].text = "Owner" if self.role_value.lower() == "owner" else "Customer"
+                self.ids["role_display"].text = "Publish Ad" if self.role_value.lower() == "owner" else "Customer"
         except Exception:
             pass
 
@@ -655,10 +649,91 @@ class OwnerDashboardScreen(Screen):
 
 
 class OwnerAddPropertyScreen(Screen):
+    def state_values(self):
+        # India states list (shared with RegisterScreen).
+        from frontend_app.utils.countries import COUNTRIES
+
+        return COUNTRIES
+
+    def district_values(self):
+        from frontend_app.utils.india_locations import districts_for_state
+
+        state = (self.ids.get("state_spinner").text or "").strip() if self.ids.get("state_spinner") else ""
+        return districts_for_state(state)
+
+    def on_state_changed(self, *_):
+        if "district_spinner" not in self.ids:
+            return
+        try:
+            self.ids["district_spinner"].text = "Select District"
+        except Exception:
+            pass
+        try:
+            self.ids["district_spinner"].values = self.district_values()
+        except Exception:
+            self.ids["district_spinner"].values = []
+
     def submit_listing(self):
-        _popup("Submitted", "Listing submitted for review (demo UI).")
-        if self.manager:
-            self.manager.current = "owner_dashboard"
+        """
+        Create the ad (goes to admin review).
+        Location/Address are removed from UI as requested.
+        """
+        title = (self.ids.get("title_input").text or "").strip() if self.ids.get("title_input") else ""
+        state = (self.ids.get("state_spinner").text or "").strip() if self.ids.get("state_spinner") else ""
+        district = (self.ids.get("district_spinner").text or "").strip() if self.ids.get("district_spinner") else ""
+        category = (self.ids.get("category_spinner").text or "").strip().lower() if self.ids.get("category_spinner") else "property"
+        price_text = (self.ids.get("price_input").text or "").strip() if self.ids.get("price_input") else ""
+        rent_sale = (self.ids.get("rent_sale_spinner").text or "").strip().lower() if self.ids.get("rent_sale_spinner") else "rent"
+        contact_phone = (self.ids.get("contact_phone_input").text or "").strip() if self.ids.get("contact_phone_input") else ""
+
+        if not state or state in {"Select State", "Select Country"}:
+            _popup("Error", "Please select state.")
+            return
+        if not district or district in {"Select District"}:
+            _popup("Error", "Please select district.")
+            return
+        if not title:
+            _popup("Error", "Please enter title.")
+            return
+        if category not in {"materials", "services", "property"}:
+            _popup("Error", "Please select category.")
+            return
+
+        try:
+            price = int(price_text) if price_text else 0
+        except Exception:
+            _popup("Error", "Enter a valid price.")
+            return
+
+        from threading import Thread
+        from frontend_app.utils.api import ApiError, api_owner_create_property
+
+        def work():
+            try:
+                payload = {
+                    "state": state,
+                    "district": district,
+                    "title": title,
+                    # Use district as a simple display location.
+                    "location": district,
+                    "address": "",
+                    "price": price,
+                    "rent_sale": rent_sale if rent_sale in {"rent", "sale"} else "rent",
+                    "property_type": category,
+                    "contact_phone": contact_phone,
+                    "contact_email": "",
+                    "amenities": [],
+                }
+                res = api_owner_create_property(payload=payload)
+                pid = res.get("id")
+                status = res.get("status") or "pending"
+                Clock.schedule_once(lambda *_: _popup("Submitted", f"Ad created (#{pid}) • status: {status}"), 0)
+                Clock.schedule_once(lambda *_: setattr(self.manager, "current", "owner_dashboard") if self.manager else None, 0)
+            except ApiError as e:
+                msg = str(e)
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+
+        Thread(target=work, daemon=True).start()
 
     def go_back(self):
         if self.manager:
