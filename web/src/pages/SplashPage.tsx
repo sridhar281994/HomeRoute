@@ -1,10 +1,14 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { getSession } from "../api";
 
 export default function SplashPage() {
   const nav = useNavigate();
   useEffect(() => {
-    const t = setTimeout(() => nav("/welcome"), 900);
+    const t = setTimeout(() => {
+      const s = getSession();
+      nav(s.token ? "/home" : "/welcome");
+    }, 900);
     return () => clearTimeout(t);
   }, [nav]);
 

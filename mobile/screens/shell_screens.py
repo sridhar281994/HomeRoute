@@ -48,16 +48,32 @@ class PropertyCard:
 
 class SplashScreen(Screen):
     def on_enter(self, *args):
-        # Small delay then continue to Welcome.
-        Clock.schedule_once(lambda _dt: self._go_next(), 1.1)
+        # Small delay then continue to Welcome or Home (if already logged in).
+        Clock.schedule_once(lambda _dt: self._go_next(), 0.9)
 
     def _go_next(self):
-        if self.manager:
+        if not self.manager:
+            return
+        try:
+            sess = get_session() or {}
+            token = str(sess.get("token") or "")
+            self.manager.current = "home" if token else "welcome"
+        except Exception:
             self.manager.current = "welcome"
 
 
 class WelcomeScreen(Screen):
-    pass
+    def on_pre_enter(self, *args):
+        # If user is already authenticated, skip Welcome.
+        if not self.manager:
+            return
+        try:
+            sess = get_session() or {}
+            token = str(sess.get("token") or "")
+            if token:
+                self.manager.current = "home"
+        except Exception:
+            return
 
 
 class HomeScreen(Screen):

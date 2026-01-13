@@ -1,6 +1,14 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { getSession } from "../api";
 
 export default function WelcomePage() {
+  const nav = useNavigate();
+  useEffect(() => {
+    const s = getSession();
+    if (s.token) nav("/home");
+  }, [nav]);
+
   return (
     <div className="panel" style={{ textAlign: "center", padding: 28 }}>
       <p className="h1" style={{ margin: 0 }}>

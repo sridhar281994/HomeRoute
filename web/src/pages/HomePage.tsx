@@ -9,7 +9,6 @@ export default function HomePage() {
   const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
-  const [propertyType, setPropertyType] = useState("");
   const [state, setState] = useState<string>(() => localStorage.getItem("pd_state") || "");
   const [district, setDistrict] = useState<string>(() => localStorage.getItem("pd_district") || "");
   const [sortBudget, setSortBudget] = useState<string>("top");
@@ -36,7 +35,6 @@ export default function HomePage() {
         q: (need || "").trim() || undefined,
         max_price: maxPrice || undefined,
         rent_sale: rentSale || undefined,
-        property_type: propertyType || undefined,
         // For registered users: state is auto-picked from profile by backend if omitted.
         state: isGuest ? state || undefined : undefined,
         district: district || undefined,
@@ -131,17 +129,6 @@ export default function HomePage() {
                 {d}
               </option>
             ))}
-          </select>
-        </div>
-        <div className="col-6">
-          <label className="muted">Building / Home Category</label>
-          <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
-            <option value="">Any</option>
-            <option value="apartment">apartment</option>
-            <option value="house">house</option>
-            <option value="villa">villa</option>
-            <option value="studio">studio</option>
-            <option value="land">land</option>
           </select>
         </div>
         <div className="col-6">

@@ -50,7 +50,7 @@ export default function LoginPage() {
               try {
                 const r = await verifyOtp(identifier, password, otp);
                 setSession({ token: r.access_token, user: r.user });
-                nav("/");
+                nav("/home");
               } catch (e: any) {
                 setMsg(e.message || "Failed");
               }
