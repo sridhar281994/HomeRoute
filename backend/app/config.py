@@ -47,6 +47,40 @@ def is_local_dev() -> bool:
     return not (os.environ.get("DATABASE_URL") or "").strip()
 
 
+def app_env() -> str:
+    """
+    Application environment marker:
+    - local (default when running with sqlite fallback)
+    - staging
+    - prod
+    """
+    raw = (os.environ.get("APP_ENV") or "").strip().lower()
+    if raw:
+        return raw
+    return "local" if is_local_dev() else "prod"
+
+
+def allowed_hosts() -> list[str]:
+    """
+    Comma-separated list for TrustedHost middleware.
+    Example: ALLOWED_HOSTS=api.example.com,example.com
+    """
+    raw = (os.environ.get("ALLOWED_HOSTS") or "").strip()
+    if not raw:
+        return ["*"]
+    hosts = [h.strip() for h in raw.split(",") if h.strip()]
+    return hosts or ["*"]
+
+
+def enforce_secure_secrets() -> None:
+    """
+    Fail-fast in production if dangerous defaults are still in use.
+    """
+    if app_env() in {"prod", "production"}:
+        if jwt_secret() == "dev-secret-change-me":
+            raise RuntimeError("JWT_SECRET must be set in production (default dev secret detected)")
+
+
 def email_backend() -> str:
     """
     Email backend selector:
@@ -85,7 +119,7 @@ def brevo_from_email() -> str:
 
 
 def brevo_sender_name() -> str:
-    return (os.environ.get("BREVO_SENDER_NAME") or "Property Discovery").strip()
+    return (os.environ.get("BREVO_SENDER_NAME") or "ConstructHub").strip()
 
 
 def smtp_host() -> str:
@@ -111,4 +145,23 @@ def smtp_pass() -> str:
 def smtp_from_email() -> str:
     # Allow either SMTP_FROM or BREVO_FROM as the sender address.
     return ((os.environ.get("SMTP_FROM") or "").strip() or brevo_from_email() or smtp_user()).strip()
+
+
+# -----------------------
+# Google Play (Android Publisher API)
+# -----------------------
+def google_play_service_account_file() -> str:
+    """
+    Path to the Google Play service account JSON key file.
+
+    DO NOT commit the real key file. Use a secret volume / env var on the server.
+    """
+    return (os.environ.get("GOOGLE_PLAY_SERVICE_ACCOUNT_FILE") or "google_service_account.json").strip()
+
+
+def google_play_package_name() -> str:
+    """
+    Android application package name (e.g. com.company.app).
+    """
+    return (os.environ.get("GOOGLE_PLAY_PACKAGE_NAME") or "").strip()
 

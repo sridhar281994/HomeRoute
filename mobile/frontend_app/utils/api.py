@@ -88,6 +88,12 @@ def api_login_verify_otp(*, identifier: str, password: str, otp: str) -> dict[st
     return _handle(resp)
 
 
+def api_admin_login(*, identifier: str, password: str) -> dict[str, Any]:
+    url = f"{_base_url()}/admin/auth/login"
+    resp = requests.post(url, json={"identifier": identifier, "password": password}, timeout=15)
+    return _handle(resp)
+
+
 def api_guest() -> dict[str, Any]:
     url = f"{_base_url()}/auth/guest"
     resp = requests.post(url, json={}, timeout=15)

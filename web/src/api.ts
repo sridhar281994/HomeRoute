@@ -113,6 +113,30 @@ export function verifyOtp(identifier: string, password: string, otp: string) {
   });
 }
 
+export function adminLogin(identifier: string, password: string) {
+  return api<{ access_token: string; user: any }>("/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, password }),
+  });
+}
+
+export function forgotPasswordRequestOtp(identifier: string) {
+  return api<{ ok: boolean; message: string }>("/auth/forgot/request-otp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier }),
+  });
+}
+
+export function forgotPasswordReset(identifier: string, otp: string, new_password: string) {
+  return api<{ ok: boolean }>("/auth/forgot/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, otp, new_password }),
+  });
+}
+
 export function listProperties(params: {
   q?: string;
   rent_sale?: string;

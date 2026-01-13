@@ -73,6 +73,41 @@ class Subscription(Base):
     user = relationship("User", back_populates="subscription")
 
 
+class SubscriptionPlan(Base):
+    __tablename__ = "subscription_plans"
+
+    # Product ID from Google Play (e.g. smart_monthly_199)
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    price_inr: Mapped[int] = mapped_column(Integer, default=0)
+    duration_days: Mapped[int] = mapped_column(Integer, default=30)
+    contact_limit: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class UserSubscription(Base):
+    __tablename__ = "user_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("subscription_plans.id"), index=True)
+    purchase_token: Mapped[str] = mapped_column(String(255), unique=True)
+    start_time: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    end_time: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+
+
+class ContactUsage(Base):
+    __tablename__ = "contact_usage"
+    __table_args__ = (UniqueConstraint("user_id", "property_id", "subscription_id", name="uq_usage_user_property_sub"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"), index=True)
+    subscription_id: Mapped[int] = mapped_column(ForeignKey("user_subscriptions.id"), index=True)
+    used_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+
+
 class Property(Base):
     __tablename__ = "properties"
 

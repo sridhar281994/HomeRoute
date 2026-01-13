@@ -13,19 +13,51 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.config import otp_exp_minutes
+from app.config import allowed_hosts, enforce_secure_secrets, otp_exp_minutes
 from app.db import session_scope
 from app.mailer import EmailSendError, send_otp_email
-from app.models import ModerationLog, OtpCode, Property, PropertyImage, SavedProperty, Subscription, User
+from app.rate_limit import limiter
+from app.models import (
+    ContactUsage,
+    ModerationLog,
+    OtpCode,
+    Property,
+    PropertyImage,
+    SavedProperty,
+    Subscription,
+    SubscriptionPlan,
+    User,
+    UserSubscription,
+)
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
 
+from app.google_play import GooglePlayNotConfigured, verify_subscription_with_google_play
 
-app = FastAPI(title="Property Discovery API")
+
+app = FastAPI(title="ConstructHub API")
+
+# Production hardening: ensure we don't run with dangerous defaults.
+enforce_secure_secrets()
+
+# Optional host protection (recommend configuring ALLOWED_HOSTS in prod).
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
+
+
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    resp = await call_next(request)
+    # Security headers (safe defaults).
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    return resp
 
 def _cors_origins() -> list[str]:
     """
@@ -464,6 +496,7 @@ def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
 def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
     phone_norm = _norm_phone(identifier)
+    limiter.hit(key=f"otp:login:req:{identifier.lower()}", limit=5, window_seconds=10 * 60, detail="Too many OTP requests")
     user = db.execute(
         select(User).where(
             (User.email == identifier.lower())
@@ -482,8 +515,8 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
     db.add(OtpCode(identifier=identifier, purpose="login", code=code, expires_at=expires))
     try:
         delivery = send_otp_email(to_email=user.email, otp=code, purpose="login")
-    except EmailSendError:
-        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except EmailSendError as e:
+        raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
@@ -495,6 +528,7 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
 def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
     phone_norm = _norm_phone(identifier)
+    limiter.hit(key=f"otp:login:verify:{identifier.lower()}", limit=12, window_seconds=10 * 60, detail="Too many OTP attempts")
     user = db.execute(
         select(User).where(
             (User.email == identifier.lower())
@@ -554,6 +588,7 @@ def guest(db: Annotated[Session, Depends(get_db)]):
 def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
     phone_norm = _norm_phone(identifier)
+    limiter.hit(key=f"otp:forgot:req:{identifier.lower()}", limit=5, window_seconds=10 * 60, detail="Too many OTP requests")
     user = db.execute(
         select(User).where(
             (User.email == identifier.lower())
@@ -570,8 +605,8 @@ def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(
     db.add(OtpCode(identifier=identifier, purpose="forgot", code=code, expires_at=expires))
     try:
         delivery = send_otp_email(to_email=user.email, otp=code, purpose="forgot")
-    except EmailSendError:
-        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except EmailSendError as e:
+        raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
@@ -583,6 +618,7 @@ def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(
 def forgot_reset(data: ForgotResetIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
     phone_norm = _norm_phone(identifier)
+    limiter.hit(key=f"otp:forgot:reset:{identifier.lower()}", limit=10, window_seconds=10 * 60, detail="Too many reset attempts")
     user = db.execute(
         select(User).where(
             (User.email == identifier.lower())
@@ -630,6 +666,153 @@ def me_subscription(
         db.add(sub)
         db.flush()
     return {"status": sub.status, "provider": sub.provider, "expires_at": sub.expires_at}
+
+
+class VerifyPurchaseIn(BaseModel):
+    token: str = Field(..., min_length=1)
+    product_id: str | None = None
+
+
+@app.post("/verify-purchase")
+def verify_purchase(
+    data: VerifyPurchaseIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Backward-compatible alias for subscription verification."""
+    return verify_subscription(data, me=me, db=db)
+
+
+class VerifySubscriptionIn(BaseModel):
+    purchase_token: str = Field(..., min_length=1)
+    product_id: str = Field(..., min_length=1)
+
+
+def _ensure_plans(db: Session) -> None:
+    """
+    Ensure the four plans exist. This is idempotent.
+    """
+    plans = [
+        ("aggressive_10", "Aggressive", 10, 30, 10),
+        ("instant_79", "Instant", 79, 30, 50),
+        ("smart_monthly_199", "Smart", 199, 30, 200),
+        ("business_quarterly_499", "Business", 499, 90, 1000),
+    ]
+    for pid, name, price, days, limit in plans:
+        rec = db.get(SubscriptionPlan, pid)
+        if not rec:
+            db.add(SubscriptionPlan(id=pid, name=name, price_inr=price, duration_days=days, contact_limit=limit))
+        else:
+            rec.name = name
+            rec.price_inr = int(price)
+            rec.duration_days = int(days)
+            rec.contact_limit = int(limit)
+            db.add(rec)
+
+
+@app.post("/verify-subscription")
+def verify_subscription(
+    data: VerifySubscriptionIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Validates a Google Play subscription purchase token.
+
+    - If Google Play API credentials are configured, it performs real server-side validation.
+    - Otherwise, it falls back to a dev-mode activation (keeps current environments working).
+    """
+    limiter.hit(key=f"sub:verify:{me.id}", limit=20, window_seconds=10 * 60, detail="Too many verification attempts")
+    _ensure_plans(db)
+    product_id = (data.product_id or "").strip()
+    token = (data.purchase_token or "").strip()
+    plan = db.get(SubscriptionPlan, product_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Unknown product_id")
+
+    # Idempotency / abuse prevention: purchase tokens must be unique.
+    existing_token = db.execute(select(UserSubscription).where(UserSubscription.purchase_token == token)).scalar_one_or_none()
+    if existing_token and int(existing_token.user_id) != int(me.id):
+        raise HTTPException(status_code=409, detail="Purchase token already used by another account")
+
+    now = dt.datetime.now(dt.timezone.utc)
+
+    # Validate with Google Play when configured.
+    expiry_dt: dt.datetime | None = None
+    order_id: str | None = None
+    try:
+        result = verify_subscription_with_google_play(purchase_token=token, product_id=product_id)
+        # paymentState==1 indicates payment received for subscriptions (for some purchase types).
+        payment_state = result.get("paymentState")
+        if payment_state is not None and int(payment_state) != 1:
+            raise HTTPException(status_code=400, detail="Payment not completed")
+        expiry_ms = result.get("expiryTimeMillis")
+        if expiry_ms:
+            expiry_dt = dt.datetime.fromtimestamp(int(expiry_ms) / 1000.0, tz=dt.timezone.utc)
+        order_id = result.get("orderId")
+    except GooglePlayNotConfigured:
+        # Dev fallback: expire by plan duration.
+        expiry_dt = now + dt.timedelta(days=int(plan.duration_days or 30))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not expiry_dt:
+        expiry_dt = now + dt.timedelta(days=int(plan.duration_days or 30))
+
+    # Upsert into legacy Subscription table (existing app logic).
+    sub = db.execute(select(Subscription).where(Subscription.user_id == me.id)).scalar_one_or_none()
+    if not sub:
+        sub = Subscription(user_id=me.id, status="inactive", provider="google_play")
+        db.add(sub)
+        db.flush()
+    sub.status = "active"
+    sub.provider = "google_play"
+    sub.purchase_token = token
+    sub.expires_at = expiry_dt
+    sub.updated_at = now
+    db.add(sub)
+
+    # Deactivate previous user_subscriptions for this user.
+    db.execute(sa_update(UserSubscription).where(UserSubscription.user_id == me.id).values(active=False))
+
+    us = UserSubscription(
+        user_id=me.id,
+        plan_id=plan.id,
+        purchase_token=token,
+        start_time=now,
+        end_time=expiry_dt,
+        active=True,
+    )
+    db.add(us)
+    db.flush()
+
+    return {
+        "status": "valid",
+        "expiry_time": int(expiry_dt.timestamp() * 1000),
+        "order_id": order_id,
+        "subscription": {"status": sub.status, "expires_at": sub.expires_at, "product_id": product_id},
+    }
+    sub = db.execute(select(Subscription).where(Subscription.user_id == me.id)).scalar_one_or_none()
+    if not sub:
+        sub = Subscription(user_id=me.id, status="inactive", provider="google_play")
+        db.add(sub)
+        db.flush()
+
+    now = dt.datetime.now(dt.timezone.utc)
+    product_id = (data.product_id or "").strip()
+    # Default to monthly unless explicitly quarterly.
+    days = 30
+    if product_id == "business_quarterly_499":
+        days = 90
+    sub.status = "active"
+    sub.provider = "google_play"
+    sub.purchase_token = data.token.strip()
+    sub.expires_at = now + dt.timedelta(days=days)
+    sub.updated_at = now
+    db.add(sub)
+    return {"status": "valid", "subscription": {"status": sub.status, "expires_at": sub.expires_at, "product_id": product_id}}
 
 
 @app.get("/me")
@@ -689,6 +872,7 @@ def me_change_email_request_otp(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
     new_email = (data.new_email or "").strip().lower()
+    limiter.hit(key=f"otp:change_email:req:{me.id}", limit=5, window_seconds=10 * 60, detail="Too many OTP requests")
     if not new_email or "@" not in new_email:
         raise HTTPException(status_code=400, detail="Invalid email")
     if new_email == (me.email or "").lower():
@@ -705,8 +889,8 @@ def me_change_email_request_otp(
     db.add(OtpCode(identifier=otp_identifier, purpose="change_email", code=code, expires_at=expires))
     try:
         delivery = send_otp_email(to_email=new_email, otp=code, purpose="change_email")
-    except EmailSendError:
-        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except EmailSendError as e:
+        raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
@@ -722,6 +906,7 @@ def me_change_email_verify(
 ) -> dict[str, Any]:
     new_email = (data.new_email or "").strip().lower()
     otp = (data.otp or "").strip()
+    limiter.hit(key=f"otp:change_email:verify:{me.id}", limit=12, window_seconds=10 * 60, detail="Too many OTP attempts")
     if not new_email or "@" not in new_email:
         raise HTTPException(status_code=400, detail="Invalid email")
     if not otp:
@@ -763,6 +948,7 @@ def me_change_phone_request_otp(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
     new_phone = (data.new_phone or "").strip()
+    limiter.hit(key=f"otp:change_phone:req:{me.id}", limit=5, window_seconds=10 * 60, detail="Too many OTP requests")
     phone_norm = _norm_phone(new_phone)
     if not phone_norm or len(re.sub(r"[^0-9]", "", phone_norm)) < 6:
         raise HTTPException(status_code=400, detail="Invalid phone")
@@ -782,8 +968,8 @@ def me_change_phone_request_otp(
     db.add(OtpCode(identifier=otp_identifier, purpose="change_phone", code=code, expires_at=expires))
     try:
         delivery = send_otp_email(to_email=me.email, otp=code, purpose=f"change_phone:{phone_norm}")
-    except EmailSendError:
-        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except EmailSendError as e:
+        raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
@@ -799,6 +985,7 @@ def me_change_phone_verify(
 ) -> dict[str, Any]:
     new_phone = (data.new_phone or "").strip()
     otp = (data.otp or "").strip()
+    limiter.hit(key=f"otp:change_phone:verify:{me.id}", limit=12, window_seconds=10 * 60, detail="Too many OTP attempts")
     phone_norm = _norm_phone(new_phone)
     if not phone_norm:
         raise HTTPException(status_code=400, detail="Invalid phone")
@@ -1062,6 +1249,7 @@ def get_property_contact(
     me: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    limiter.hit(key=f"contact:{me.id}", limit=60, window_seconds=60, detail="Too many contact unlock requests")
     p = db.get(Property, int(property_id))
     if not p or p.status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
@@ -1072,6 +1260,44 @@ def get_property_contact(
     sub = db.execute(select(Subscription).where(Subscription.user_id == me.id)).scalar_one_or_none()
     if not sub or (sub.status or "").lower() != "active":
         raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
+
+    # Abuse prevention: enforce plan contact_limit per active subscription period.
+    _ensure_plans(db)
+    now = dt.datetime.now(dt.timezone.utc)
+    usub = (
+        db.execute(
+            select(UserSubscription)
+            .where((UserSubscription.user_id == me.id) & (UserSubscription.active == True))  # noqa: E712
+            .order_by(UserSubscription.id.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if not usub:
+        raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
+    if usub.end_time and usub.end_time <= now:
+        usub.active = False
+        db.add(usub)
+        raise HTTPException(status_code=402, detail="Subscription expired")
+
+    plan = db.get(SubscriptionPlan, usub.plan_id)
+    limit = int(plan.contact_limit or 0) if plan else 0
+    if limit > 0:
+        # Don't double-count repeated unlocks of the same property for the same subscription.
+        existing = db.execute(
+            select(ContactUsage.id).where(
+                (ContactUsage.user_id == me.id)
+                & (ContactUsage.property_id == int(property_id))
+                & (ContactUsage.subscription_id == usub.id)
+            )
+        ).first()
+        if not existing:
+            used_count = db.execute(
+                select(ContactUsage.id).where((ContactUsage.user_id == me.id) & (ContactUsage.subscription_id == usub.id))
+            ).all()
+            if len(used_count) >= limit:
+                raise HTTPException(status_code=429, detail="Contact unlock limit reached for your plan")
+            db.add(ContactUsage(user_id=me.id, property_id=int(property_id), subscription_id=usub.id))
 
     return {"phone": p.contact_phone, "email": p.contact_email}
 
@@ -1497,6 +1723,36 @@ def admin_login(data: AdminLoginIn, db: Annotated[Session, Depends(get_db)]):
     return {"access_token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role}}
 
 
+@app.get("/admin/revenue")
+def admin_revenue(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Revenue dashboard (basic):
+    Aggregates validated subscriptions by plan.
+    """
+    if (me.role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    _ensure_plans(db)
+    items = []
+    for p in db.execute(select(SubscriptionPlan)).scalars().all():
+        subs = db.execute(select(UserSubscription).where(UserSubscription.plan_id == p.id)).scalars().all()
+        count = len(subs)
+        items.append(
+            {
+                "plan_id": p.id,
+                "name": p.name,
+                "price_inr": int(p.price_inr or 0),
+                "subscriptions": count,
+                "revenue_inr": int(p.price_inr or 0) * count,
+            }
+        )
+    items.sort(key=lambda x: x["revenue_inr"], reverse=True)
+    return {"items": items}
+
+
 @app.post("/properties/{property_id}/images")
 def upload_property_image(
     property_id: int,
@@ -1610,7 +1866,7 @@ def root():
           <head>
             <meta charset="utf-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>Property Discovery</title>
+            <title>ConstructHub</title>
             <style>
               body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; line-height: 1.4; }
               code { background: #f5f5f5; padding: 2px 6px; border-radius: 6px; }

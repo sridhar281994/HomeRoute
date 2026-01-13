@@ -35,13 +35,14 @@ a{color:inherit}
   inset: 0;
   z-index: -1;
   background-image:
+    url("/assets/allpage.png"),
     radial-gradient(900px 640px at 12% 18%, rgba(255,122,24,.36), transparent 62%),
     radial-gradient(820px 640px at 86% 72%, rgba(124,58,237,.32), transparent 60%),
     radial-gradient(740px 560px at 60% 10%, rgba(255,195,77,.16), transparent 58%),
     linear-gradient(135deg, rgba(124,58,237,.12), rgba(255,122,24,.10)),
     linear-gradient(180deg, #0a0714, #12060f 52%, #140803);
-  background-size: 140% 140%, 140% 140%, 120% 120%, 200% 200%, auto;
-  background-position: 10% 10%, 90% 70%, 60% 5%, 0% 0%, center;
+  background-size: cover, 140% 140%, 140% 140%, 120% 120%, 200% 200%, auto;
+  background-position: center, 10% 10%, 90% 70%, 60% 5%, 0% 0%, center;
   animation: aurora 12s ease-in-out infinite;
   transform: translate3d(0,0,0);
   will-change: background-position, filter;
@@ -59,9 +60,9 @@ a{color:inherit}
   animation: auroraShine 6.5s ease-in-out infinite;
 }
 @keyframes aurora{
-  0%   { background-position: 10% 10%, 90% 70%, 60% 5%, 0% 0%, center; }
-  50%  { background-position: 18% 22%, 78% 60%, 52% 14%, 60% 40%, center; }
-  100% { background-position: 10% 10%, 90% 70%, 60% 5%, 0% 0%, center; }
+  0%   { background-position: center, 10% 10%, 90% 70%, 60% 5%, 0% 0%, center; }
+  50%  { background-position: center, 18% 22%, 78% 60%, 52% 14%, 60% 40%, center; }
+  100% { background-position: center, 10% 10%, 90% 70%, 60% 5%, 0% 0%, center; }
 }
 @keyframes auroraShine{
   0%{opacity:.55; transform: translate3d(0,0,0);}
@@ -179,7 +180,7 @@ button:focus-visible{
   inset: 0;
   z-index: -1;
   background-image:
-    url("/home_bg.svg"),
+    url("/assets/HomePage.png"),
     radial-gradient(900px 600px at 10% -10%, rgba(255,122,24,.28), transparent 60%),
     radial-gradient(760px 520px at 90% 110%, rgba(255,255,255,.10), transparent 55%),
     radial-gradient(820px 620px at 75% 15%, rgba(255,195,77,.14), transparent 58%),
