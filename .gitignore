@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local env files / secrets
+.env
+.env.*
+
+# Google Play service account key (DO NOT COMMIT)
+google_service_account.json
+backend/google_service_account.json
+
+# Node build artifacts (kept in this repo, but ignore accidental extras)
+web/node_modules/
+

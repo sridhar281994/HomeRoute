@@ -112,3 +112,22 @@ def smtp_from_email() -> str:
     # Allow either SMTP_FROM or BREVO_FROM as the sender address.
     return ((os.environ.get("SMTP_FROM") or "").strip() or brevo_from_email() or smtp_user()).strip()
 
+
+# -----------------------
+# Google Play (Android Publisher API)
+# -----------------------
+def google_play_service_account_file() -> str:
+    """
+    Path to the Google Play service account JSON key file.
+
+    DO NOT commit the real key file. Use a secret volume / env var on the server.
+    """
+    return (os.environ.get("GOOGLE_PLAY_SERVICE_ACCOUNT_FILE") or "google_service_account.json").strip()
+
+
+def google_play_package_name() -> str:
+    """
+    Android application package name (e.g. com.company.app).
+    """
+    return (os.environ.get("GOOGLE_PLAY_PACKAGE_NAME") or "").strip()
+

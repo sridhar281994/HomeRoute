@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -21,8 +21,21 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import otp_exp_minutes
 from app.db import session_scope
 from app.mailer import EmailSendError, send_otp_email
-from app.models import ModerationLog, OtpCode, Property, PropertyImage, SavedProperty, Subscription, User
+from app.models import (
+    ContactUsage,
+    ModerationLog,
+    OtpCode,
+    Property,
+    PropertyImage,
+    SavedProperty,
+    Subscription,
+    SubscriptionPlan,
+    User,
+    UserSubscription,
+)
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
+
+from app.google_play import GooglePlayNotConfigured, verify_subscription_with_google_play
 
 
 app = FastAPI(title="ConstructHub API")
@@ -643,12 +656,115 @@ def verify_purchase(
     me: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    """
-    Mobile client sends the Google Play purchase token here.
+    """Backward-compatible alias for subscription verification."""
+    return verify_subscription(data, me=me, db=db)
 
-    Note: Real validation must call Google Play Developer API. For now we persist the
-    token and activate the subscription so the end-to-end flow can be wired up.
+
+class VerifySubscriptionIn(BaseModel):
+    purchase_token: str = Field(..., min_length=1)
+    product_id: str = Field(..., min_length=1)
+
+
+def _ensure_plans(db: Session) -> None:
     """
+    Ensure the four plans exist. This is idempotent.
+    """
+    plans = [
+        ("aggressive_10", "Aggressive", 10, 30, 10),
+        ("instant_79", "Instant", 79, 30, 50),
+        ("smart_monthly_199", "Smart", 199, 30, 200),
+        ("business_quarterly_499", "Business", 499, 90, 1000),
+    ]
+    for pid, name, price, days, limit in plans:
+        rec = db.get(SubscriptionPlan, pid)
+        if not rec:
+            db.add(SubscriptionPlan(id=pid, name=name, price_inr=price, duration_days=days, contact_limit=limit))
+        else:
+            rec.name = name
+            rec.price_inr = int(price)
+            rec.duration_days = int(days)
+            rec.contact_limit = int(limit)
+            db.add(rec)
+
+
+@app.post("/verify-subscription")
+def verify_subscription(
+    data: VerifySubscriptionIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Validates a Google Play subscription purchase token.
+
+    - If Google Play API credentials are configured, it performs real server-side validation.
+    - Otherwise, it falls back to a dev-mode activation (keeps current environments working).
+    """
+    _ensure_plans(db)
+    product_id = (data.product_id or "").strip()
+    token = (data.purchase_token or "").strip()
+    plan = db.get(SubscriptionPlan, product_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Unknown product_id")
+
+    now = dt.datetime.now(dt.timezone.utc)
+
+    # Validate with Google Play when configured.
+    expiry_dt: dt.datetime | None = None
+    order_id: str | None = None
+    try:
+        result = verify_subscription_with_google_play(purchase_token=token, product_id=product_id)
+        # paymentState==1 indicates payment received for subscriptions (for some purchase types).
+        payment_state = result.get("paymentState")
+        if payment_state is not None and int(payment_state) != 1:
+            raise HTTPException(status_code=400, detail="Payment not completed")
+        expiry_ms = result.get("expiryTimeMillis")
+        if expiry_ms:
+            expiry_dt = dt.datetime.fromtimestamp(int(expiry_ms) / 1000.0, tz=dt.timezone.utc)
+        order_id = result.get("orderId")
+    except GooglePlayNotConfigured:
+        # Dev fallback: expire by plan duration.
+        expiry_dt = now + dt.timedelta(days=int(plan.duration_days or 30))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not expiry_dt:
+        expiry_dt = now + dt.timedelta(days=int(plan.duration_days or 30))
+
+    # Upsert into legacy Subscription table (existing app logic).
+    sub = db.execute(select(Subscription).where(Subscription.user_id == me.id)).scalar_one_or_none()
+    if not sub:
+        sub = Subscription(user_id=me.id, status="inactive", provider="google_play")
+        db.add(sub)
+        db.flush()
+    sub.status = "active"
+    sub.provider = "google_play"
+    sub.purchase_token = token
+    sub.expires_at = expiry_dt
+    sub.updated_at = now
+    db.add(sub)
+
+    # Deactivate previous user_subscriptions for this user.
+    db.execute(sa_update(UserSubscription).where(UserSubscription.user_id == me.id).values(active=False))
+
+    us = UserSubscription(
+        user_id=me.id,
+        plan_id=plan.id,
+        purchase_token=token,
+        start_time=now,
+        end_time=expiry_dt,
+        active=True,
+    )
+    db.add(us)
+    db.flush()
+
+    return {
+        "status": "valid",
+        "expiry_time": int(expiry_dt.timestamp() * 1000),
+        "order_id": order_id,
+        "subscription": {"status": sub.status, "expires_at": sub.expires_at, "product_id": product_id},
+    }
     sub = db.execute(select(Subscription).where(Subscription.user_id == me.id)).scalar_one_or_none()
     if not sub:
         sub = Subscription(user_id=me.id, status="inactive", provider="google_play")
@@ -1111,6 +1227,44 @@ def get_property_contact(
     if not sub or (sub.status or "").lower() != "active":
         raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
 
+    # Abuse prevention: enforce plan contact_limit per active subscription period.
+    _ensure_plans(db)
+    now = dt.datetime.now(dt.timezone.utc)
+    usub = (
+        db.execute(
+            select(UserSubscription)
+            .where((UserSubscription.user_id == me.id) & (UserSubscription.active == True))  # noqa: E712
+            .order_by(UserSubscription.id.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if not usub:
+        raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
+    if usub.end_time and usub.end_time <= now:
+        usub.active = False
+        db.add(usub)
+        raise HTTPException(status_code=402, detail="Subscription expired")
+
+    plan = db.get(SubscriptionPlan, usub.plan_id)
+    limit = int(plan.contact_limit or 0) if plan else 0
+    if limit > 0:
+        # Don't double-count repeated unlocks of the same property for the same subscription.
+        existing = db.execute(
+            select(ContactUsage.id).where(
+                (ContactUsage.user_id == me.id)
+                & (ContactUsage.property_id == int(property_id))
+                & (ContactUsage.subscription_id == usub.id)
+            )
+        ).first()
+        if not existing:
+            used_count = db.execute(
+                select(ContactUsage.id).where((ContactUsage.user_id == me.id) & (ContactUsage.subscription_id == usub.id))
+            ).all()
+            if len(used_count) >= limit:
+                raise HTTPException(status_code=429, detail="Contact unlock limit reached for your plan")
+            db.add(ContactUsage(user_id=me.id, property_id=int(property_id), subscription_id=usub.id))
+
     return {"phone": p.contact_phone, "email": p.contact_email}
 
 
@@ -1533,6 +1687,36 @@ def admin_login(data: AdminLoginIn, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
     token = create_access_token(user_id=user.id, role=user.role)
     return {"access_token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role}}
+
+
+@app.get("/admin/revenue")
+def admin_revenue(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Revenue dashboard (basic):
+    Aggregates validated subscriptions by plan.
+    """
+    if (me.role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    _ensure_plans(db)
+    items = []
+    for p in db.execute(select(SubscriptionPlan)).scalars().all():
+        subs = db.execute(select(UserSubscription).where(UserSubscription.plan_id == p.id)).scalars().all()
+        count = len(subs)
+        items.append(
+            {
+                "plan_id": p.id,
+                "name": p.name,
+                "price_inr": int(p.price_inr or 0),
+                "subscriptions": count,
+                "revenue_inr": int(p.price_inr or 0) * count,
+            }
+        )
+    items.sort(key=lambda x: x["revenue_inr"], reverse=True)
+    return {"items": items}
 
 
 @app.post("/properties/{property_id}/images")
