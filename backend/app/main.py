@@ -411,7 +411,13 @@ def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
         password_hash=hash_password(data.password),
     )
     db.add(user)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # Even with the pre-check above, concurrent requests (or double-submits) can still
+        # violate unique constraints. Convert to a deterministic 409 instead of a 500.
+        db.rollback()
+        raise HTTPException(status_code=409, detail="User already exists")
     # Ensure a subscription row exists.
     db.add(Subscription(user_id=user.id, status="inactive", provider="google_play"))
     return {"ok": True, "user_id": user.id}
