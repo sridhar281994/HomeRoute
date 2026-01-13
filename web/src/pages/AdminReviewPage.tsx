@@ -9,9 +9,12 @@ import {
   adminOwnersPending,
   adminPending,
   adminReject,
+  getSession,
 } from "../api";
+import { useNavigate } from "react-router-dom";
 
 export default function AdminReviewPage() {
+  const nav = useNavigate();
   const [items, setItems] = useState<any[]>([]);
   const [owners, setOwners] = useState<any[]>([]);
   const [images, setImages] = useState<any[]>([]);
@@ -31,6 +34,12 @@ export default function AdminReviewPage() {
   }
 
   useEffect(() => {
+    const s = getSession();
+    const role = String(s.user?.role || "").toLowerCase();
+    if (!s.token || role !== "admin") {
+      nav("/home");
+      return;
+    }
     load();
   }, []);
 

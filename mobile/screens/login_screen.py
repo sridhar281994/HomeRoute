@@ -7,7 +7,7 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 
-from frontend_app.utils.api import ApiError, api_login_request_otp, api_login_verify_otp
+from frontend_app.utils.api import ApiError, api_admin_login, api_login_request_otp, api_login_verify_otp
 from frontend_app.utils.storage import get_remember_me, set_remember_me, set_session
 
 
@@ -33,6 +33,7 @@ def _popup(title: str, msg: str) -> None:
 class LoginScreen(Screen):
     font_scale = NumericProperty(1.0)
     remember_me = BooleanProperty(False)
+    is_admin_login = BooleanProperty(False)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -125,6 +126,10 @@ class LoginScreen(Screen):
     # Verify OTP + Login
     # -----------------------
     def verify_and_login(self):
+        if bool(self.is_admin_login):
+            self.login_as_admin()
+            return
+
         identifier = self._read_identifier()
         password = self._read_password()
         otp = _safe_text(self, "otp_input")
@@ -164,3 +169,37 @@ class LoginScreen(Screen):
         Thread(target=work, daemon=True).start()
 
     # Guest login removed from UI as requested.
+
+    def login_as_admin(self):
+        identifier = self._read_identifier()
+        password = self._read_password()
+
+        if not self._validate_identifier(identifier):
+            _popup("Error", "Enter a valid admin email/username.")
+            return
+        if len(password) < 4:
+            _popup("Error", "Enter your password.")
+            return
+
+        def work():
+            try:
+                data = api_admin_login(identifier=identifier, password=password)
+                token = data.get("access_token")
+                user = data.get("user") or {}
+                if not token:
+                    raise ApiError("Admin login failed.")
+
+                set_remember_me(bool(self.remember_me))
+                set_session(token=token, user=user, remember=bool(self.remember_me))
+
+                def after(*_):
+                    if self.manager:
+                        self.manager.current = "home"
+                    _popup("Success", "Admin logged in.")
+
+                Clock.schedule_once(after, 0)
+            except ApiError as exc:
+                msg = str(exc)
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+
+        Thread(target=work, daemon=True).start()

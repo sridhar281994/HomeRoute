@@ -356,9 +356,11 @@ class SubscriptionScreen(Screen):
 
         Thread(target=work, daemon=True).start()
 
-    def simulate_google_play_success(self):
+    def simulate_google_play_success(self, product_id: str = ""):
         # Real payment is handled by Google Play Billing.
-        _popup("Google Play Billing", "In production, Google completes payment.\nThis is a demo screen.")
+        pid = str(product_id or "").strip()
+        label = pid or "(no product id)"
+        _popup("Google Play Billing", f"Product: {label}\n\nIn production, Google completes payment.\nThis is a demo screen.")
 
     def back(self):
         if self.manager:

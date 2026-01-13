@@ -85,7 +85,7 @@ def brevo_from_email() -> str:
 
 
 def brevo_sender_name() -> str:
-    return (os.environ.get("BREVO_SENDER_NAME") or "Property Discovery").strip()
+    return (os.environ.get("BREVO_SENDER_NAME") or "ConstructHub").strip()
 
 
 def smtp_host() -> str:

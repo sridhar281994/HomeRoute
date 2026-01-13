@@ -25,7 +25,7 @@ from app.models import ModerationLog, OtpCode, Property, PropertyImage, SavedPro
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
 
 
-app = FastAPI(title="Property Discovery API")
+app = FastAPI(title="ConstructHub API")
 
 def _cors_origins() -> list[str]:
     """
@@ -482,8 +482,8 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
     db.add(OtpCode(identifier=identifier, purpose="login", code=code, expires_at=expires))
     try:
         delivery = send_otp_email(to_email=user.email, otp=code, purpose="login")
-    except EmailSendError:
-        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except EmailSendError as e:
+        raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
@@ -570,8 +570,8 @@ def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(
     db.add(OtpCode(identifier=identifier, purpose="forgot", code=code, expires_at=expires))
     try:
         delivery = send_otp_email(to_email=user.email, otp=code, purpose="forgot")
-    except EmailSendError:
-        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except EmailSendError as e:
+        raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
@@ -630,6 +630,44 @@ def me_subscription(
         db.add(sub)
         db.flush()
     return {"status": sub.status, "provider": sub.provider, "expires_at": sub.expires_at}
+
+
+class VerifyPurchaseIn(BaseModel):
+    token: str = Field(..., min_length=1)
+    product_id: str | None = None
+
+
+@app.post("/verify-purchase")
+def verify_purchase(
+    data: VerifyPurchaseIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Mobile client sends the Google Play purchase token here.
+
+    Note: Real validation must call Google Play Developer API. For now we persist the
+    token and activate the subscription so the end-to-end flow can be wired up.
+    """
+    sub = db.execute(select(Subscription).where(Subscription.user_id == me.id)).scalar_one_or_none()
+    if not sub:
+        sub = Subscription(user_id=me.id, status="inactive", provider="google_play")
+        db.add(sub)
+        db.flush()
+
+    now = dt.datetime.now(dt.timezone.utc)
+    product_id = (data.product_id or "").strip()
+    # Default to monthly unless explicitly quarterly.
+    days = 30
+    if product_id == "business_quarterly_499":
+        days = 90
+    sub.status = "active"
+    sub.provider = "google_play"
+    sub.purchase_token = data.token.strip()
+    sub.expires_at = now + dt.timedelta(days=days)
+    sub.updated_at = now
+    db.add(sub)
+    return {"status": "valid", "subscription": {"status": sub.status, "expires_at": sub.expires_at, "product_id": product_id}}
 
 
 @app.get("/me")
@@ -705,8 +743,8 @@ def me_change_email_request_otp(
     db.add(OtpCode(identifier=otp_identifier, purpose="change_email", code=code, expires_at=expires))
     try:
         delivery = send_otp_email(to_email=new_email, otp=code, purpose="change_email")
-    except EmailSendError:
-        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except EmailSendError as e:
+        raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
@@ -782,8 +820,8 @@ def me_change_phone_request_otp(
     db.add(OtpCode(identifier=otp_identifier, purpose="change_phone", code=code, expires_at=expires))
     try:
         delivery = send_otp_email(to_email=me.email, otp=code, purpose=f"change_phone:{phone_norm}")
-    except EmailSendError:
-        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except EmailSendError as e:
+        raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
@@ -1610,7 +1648,7 @@ def root():
           <head>
             <meta charset="utf-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>Property Discovery</title>
+            <title>ConstructHub</title>
             <style>
               body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; line-height: 1.4; }
               code { background: #f5f5f5; padding: 2px 6px; border-radius: 6px; }

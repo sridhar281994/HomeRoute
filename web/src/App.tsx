@@ -10,6 +10,7 @@ import SubscriptionPage from "./pages/SubscriptionPage";
 import ProfilePage from "./pages/ProfilePage";
 import OwnerAddPage from "./pages/OwnerAddPage";
 import AdminReviewPage from "./pages/AdminReviewPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 
 export default function App() {
   const loc = useLocation();
@@ -24,7 +25,7 @@ export default function App() {
       {!isHome ? <div className="app-bg" aria-hidden="true" /> : null}
       <div className="panel nav row" style={{ marginBottom: 14 }}>
         <div className="row" style={{ gap: 10 }}>
-          <div className="h2">Property Discovery (India)  🏠✨</div>
+          <div className="h2">ConstructHub  🏗️</div>
         </div>
         <div className="spacer" />
         <div className="row nav" style={{ gap: 10 }}>
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="/admin/review" element={<AdminReviewPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot" element={<ForgotPasswordPage />} />
       </Routes>
     </div>
   );

@@ -22,8 +22,8 @@ from screens.shell_screens import (
 )
 
 
-class PropertyDiscoveryApp(App):
-    title = "Property Discovery"
+class ConstructHubApp(App):
+    title = "ConstructHub"
 
     def build(self):
         Builder.load_file("kv/screens.kv")
@@ -49,5 +49,5 @@ class PropertyDiscoveryApp(App):
 
 
 if __name__ == "__main__":
-    PropertyDiscoveryApp().run()
+    ConstructHubApp().run()
 
