@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { forgotPasswordRequestOtp, forgotPasswordReset } from "../api";
 import { Link, useNavigate } from "react-router-dom";
+import PasswordField from "../components/PasswordField";
 
 export default function ForgotPasswordPage() {
   const nav = useNavigate();
@@ -51,8 +52,12 @@ export default function ForgotPasswordPage() {
               <input value={otp} onChange={(e) => setOtp(e.target.value)} />
             </div>
             <div className="col-6">
-              <label className="muted">New password</label>
-              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+              <PasswordField
+                label="New password"
+                value={newPassword}
+                onChange={setNewPassword}
+                autoComplete="new-password"
+              />
             </div>
             <div className="col-12 row">
               <button
