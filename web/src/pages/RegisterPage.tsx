@@ -85,7 +85,7 @@ export default function RegisterPage() {
         </div>
         {role === "owner" ? (
           <div className="col-12">
-            <label className="muted">Owner category</label>
+            <label className="muted">Publish Ad category</label>
             <select value={ownerCategory} onChange={(e) => setOwnerCategory(e.target.value)}>
               <option value="">Select category</option>
               {OWNER_CATEGORIES.map((c) => (
@@ -134,7 +134,7 @@ export default function RegisterPage() {
                 if (!district) throw new Error("Please select your district.");
                 const digits = (phone || "").replace(/\D/g, "");
                 if (digits.length < 8 || digits.length > 15) throw new Error("Enter a valid phone number.");
-                if (role === "owner" && !ownerCategory) throw new Error("Please select your owner category.");
+                if (role === "owner" && !ownerCategory) throw new Error("Please select your Publish Ad category.");
                 await registerUser({
                   email,
                   phone,

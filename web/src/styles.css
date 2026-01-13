@@ -71,6 +71,22 @@ a{color:inherit}
     width: 100%;
   }
 }
+@media (max-width: 520px){
+  .topbar-links{
+    gap: 8px;
+  }
+  .topbar-links a,
+  .topbar-links button{
+    flex: 1 1 calc(50% - 8px);
+    text-align: center;
+  }
+}
+@media (max-width: 360px){
+  .topbar-links a,
+  .topbar-links button{
+    flex-basis: 100%;
+  }
+}
 
 .app-bg{
   position: fixed;

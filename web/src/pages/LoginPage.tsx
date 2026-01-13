@@ -1,17 +1,27 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getSession, requestOtp, setSession, verifyOtp } from "../api";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import PasswordField from "../components/PasswordField";
 
 export default function LoginPage() {
+  const ADMIN_EMAIL = "info@srtech.co.in";
   const nav = useNavigate();
   const s = getSession();
   if (s.token) return <Navigate to="/home" replace />;
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [adminMode, setAdminMode] = useState(false);
   const [otp, setOtp] = useState("");
   const [msg, setMsg] = useState<string>("");
+
+  useEffect(() => {
+    if (adminMode) {
+      setIdentifier(ADMIN_EMAIL);
+    } else {
+      setIdentifier((prev) => (prev === ADMIN_EMAIL ? "" : prev));
+    }
+  }, [adminMode]);
 
   return (
     <div className="panel">
@@ -19,9 +29,41 @@ export default function LoginPage() {
       <p className="muted">Request an OTP, then verify to login.</p>
 
       <div className="grid" style={{ marginTop: 12 }}>
+        <div className="col-12">
+          <label className="muted">Login type</label>
+          <div className="row" style={{ gap: 10 }}>
+            <button
+              type="button"
+              className={`chip ${!adminMode ? "chip-on" : ""}`}
+              onClick={() => {
+                setMsg("");
+                setOtp("");
+                setAdminMode(false);
+              }}
+            >
+              User
+            </button>
+            <button
+              type="button"
+              className={`chip ${adminMode ? "chip-on" : ""}`}
+              onClick={() => {
+                setMsg("");
+                setOtp("");
+                setAdminMode(true);
+              }}
+            >
+              Administrator
+            </button>
+          </div>
+          {adminMode ? (
+            <div className="muted" style={{ marginTop: 6 }}>
+              OTP will be sent to <b>{ADMIN_EMAIL}</b>.
+            </div>
+          ) : null}
+        </div>
         <div className="col-6">
-          <label className="muted">Email/Username</label>
-          <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
+          <label className="muted">{adminMode ? "Administrator email" : "Email/Username"}</label>
+          <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} disabled={adminMode} />
         </div>
         <div className="col-6">
           <PasswordField label="Password" value={password} onChange={setPassword} autoComplete="current-password" />

@@ -43,7 +43,7 @@ export default function OwnerAddPage() {
     return (
       <div className="panel">
         <p className="h1">Publish Ad  🏢</p>
-        <p className="muted">Owner access only. Please login/register with an Owner account to publish ads.</p>
+        <p className="muted">Publish Ad access only. Please login/register with a Publish Ad account to publish ads.</p>
         <Link to="/home">Back</Link>
       </div>
     );
@@ -79,7 +79,7 @@ export default function OwnerAddPage() {
         Create the ad first, then upload photos.
       </p>
       <p className="muted" style={{ marginTop: 6 }}>
-        Important note: only the owner who created an ad can remove it.
+        Important note: only the account that created an ad can remove it.
       </p>
 
       <div className="grid" style={{ marginTop: 12 }}>
