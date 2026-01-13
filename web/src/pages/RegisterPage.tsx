@@ -73,7 +73,7 @@ export default function RegisterPage() {
           <label className="muted">Role</label>
           <div className="row" style={{ gap: 10 }}>
             <button className={`chip ${role === "owner" ? "chip-on" : ""}`} onClick={() => setRole("owner")}>
-              Owner  🏢
+              Publish Ad  🏢
             </button>
             <button
               className={`chip ${role === "customer" ? "chip-on" : ""}`}

@@ -8,15 +8,12 @@ export default function OwnerAddPage() {
   const nav = useNavigate();
   const s = getSession();
   const [title, setTitle] = useState("");
-  const [location, setLocation] = useState("");
   const [state, setState] = useState<string>(s.user?.state || localStorage.getItem("pd_state") || "");
   const [district, setDistrict] = useState<string>(s.user?.district || localStorage.getItem("pd_district") || "");
-  const [address, setAddress] = useState("");
   const [price, setPrice] = useState("");
   const [rentSale, setRentSale] = useState("rent");
-  const [propertyType, setPropertyType] = useState("apartment");
+  const [category, setCategory] = useState<"materials" | "services" | "property">("property");
   const [contactPhone, setContactPhone] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
   const [propertyId, setPropertyId] = useState<number | null>(null);
   const [msg, setMsg] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
@@ -35,8 +32,8 @@ export default function OwnerAddPage() {
   if ((s.user?.role || "").toLowerCase() !== "owner") {
     return (
       <div className="panel">
-        <p className="h1">Owner Dashboard  🏢</p>
-        <p className="muted">Owner access only. Please login/register as an Owner account.</p>
+        <p className="h1">Publish Ad  🏢</p>
+        <p className="muted">Owner access only. Please login/register with an Owner account to publish ads.</p>
         <Link to="/home">Back</Link>
       </div>
     );
@@ -48,13 +45,13 @@ export default function OwnerAddPage() {
     <div className="panel">
       <div className="row">
         <p className="h1" style={{ margin: 0 }}>
-          Owner: Add Listing  ➕
+          Publish Ad  ➕
         </p>
         <div className="spacer" />
         <Link to="/home">Back</Link>
       </div>
       <p className="muted">
-        Create the listing first, then upload photos (plot/rent/floor accessories/etc).
+        Create the ad first, then upload photos.
       </p>
 
       <div className="grid" style={{ marginTop: 12 }}>
@@ -91,12 +88,12 @@ export default function OwnerAddPage() {
           <input value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
         <div className="col-6">
-          <label className="muted">Location</label>
-          <input value={location} onChange={(e) => setLocation(e.target.value)} />
-        </div>
-        <div className="col-12">
-          <label className="muted">Address (used for duplicate detection)</label>
-          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, area, landmark…" />
+          <label className="muted">Category (materials / services / property)</label>
+          <select value={category} onChange={(e) => setCategory(e.target.value as any)}>
+            <option value="materials">materials</option>
+            <option value="services">services</option>
+            <option value="property">property</option>
+          </select>
         </div>
         <div className="col-6">
           <label className="muted">Price</label>
@@ -110,22 +107,8 @@ export default function OwnerAddPage() {
           </select>
         </div>
         <div className="col-6">
-          <label className="muted">Type</label>
-          <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
-            <option value="apartment">apartment</option>
-            <option value="house">house</option>
-            <option value="villa">villa</option>
-            <option value="studio">studio</option>
-            <option value="land">land</option>
-          </select>
-        </div>
-        <div className="col-6">
           <label className="muted">Contact phone</label>
           <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
-        </div>
-        <div className="col-6">
-          <label className="muted">Contact email</label>
-          <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
         </div>
 
         <div className="col-12 row">
@@ -138,13 +121,15 @@ export default function OwnerAddPage() {
                   state,
                   district,
                   title,
-                  location,
-                  address,
+                  // UI request: remove explicit Location/Address.
+                  // Use district as a simple display + duplicate detection key.
+                  location: district || "",
+                  address: "",
                   price: Number(price || 0),
                   rent_sale: rentSale,
-                  property_type: propertyType,
+                  property_type: category,
                   contact_phone: contactPhone,
-                  contact_email: contactEmail,
+                  contact_email: "",
                   amenities: [],
                 });
                 setPropertyId(res.id);

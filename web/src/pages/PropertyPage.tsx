@@ -53,7 +53,7 @@ export default function PropertyPage() {
             <div className="muted" style={{ marginTop: 6 }}>
               {p.images?.length
                 ? p.images.map((i: any) => i.url).join(" • ")
-                : "No images yet (owner uploads via Owner screen)."}
+                : "No images yet (owner uploads via Publish Ad screen)."}
             </div>
           </div>
         </div>
@@ -72,7 +72,12 @@ export default function PropertyPage() {
               setMsg("");
               try {
                 const contact = await getContact(pid);
-                setMsg(`Owner contact: ${contact.phone || "N/A"} / ${contact.email || "N/A"}`);
+                const phone = String(contact.phone || "").trim();
+                const email = String(contact.email || "").trim();
+                if (phone && email) setMsg(`Owner contact: ${phone} / ${email}`);
+                else if (phone) setMsg(`Owner contact: ${phone}`);
+                else if (email) setMsg(`Owner contact: ${email}`);
+                else setMsg("Owner contact: N/A");
               } catch (e: any) {
                 setMsg(e.message || "Locked");
               }

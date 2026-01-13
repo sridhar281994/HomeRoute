@@ -22,6 +22,8 @@ export default function ProfilePage() {
   const [phone, setPhone] = useState((s.user as any)?.phone || "");
   const [email, setEmail] = useState(s.user?.email || "");
   const [profileImageUrl, setProfileImageUrl] = useState(((s.user as any)?.profile_image_url as string) || "");
+  const [newPhoto, setNewPhoto] = useState<File | null>(null);
+  const [newPhotoPreview, setNewPhotoPreview] = useState<string>("");
   const [msg, setMsg] = useState("");
 
   const [newEmail, setNewEmail] = useState("");
@@ -51,6 +53,20 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.token]);
 
+  useEffect(() => {
+    if (!newPhoto) {
+      if (newPhotoPreview) URL.revokeObjectURL(newPhotoPreview);
+      setNewPhotoPreview("");
+      return;
+    }
+    const u = URL.createObjectURL(newPhoto);
+    setNewPhotoPreview(u);
+    return () => {
+      URL.revokeObjectURL(u);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newPhoto]);
+
   return (
     <div className="panel">
       <div className="row">
@@ -67,9 +83,9 @@ export default function ProfilePage() {
           <div className="card">
             <div className="h2">Profile photo</div>
             <div className="row" style={{ marginTop: 10, alignItems: "center" }}>
-              {profileImageUrl ? (
+              {newPhotoPreview || profileImageUrl ? (
                 <img
-                  src={profileImageUrl}
+                  src={newPhotoPreview || profileImageUrl}
                   alt="Profile"
                   style={{ width: 92, height: 92, objectFit: "cover", borderRadius: 18, border: "1px solid rgba(255,255,255,.14)" }}
                 />
@@ -93,25 +109,38 @@ export default function ProfilePage() {
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={async (e) => {
+                  onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (!f) return;
-                    setMsg("");
-                    try {
-                      const r = await uploadProfileImage(f);
-                      setProfileImageUrl((r.user as any)?.profile_image_url || "");
-                      setSession({ token: getSession().token, user: r.user as any });
-                      setMsg("Photo updated ✅");
-                    } catch (err: any) {
-                      setMsg(err.message || "Upload failed");
-                    } finally {
-                      e.currentTarget.value = "";
-                    }
+                    setNewPhoto(f);
+                    e.currentTarget.value = "";
                   }}
                 />
                 <div className="muted" style={{ marginTop: 6 }}>
                   Upload a new image (JPG/PNG/WebP).
                 </div>
+                {newPhoto ? (
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <button
+                      className="primary"
+                      onClick={async () => {
+                        setMsg("");
+                        try {
+                          const r = await uploadProfileImage(newPhoto);
+                          setProfileImageUrl((r.user as any)?.profile_image_url || "");
+                          setSession({ token: getSession().token, user: r.user as any });
+                          setNewPhoto(null);
+                          setMsg("Photo updated ✅");
+                        } catch (err: any) {
+                          setMsg(err.message || "Upload failed");
+                        }
+                      }}
+                    >
+                      Save photo  💾
+                    </button>
+                    <button onClick={() => setNewPhoto(null)}>Cancel</button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -120,7 +149,7 @@ export default function ProfilePage() {
         <div className="col-12 row">
           <div className="col-6" style={{ width: "100%" }}>
             <label className="muted">Role</label>
-            <input value={role === "owner" ? "Owner" : "Customer"} disabled />
+            <input value={role === "owner" ? "Publish Ad" : "Customer"} disabled />
           </div>
         </div>
 

@@ -85,7 +85,6 @@ export default function HomePage() {
 
   return (
     <div className="page-home">
-      <div className="home-bg" aria-hidden="true" />
       <div className="panel">
       <div className="row">
         <p className="h1" style={{ margin: 0 }}>
