@@ -21,7 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import otp_exp_minutes
 from app.db import session_scope
 from app.mailer import EmailSendError, send_otp_email
-from app.models import ModerationLog, OtpCode, Property, PropertyImage, Subscription, User
+from app.models import ModerationLog, OtpCode, Property, PropertyImage, SavedProperty, Subscription, User
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
 
 
@@ -114,6 +114,21 @@ def _public_image_url(file_path: str) -> str:
         return fp
     fp = fp.lstrip("/")
     return f"/uploads/{fp}"
+
+
+def _user_out(u: User) -> dict[str, Any]:
+    img = (u.profile_image_path or "").strip()
+    return {
+        "id": u.id,
+        "email": u.email,
+        "name": u.name,
+        "role": u.role,
+        "phone": u.phone,
+        "state": u.state,
+        "district": u.district,
+        "owner_category": u.owner_category,
+        "profile_image_url": _public_image_url(img) if img else "",
+    }
 
 
 def _norm_key(s: str) -> str:
@@ -289,6 +304,28 @@ class ForgotResetIn(BaseModel):
     identifier: str
     otp: str
     new_password: str = Field(min_length=6)
+
+
+class MeUpdateIn(BaseModel):
+    name: str = ""
+
+
+class ChangeEmailRequestIn(BaseModel):
+    new_email: str
+
+
+class ChangeEmailVerifyIn(BaseModel):
+    new_email: str
+    otp: str
+
+
+class ChangePhoneRequestIn(BaseModel):
+    new_phone: str
+
+
+class ChangePhoneVerifyIn(BaseModel):
+    new_phone: str
+    otp: str
 
 
 class PropertyCreateIn(BaseModel):
@@ -492,16 +529,7 @@ def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_
     token = create_access_token(user_id=user.id, role=user.role)
     return {
         "access_token": token,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "phone": user.phone,
-            "state": user.state,
-            "district": user.district,
-            "owner_category": user.owner_category,
-        },
+        "user": _user_out(user),
     }
 
 
@@ -518,16 +546,7 @@ def guest(db: Annotated[Session, Depends(get_db)]):
     token = create_access_token(user_id=user.id, role=user.role)
     return {
         "access_token": token,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "phone": user.phone,
-            "state": user.state,
-            "district": user.district,
-            "owner_category": user.owner_category,
-        },
+        "user": _user_out(user),
     }
 
 
@@ -611,6 +630,230 @@ def me_subscription(
         db.add(sub)
         db.flush()
     return {"status": sub.status, "provider": sub.provider, "expires_at": sub.expires_at}
+
+
+@app.get("/me")
+def me_profile(me: Annotated[User, Depends(get_current_user)]) -> dict[str, Any]:
+    return {"user": _user_out(me)}
+
+
+@app.patch("/me")
+def me_update(
+    data: MeUpdateIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    me.name = (data.name or "").strip()
+    db.add(me)
+    return {"ok": True, "user": _user_out(me)}
+
+
+@app.post("/me/profile-image")
+def me_upload_profile_image(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    content_type = (file.content_type or "").lower()
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image uploads are allowed")
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg" if content_type in {"image/jpeg", "image/jpg"} else ".png"
+
+    try:
+        raw = file.file.read()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid upload")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty upload")
+
+    safe_name = f"u{me.id}_{secrets.token_hex(8)}{ext}"
+    disk_path = os.path.join(_uploads_dir(), safe_name)
+    try:
+        with open(disk_path, "wb") as out:
+            out.write(raw)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save upload")
+
+    me.profile_image_path = safe_name
+    db.add(me)
+    return {"ok": True, "user": _user_out(me)}
+
+
+@app.post("/me/change-email/request-otp")
+def me_change_email_request_otp(
+    data: ChangeEmailRequestIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    new_email = (data.new_email or "").strip().lower()
+    if not new_email or "@" not in new_email:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    if new_email == (me.email or "").lower():
+        raise HTTPException(status_code=400, detail="Email is unchanged")
+
+    exists = db.execute(select(User.id).where((User.email == new_email) & (User.id != me.id))).first()
+    if exists:
+        raise HTTPException(status_code=409, detail="Email already in use")
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=otp_exp_minutes())
+    otp_identifier = f"email:{me.id}:{new_email}"
+    db.execute(delete(OtpCode).where((OtpCode.identifier == otp_identifier) & (OtpCode.purpose == "change_email")))
+    db.add(OtpCode(identifier=otp_identifier, purpose="change_email", code=code, expires_at=expires))
+    try:
+        delivery = send_otp_email(to_email=new_email, otp=code, purpose="change_email")
+    except EmailSendError:
+        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send OTP")
+    if delivery == "console":
+        return {"ok": True, "message": "OTP generated. Email service not configured; check server logs for the OTP."}
+    return {"ok": True, "message": "OTP sent to your new email."}
+
+
+@app.post("/me/change-email/verify")
+def me_change_email_verify(
+    data: ChangeEmailVerifyIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    new_email = (data.new_email or "").strip().lower()
+    otp = (data.otp or "").strip()
+    if not new_email or "@" not in new_email:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    if not otp:
+        raise HTTPException(status_code=400, detail="OTP required")
+
+    exists = db.execute(select(User.id).where((User.email == new_email) & (User.id != me.id))).first()
+    if exists:
+        raise HTTPException(status_code=409, detail="Email already in use")
+
+    otp_identifier = f"email:{me.id}:{new_email}"
+    now = dt.datetime.now(dt.timezone.utc)
+    rec = (
+        db.execute(
+            select(OtpCode)
+            .where(
+                (OtpCode.identifier == otp_identifier)
+                & (OtpCode.purpose == "change_email")
+                & (OtpCode.code == otp)
+                & (OtpCode.expires_at > now)
+            )
+            .order_by(OtpCode.id.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if not rec:
+        raise HTTPException(status_code=401, detail="Invalid OTP")
+    db.execute(delete(OtpCode).where(OtpCode.id == rec.id))
+
+    me.email = new_email
+    db.add(me)
+    return {"ok": True, "user": _user_out(me)}
+
+
+@app.post("/me/change-phone/request-otp")
+def me_change_phone_request_otp(
+    data: ChangePhoneRequestIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    new_phone = (data.new_phone or "").strip()
+    phone_norm = _norm_phone(new_phone)
+    if not phone_norm or len(re.sub(r"[^0-9]", "", phone_norm)) < 6:
+        raise HTTPException(status_code=400, detail="Invalid phone")
+    if phone_norm == _norm_phone(me.phone or ""):
+        raise HTTPException(status_code=400, detail="Phone is unchanged")
+
+    exists = db.execute(
+        select(User.id).where((User.phone_normalized == phone_norm) & (User.phone_normalized != "") & (User.id != me.id))
+    ).first()
+    if exists:
+        raise HTTPException(status_code=409, detail="Phone already in use")
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=otp_exp_minutes())
+    otp_identifier = f"phone:{me.id}:{phone_norm}"
+    db.execute(delete(OtpCode).where((OtpCode.identifier == otp_identifier) & (OtpCode.purpose == "change_phone")))
+    db.add(OtpCode(identifier=otp_identifier, purpose="change_phone", code=code, expires_at=expires))
+    try:
+        delivery = send_otp_email(to_email=me.email, otp=code, purpose=f"change_phone:{phone_norm}")
+    except EmailSendError:
+        raise HTTPException(status_code=500, detail="OTP service not configured")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send OTP")
+    if delivery == "console":
+        return {"ok": True, "message": "OTP generated. Email service not configured; check server logs for the OTP."}
+    return {"ok": True, "message": "OTP sent to your registered email."}
+
+
+@app.post("/me/change-phone/verify")
+def me_change_phone_verify(
+    data: ChangePhoneVerifyIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    new_phone = (data.new_phone or "").strip()
+    otp = (data.otp or "").strip()
+    phone_norm = _norm_phone(new_phone)
+    if not phone_norm:
+        raise HTTPException(status_code=400, detail="Invalid phone")
+    if not otp:
+        raise HTTPException(status_code=400, detail="OTP required")
+
+    exists = db.execute(
+        select(User.id).where((User.phone_normalized == phone_norm) & (User.phone_normalized != "") & (User.id != me.id))
+    ).first()
+    if exists:
+        raise HTTPException(status_code=409, detail="Phone already in use")
+
+    otp_identifier = f"phone:{me.id}:{phone_norm}"
+    now = dt.datetime.now(dt.timezone.utc)
+    rec = (
+        db.execute(
+            select(OtpCode)
+            .where(
+                (OtpCode.identifier == otp_identifier)
+                & (OtpCode.purpose == "change_phone")
+                & (OtpCode.code == otp)
+                & (OtpCode.expires_at > now)
+            )
+            .order_by(OtpCode.id.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if not rec:
+        raise HTTPException(status_code=401, detail="Invalid OTP")
+    db.execute(delete(OtpCode).where(OtpCode.id == rec.id))
+
+    me.phone = new_phone
+    me.phone_normalized = phone_norm
+    db.add(me)
+    return {"ok": True, "user": _user_out(me)}
+
+
+@app.delete("/me")
+def me_delete(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    if (me.role or "").lower() == "admin":
+        raise HTTPException(status_code=403, detail="Admin account cannot be deleted")
+
+    prop_ids = [int(x) for x in db.execute(select(Property.id).where(Property.owner_id == me.id)).scalars().all()]
+    if prop_ids:
+        db.execute(delete(PropertyImage).where(PropertyImage.property_id.in_(prop_ids)))
+        db.execute(delete(Property).where(Property.id.in_(prop_ids)))
+
+    db.execute(delete(SavedProperty).where(SavedProperty.user_id == me.id))
+    db.execute(delete(Subscription).where(Subscription.user_id == me.id))
+    db.execute(delete(User).where(User.id == me.id))
+    return {"ok": True}
 
 
 # -----------------------
