@@ -6,11 +6,11 @@ from typing import Any
 
 from kivy.clock import Clock
 from kivy.properties import BooleanProperty, DictProperty, ListProperty, NumericProperty, StringProperty
-from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 
+from screens.widgets import HoverButton
 from frontend_app.utils.api import (
     ApiError,
     api_get_property,
@@ -203,7 +203,7 @@ class HomeScreen(Screen):
                                         if x
                                     ]
                                 )
-                                btn = Button(
+                                btn = HoverButton(
                                     text=f"{title}\n{meta}",
                                     size_hint_y=None,
                                     height=88,

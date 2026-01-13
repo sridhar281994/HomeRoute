@@ -4,6 +4,9 @@ from kivy.app import App
 from kivy.lang import Builder
 from kivy.uix.screenmanager import FadeTransition, ScreenManager
 
+# Register custom widgets used in KV rules.
+from screens.widgets import HoverButton  # noqa: F401
+
 from screens.login_screen import LoginScreen
 from screens.register_screen import RegisterScreen
 from screens.reset_password_screen import ForgotPasswordScreen, ResetPasswordScreen

@@ -15,6 +15,43 @@
     font_size: sp(16)
     bold: True
 
+<AppButton@HoverButton>:
+    markup: True
+    font_size: sp(16)
+    bold: True
+    background_normal: ""
+    background_down: ""
+    background_disabled_normal: ""
+    background_color: (0.22, 0.56, 0.95, 1)
+    color: 1, 1, 1, 1
+    # Use the existing `background_color` set by screens as the base color.
+    # Hover/pressed is computed automatically (desktop hover; press everywhere).
+    canvas.before:
+        Color:
+            rgba:
+                (0, 0, 0, 0) if self.background_color[3] == 0 else (
+                (
+                max(0.0, self.background_color[0] - 0.10),
+                max(0.0, self.background_color[1] - 0.10),
+                max(0.0, self.background_color[2] - 0.10),
+                self.background_color[3]
+                ) if self.state == "down" else (
+                min(1.0, self.background_color[0] + 0.08),
+                min(1.0, self.background_color[1] + 0.08),
+                min(1.0, self.background_color[2] + 0.08),
+                self.background_color[3]
+                ) if self.hovered else self.background_color
+                )
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14]
+        Color:
+            rgba: (1, 1, 1, 0) if self.background_color[3] == 0 else (1, 1, 1, 0.10)
+        Line:
+            width: 1.0
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
+
 <PrettySpinnerOption@SpinnerOption>:
     background_normal: ""
     background_down: ""
@@ -144,7 +181,7 @@
                 text_size: (self.width, None)
                 height: self.texture_size[1] + dp(20)
 
-            Button:
+            AppButton:
                 text: "Login"
                 font_size: min(root.width * 0.05, sp(18))
                 size_hint_y: None
@@ -152,7 +189,7 @@
                 background_color: (0.2, 0.5, 1, 1)
                 on_release: root.manager.current = 'login'
 
-            Button:
+            AppButton:
                 text: "Register"
                 font_size: min(root.width * 0.05, sp(18))
                 size_hint_y: None
@@ -311,7 +348,7 @@
                             valign: "middle"
                             text_size: self.size
 
-                    Button:
+                    AppButton:
                         text: "Request OTP"
                         size_hint_y: None
                         height: dp(44)
@@ -350,21 +387,21 @@
                         background_color: (0.95, 0.95, 0.95, 1)
                         foreground_color: (0.1, 0.1, 0.1, 1)
 
-                    Button:
+                    AppButton:
                         text: "Verify & Login"
                         size_hint_y: None
                         height: dp(48)
                         background_color: (0.3, 0.8, 0.4, 1)
                         on_release: root.verify_and_login()
 
-                    Button:
+                    AppButton:
                         text: "Forgot Password?"
                         size_hint_y: None
                         height: dp(40)
                         background_color: (0, 0, 0, 0)
                         on_release: root.open_forgot_password()
 
-                Button:
+                AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
@@ -425,7 +462,7 @@
                     height: dp(48)
                     font_size: sp(16)
 
-                Button:
+                AppButton:
                     text: "Send OTP"
                     size_hint_y: None
                     height: dp(48)
@@ -439,7 +476,7 @@
                     font_size: sp(16)
                     disabled: not root.otp_stage_ready
 
-                Button:
+                AppButton:
                     id: verify_btn
                     text: "Verify OTP"
                     size_hint_y: None
@@ -447,7 +484,7 @@
                     disabled: not root.otp_stage_ready
                     on_release: root.verify_otp_and_continue()
 
-                Button:
+                AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
@@ -565,14 +602,14 @@
                                 points: [self.x + dp(5), self.y + dp(10), self.x + dp(35), self.y + dp(30)]
                                 width: 1.2
 
-                Button:
+                AppButton:
                     text: "Save Password"
                     size_hint_y: None
                     height: dp(48)
                     background_color: (0.3, 0.8, 0.4, 1)
                     on_release: root.save_new_password()
 
-                Button:
+                AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
@@ -678,14 +715,14 @@
                     font_size: sp(16)
                     multiline: True
 
-                Button:
+                AppButton:
                     text: "Save Settings  💾"
                     size_hint_y: None
                     height: dp(48)
                     background_color: (0.3, 0.8, 0.4, 1)
                     on_release: root.save_settings()
 
-                Button:
+                AppButton:
                     text: "Refresh Subscription Status"
                     size_hint_y: None
                     height: dp(48)
@@ -713,7 +750,7 @@
                         height: dp(20)
                         color: 1, 1, 1, 0.9
 
-                    Button:
+                    AppButton:
                         text: "Manage Subscription (Google Play)"
                         size_hint_y: None
                         height: dp(44)
@@ -726,14 +763,14 @@
                     height: dp(30)
                     color: 1, 1, 1, 0.7
 
-                Button:
+                AppButton:
                     text: "Subscription Status: " + root.subscription_status
                     size_hint_y: None
                     height: dp(44)
                     background_color: (0.2, 0.5, 0.8, 1)
                     on_release: root.manage_subscription()
 
-                Button:
+                AppButton:
                     text: "Change Password"
                     size_hint_y: None
                     height: dp(44)
@@ -742,14 +779,14 @@
                         root.manager.get_screen("forgot_password").open_from(source_screen="profile", title="Change Password")
                         root.manager.current = "forgot_password"
 
-                Button:
+                AppButton:
                     text: "Logout"
                     size_hint_y: None
                     height: dp(44)
                     background_color: (0.8, 0.2, 0.2, 1)
                     on_release: root.logout()
 
-                Button:
+                AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
@@ -917,28 +954,28 @@
                                 points: [self.x + dp(5), self.y + dp(10), self.x + dp(35), self.y + dp(30)]
                                 width: 1.2
 
-                Button:
+                AppButton:
                     text: "[b]Register[/b]  ✅"
                     size_hint_y: None
                     height: dp(50)
                     background_color: (0.3, 0.7, 0.3, 1)
                     on_release: root.save_profile()
 
-                Button:
+                AppButton:
                     text: "Login via Gmail"
                     size_hint_y: None
                     height: dp(44)
                     background_color: (0.9, 0.6, 0.2, 1)
                     on_release: root.social_login("gmail")
 
-                Button:
+                AppButton:
                     text: "Login via FB / Insta"
                     size_hint_y: None
                     height: dp(44)
                     background_color: (0.2, 0.4, 0.9, 1)
                     on_release: root.social_login("fb/insta")
 
-                Button:
+                AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
@@ -989,7 +1026,7 @@
                     halign: "left"
                     valign: "middle"
                     text_size: self.size
-                Button:
+                AppButton:
                     text: "Profile  👤"
                     size_hint_x: None
                     width: dp(90)
@@ -1043,11 +1080,11 @@
                 size_hint_y: None
                 height: dp(44)
                 spacing: dp(8)
-                Button:
+                AppButton:
                     text: "Apply Filters"
                     background_color: (0.2, 0.6, 0.9, 1)
                     on_release: root.refresh()
-                Button:
+                AppButton:
                     text: "Owner  🏢"
                     size_hint_x: None
                     width: dp(90)
@@ -1110,7 +1147,7 @@
                 size_hint_y: None
                 height: dp(44)
                 spacing: dp(8)
-                Button:
+                AppButton:
                     text: "Back"
                     size_hint_x: None
                     width: dp(90)
@@ -1136,14 +1173,14 @@
                 text: "Amenities: " + (", ".join(root.property_data.get("amenities") or []) if root.property_data.get("amenities") else "—")
                 color: 1, 1, 1, 0.85
 
-            Button:
+            AppButton:
                 text: "Unlock Contact"
                 size_hint_y: None
                 height: dp(50)
                 background_color: (0.2, 0.6, 0.9, 1)
                 on_release: root.unlock_contact()
 
-            Button:
+            AppButton:
                 text: "Save / Share (demo)"
                 size_hint_y: None
                 height: dp(44)
@@ -1198,14 +1235,14 @@
                 text: "Payments are handled by Google Play Billing. This app only unlocks digital contact access after Google confirms an active subscription."
                 color: 1, 1, 1, 0.8
 
-            Button:
+            AppButton:
                 text: "Go to Google Play Billing (demo)"
                 size_hint_y: None
                 height: dp(50)
                 background_color: (0.2, 0.6, 0.9, 1)
                 on_release: root.simulate_google_play_success()
 
-            Button:
+            AppButton:
                 text: "Back"
                 size_hint_y: None
                 height: dp(44)
@@ -1261,7 +1298,7 @@
                 text: "[b]Owner Capabilities[/b]\\n• Profile Management\\n• Listing Management\\n• Lead Management"
                 color: 1, 1, 1, 0.85
 
-            Button:
+            AppButton:
                 text: "Create Listing  ➕"
                 size_hint_y: None
                 height: dp(50)
@@ -1270,7 +1307,7 @@
             Label:
                 text: "My Listings (demo)"
                 color: 1, 1, 1, 0.85
-            Button:
+            AppButton:
                 text: "Back"
                 size_hint_y: None
                 height: dp(44)
@@ -1331,13 +1368,13 @@
                 input_filter: "int"
                 size_hint_y: None
                 height: dp(44)
-            Button:
+            AppButton:
                 text: "Submit Listing"
                 size_hint_y: None
                 height: dp(50)
                 background_color: (0.3, 0.8, 0.3, 1)
                 on_release: root.submit_listing()
-            Button:
+            AppButton:
                 text: "Back"
                 size_hint_y: None
                 height: dp(44)
