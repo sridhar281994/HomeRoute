@@ -6,6 +6,7 @@ export type User = {
   username?: string;
   phone?: string;
   owner_category?: string;
+  company_name?: string;
   // New backend field (preferred)
   profile_image_url?: string;
   // Legacy/local field (older UI stored this client-side)
@@ -145,6 +146,7 @@ export function listProperties(params: {
   state?: string;
   district?: string;
   sort_budget?: string;
+  posted_within_days?: string;
 }) {
   const sp = new URLSearchParams();
   if (params.q) sp.set("q", params.q);
@@ -155,6 +157,7 @@ export function listProperties(params: {
   if (params.state) sp.set("state", params.state);
   if (params.district) sp.set("district", params.district);
   if (params.sort_budget) sp.set("sort_budget", params.sort_budget);
+  if (params.posted_within_days) sp.set("posted_within_days", params.posted_within_days);
   const qs = sp.toString() ? `?${sp.toString()}` : "";
   return api<{ items: any[] }>(`/properties${qs}`);
 }
@@ -239,6 +242,14 @@ export function ownerCreateProperty(input: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export function ownerListProperties() {
+  return api<{ items: any[] }>(`/owner/properties`);
+}
+
+export function ownerDeleteProperty(id: number) {
+  return api<{ ok: boolean }>(`/owner/properties/${id}`, { method: "DELETE" });
 }
 
 export async function uploadPropertyImage(propertyId: number, file: File, sortOrder = 0) {

@@ -74,9 +74,13 @@ export default function PropertyPage() {
                 const contact = await getContact(pid);
                 const phone = String(contact.phone || "").trim();
                 const email = String(contact.email || "").trim();
-                if (phone && email) setMsg(`Owner contact: ${phone} / ${email}`);
-                else if (phone) setMsg(`Owner contact: ${phone}`);
-                else if (email) setMsg(`Owner contact: ${email}`);
+                const ownerName = String(contact.owner_name || "").trim();
+                const advNo = String(contact.adv_number || contact.advNo || "").trim();
+                const header = advNo ? `Ad #${advNo}` : "Ad";
+                const who = ownerName ? ` (${ownerName})` : "";
+                if (phone && email) setMsg(`${header}${who} contact: ${phone} / ${email}`);
+                else if (phone) setMsg(`${header}${who} contact: ${phone}`);
+                else if (email) setMsg(`${header}${who} contact: ${email}`);
                 else setMsg("Owner contact: N/A");
               } catch (e: any) {
                 setMsg(e.message || "Locked");

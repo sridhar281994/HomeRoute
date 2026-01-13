@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getSession, ownerCreateProperty, uploadPropertyImage } from "../api";
+import { getSession, ownerCreateProperty, ownerDeleteProperty, ownerListProperties, uploadPropertyImage } from "../api";
 import { Link, useNavigate } from "react-router-dom";
 import { INDIA_STATES } from "../indiaStates";
 import { districtsForState } from "../indiaDistricts";
@@ -14,13 +14,23 @@ export default function OwnerAddPage() {
   const [rentSale, setRentSale] = useState("rent");
   const [category, setCategory] = useState<"materials" | "services" | "property">("property");
   const [contactPhone, setContactPhone] = useState("");
+  const [useCompanyName, setUseCompanyName] = useState<boolean>(false);
+  const [companyName, setCompanyName] = useState<string>(((s.user as any)?.company_name as string) || "");
   const [propertyId, setPropertyId] = useState<number | null>(null);
   const [msg, setMsg] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
+  const [myAds, setMyAds] = useState<any[]>([]);
+  const [myAdsMsg, setMyAdsMsg] = useState<string>("");
 
   useEffect(() => {
     if (!s.token) nav("/login");
   }, [nav, s.token]);
+
+  useEffect(() => {
+    // Default to "Yes" if company name already exists.
+    const existing = (((getSession().user as any)?.company_name as string) || "").trim();
+    if (existing) setUseCompanyName(true);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("pd_state", state || "");
@@ -41,6 +51,21 @@ export default function OwnerAddPage() {
 
   const districts = districtsForState(state);
 
+  async function loadMyAds() {
+    setMyAdsMsg("");
+    try {
+      const r = await ownerListProperties();
+      setMyAds(r.items || []);
+    } catch (e: any) {
+      setMyAdsMsg(e.message || "Failed to load your ads");
+    }
+  }
+
+  useEffect(() => {
+    loadMyAds();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="panel">
       <div className="row">
@@ -52,6 +77,9 @@ export default function OwnerAddPage() {
       </div>
       <p className="muted">
         Create the ad first, then upload photos.
+      </p>
+      <p className="muted" style={{ marginTop: 6 }}>
+        Important note: only the owner who created an ad can remove it.
       </p>
 
       <div className="grid" style={{ marginTop: 12 }}>
@@ -96,6 +124,19 @@ export default function OwnerAddPage() {
           </select>
         </div>
         <div className="col-6">
+          <label className="muted">Publish with company name?</label>
+          <select value={useCompanyName ? "yes" : "no"} onChange={(e) => setUseCompanyName(e.target.value === "yes")}>
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </div>
+        {useCompanyName ? (
+          <div className="col-12">
+            <label className="muted">Company name</label>
+            <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Enter company name" />
+          </div>
+        ) : null}
+        <div className="col-6">
           <label className="muted">Price</label>
           <input value={price} onChange={(e) => setPrice(e.target.value)} />
         </div>
@@ -117,6 +158,7 @@ export default function OwnerAddPage() {
             onClick={async () => {
               setMsg("");
               try {
+                if (useCompanyName && !companyName.trim()) throw new Error("Please enter company name (or select No).");
                 const res = await ownerCreateProperty({
                   state,
                   district,
@@ -130,10 +172,12 @@ export default function OwnerAddPage() {
                   property_type: category,
                   contact_phone: contactPhone,
                   contact_email: "",
+                  company_name: useCompanyName ? companyName.trim() : "",
                   amenities: [],
                 });
                 setPropertyId(res.id);
                 setMsg(`Created listing #${res.id} (status: ${res.status}). Upload photos below.`);
+                loadMyAds();
               } catch (e: any) {
                 setMsg(e.message || "Failed");
               }
@@ -176,6 +220,57 @@ export default function OwnerAddPage() {
               <span className="muted">
                 {propertyId ? `Listing: #${propertyId}` : "Listing: (not created yet)"}
               </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-12">
+          <div className="card">
+            <div className="row">
+              <div className="h2">My Ads</div>
+              <div className="spacer" />
+              <button onClick={loadMyAds}>Refresh</button>
+            </div>
+            <div className="muted" style={{ marginTop: 6 }}>
+              {myAdsMsg}
+            </div>
+            <div className="grid" style={{ marginTop: 10 }}>
+              {myAds.map((p) => (
+                <div className="col-12" key={p.id}>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <div className="h2">
+                          #{p.id} • {p.title}
+                        </div>
+                        <div className="muted">
+                          Status: {p.status} {p.created_at ? `• ${new Date(p.created_at).toLocaleString()}` : ""}
+                        </div>
+                      </div>
+                      <div className="spacer" />
+                      <button
+                        className="danger"
+                        onClick={async () => {
+                          const ok = window.confirm(`Delete Ad #${p.id}? This cannot be undone.`);
+                          if (!ok) return;
+                          try {
+                            await ownerDeleteProperty(Number(p.id));
+                            setMsg(`Deleted Ad #${p.id}`);
+                            loadMyAds();
+                          } catch (e: any) {
+                            setMsg(e.message || "Delete failed");
+                          }
+                        }}
+                      >
+                        Remove post
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {!myAds.length ? (
+                <div className="col-12 muted">No ads yet.</div>
+              ) : null}
             </div>
           </div>
         </div>
