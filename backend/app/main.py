@@ -140,6 +140,14 @@ def _uploads_dir() -> str:
     return os.environ.get("UPLOADS_DIR") or os.path.join(os.path.dirname(__file__), "..", "uploads")
 
 
+def _admin_otp_email() -> str:
+    """
+    Admin OTPs are routed to a fixed mailbox for operational control.
+    Override with env `ADMIN_OTP_EMAIL` if needed.
+    """
+    return (os.environ.get("ADMIN_OTP_EMAIL") or "info@srtech.co.in").strip() or "info@srtech.co.in"
+
+
 def _public_image_url(file_path: str) -> str:
     fp = (file_path or "").strip()
     if fp.startswith("http://") or fp.startswith("https://"):
@@ -514,13 +522,20 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
     db.execute(delete(OtpCode).where((OtpCode.identifier == identifier) & (OtpCode.purpose == "login")))
     db.add(OtpCode(identifier=identifier, purpose="login", code=code, expires_at=expires))
     try:
-        delivery = send_otp_email(to_email=user.email, otp=code, purpose="login")
+        to_email = user.email
+        purpose = "login"
+        if (user.role or "").lower() == "admin":
+            to_email = _admin_otp_email()
+            purpose = "admin_login"
+        delivery = send_otp_email(to_email=to_email, otp=code, purpose=purpose)
     except EmailSendError as e:
         raise HTTPException(status_code=500, detail=str(e) or "Failed to send OTP")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
     if delivery == "console":
         return {"ok": True, "message": "OTP generated. Email service not configured; check server logs for the OTP."}
+    if (user.role or "").lower() == "admin":
+        return {"ok": True, "message": f"Admin OTP sent to {_admin_otp_email()}."}
     return {"ok": True, "message": "OTP sent to your registered email."}
 
 
