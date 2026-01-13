@@ -663,6 +663,49 @@
                     size_hint_y: None
                     height: dp(40)
 
+                # Profile image + role
+                BoxLayout:
+                    orientation: "horizontal"
+                    size_hint_y: None
+                    height: dp(110)
+                    spacing: dp(12)
+                    padding: [0, dp(6), 0, dp(6)]
+                    canvas.before:
+                        Color:
+                            rgba: 0.1, 0.15, 0.3, 0.8
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [14]
+
+                    AsyncImage:
+                        source: root.profile_image_url if root.profile_image_url else ""
+                        allow_stretch: True
+                        keep_ratio: True
+                        size_hint_x: None
+                        width: dp(96)
+
+                    BoxLayout:
+                        orientation: "vertical"
+                        spacing: dp(8)
+
+                        TextInput:
+                            id: role_display
+                            text: "Owner" if root.role_value.lower() == "owner" else "Customer"
+                            hint_text: "Role"
+                            size_hint_y: None
+                            height: dp(42)
+                            multiline: False
+                            disabled: True
+
+                        AppButton:
+                            text: "Change Photo"
+                            size_hint_y: None
+                            height: dp(42)
+                            background_color: (0.2, 0.6, 0.9, 1)
+                            on_release: root.open_image_picker()
+
+                # Name update (server-backed)
                 TextInput:
                     id: name_input
                     text: root.name_value
@@ -671,56 +714,108 @@
                     height: dp(48)
                     font_size: sp(16)
                     multiline: False
-                    disabled: False
 
+                AppButton:
+                    text: "Save Name  💾"
+                    size_hint_y: None
+                    height: dp(48)
+                    background_color: (0.3, 0.8, 0.4, 1)
+                    on_release: root.save_name()
+
+                # Current email/phone (read-only)
                 TextInput:
-                    id: phone_input
+                    id: phone_current
                     text: root.phone_value
                     hint_text: "Phone Number"
                     size_hint_y: None
                     height: dp(48)
                     font_size: sp(16)
                     multiline: False
+                    disabled: True
 
                 TextInput:
-                    id: email_input
+                    id: email_current
                     text: root.email_value
                     hint_text: "Email"
                     size_hint_y: None
                     height: dp(48)
                     font_size: sp(16)
                     multiline: False
+                    disabled: True
 
-                TextInput:
-                    id: image_url_input
-                    text: root.image_value
-                    hint_text: "Profile image URL (optional)"
-                    size_hint_y: None
-                    height: dp(48)
-                    opacity: 1
-                    disabled: False
-
+                # Change Email with OTP
                 Label:
-                    text: "[b]Branches / Locations[/b]  📍 (one per line)"
+                    text: "[b]Change Email (OTP required)[/b]"
                     size_hint_y: None
                     height: dp(26)
                     color: 1, 1, 1, 0.9
 
                 TextInput:
-                    id: locations_input
-                    text: root.locations_text
-                    hint_text: "Eg: Chennai - T Nagar\\nCoimbatore - RS Puram"
-                    size_hint_y: None
-                    height: dp(120)
-                    font_size: sp(16)
-                    multiline: True
-
-                AppButton:
-                    text: "Save Settings  💾"
+                    id: new_email_input
+                    hint_text: "New Email"
                     size_hint_y: None
                     height: dp(48)
+                    font_size: sp(16)
+                    multiline: False
+
+                AppButton:
+                    text: "Send Email OTP"
+                    size_hint_y: None
+                    height: dp(44)
+                    background_color: (0.9, 0.6, 0.2, 1)
+                    on_release: root.request_email_otp()
+
+                TextInput:
+                    id: new_email_otp
+                    hint_text: "Enter OTP"
+                    size_hint_y: None
+                    height: dp(48)
+                    font_size: sp(16)
+                    multiline: False
+
+                AppButton:
+                    text: "Verify & Update Email"
+                    size_hint_y: None
+                    height: dp(44)
                     background_color: (0.3, 0.8, 0.4, 1)
-                    on_release: root.save_settings()
+                    on_release: root.verify_email_otp()
+
+                # Change Phone with OTP
+                Label:
+                    text: "[b]Change Phone (OTP required)[/b]"
+                    size_hint_y: None
+                    height: dp(26)
+                    color: 1, 1, 1, 0.9
+
+                TextInput:
+                    id: new_phone_input
+                    hint_text: "New Phone"
+                    size_hint_y: None
+                    height: dp(48)
+                    font_size: sp(16)
+                    multiline: False
+
+                AppButton:
+                    text: "Send Phone OTP"
+                    size_hint_y: None
+                    height: dp(44)
+                    background_color: (0.9, 0.6, 0.2, 1)
+                    on_release: root.request_phone_otp()
+
+                TextInput:
+                    id: new_phone_otp
+                    hint_text: "Enter OTP"
+                    size_hint_y: None
+                    height: dp(48)
+                    font_size: sp(16)
+                    multiline: False
+
+                AppButton:
+                    text: "Verify & Update Phone"
+                    size_hint_y: None
+                    height: dp(44)
+                    background_color: (0.3, 0.8, 0.4, 1)
+                    on_release: root.verify_phone_otp()
 
                 AppButton:
                     text: "Refresh Subscription Status"
@@ -785,6 +880,13 @@
                     height: dp(44)
                     background_color: (0.8, 0.2, 0.2, 1)
                     on_release: root.logout()
+
+                AppButton:
+                    text: "Delete account"
+                    size_hint_y: None
+                    height: dp(44)
+                    background_color: (0.75, 0.1, 0.1, 1)
+                    on_release: root.delete_account()
 
                 AppButton:
                     text: "Back"
