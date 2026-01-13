@@ -24,6 +24,7 @@ export default function ProfilePage() {
   const [profileImageUrl, setProfileImageUrl] = useState(((s.user as any)?.profile_image_url as string) || "");
   const [newPhoto, setNewPhoto] = useState<File | null>(null);
   const [newPhotoPreview, setNewPhotoPreview] = useState<string>("");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [msg, setMsg] = useState("");
 
   const [newEmail, setNewEmail] = useState("");
@@ -109,38 +110,33 @@ export default function ProfilePage() {
                 <input
                   type="file"
                   accept="image/*"
+                  disabled={isUploadingPhoto}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (!f) return;
+                    setMsg("");
                     setNewPhoto(f);
+                    // Auto-upload (no separate "Save" button).
+                    setIsUploadingPhoto(true);
                     e.currentTarget.value = "";
+                    (async () => {
+                      try {
+                        const r = await uploadProfileImage(f);
+                        setProfileImageUrl((r.user as any)?.profile_image_url || "");
+                        setSession({ token: getSession().token, user: r.user as any });
+                        setNewPhoto(null);
+                        setMsg("Photo updated ✅");
+                      } catch (err: any) {
+                        setMsg(err.message || "Upload failed");
+                      } finally {
+                        setIsUploadingPhoto(false);
+                      }
+                    })();
                   }}
                 />
                 <div className="muted" style={{ marginTop: 6 }}>
-                  Upload a new image (JPG/PNG/WebP).
+                  Upload a new image (JPG/PNG/WebP). {isUploadingPhoto ? "Uploading…" : ""}
                 </div>
-                {newPhoto ? (
-                  <div className="row" style={{ marginTop: 10 }}>
-                    <button
-                      className="primary"
-                      onClick={async () => {
-                        setMsg("");
-                        try {
-                          const r = await uploadProfileImage(newPhoto);
-                          setProfileImageUrl((r.user as any)?.profile_image_url || "");
-                          setSession({ token: getSession().token, user: r.user as any });
-                          setNewPhoto(null);
-                          setMsg("Photo updated ✅");
-                        } catch (err: any) {
-                          setMsg(err.message || "Upload failed");
-                        }
-                      }}
-                    >
-                      Save photo  💾
-                    </button>
-                    <button onClick={() => setNewPhoto(null)}>Cancel</button>
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>
