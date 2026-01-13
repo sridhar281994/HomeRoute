@@ -17,10 +17,12 @@ from sqlalchemy import delete, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.config import otp_exp_minutes
+from app.config import allowed_hosts, enforce_secure_secrets, otp_exp_minutes
 from app.db import session_scope
 from app.mailer import EmailSendError, send_otp_email
+from app.rate_limit import limiter
 from app.models import (
     ContactUsage,
     ModerationLog,
@@ -39,6 +41,23 @@ from app.google_play import GooglePlayNotConfigured, verify_subscription_with_go
 
 
 app = FastAPI(title="ConstructHub API")
+
+# Production hardening: ensure we don't run with dangerous defaults.
+enforce_secure_secrets()
+
+# Optional host protection (recommend configuring ALLOWED_HOSTS in prod).
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
+
+
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    resp = await call_next(request)
+    # Security headers (safe defaults).
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    return resp
 
 def _cors_origins() -> list[str]:
     """
@@ -477,6 +496,7 @@ def register(data: RegisterIn, db: Annotated[Session, Depends(get_db)]):
 def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
     phone_norm = _norm_phone(identifier)
+    limiter.hit(key=f"otp:login:req:{identifier.lower()}", limit=5, window_seconds=10 * 60, detail="Too many OTP requests")
     user = db.execute(
         select(User).where(
             (User.email == identifier.lower())
@@ -508,6 +528,7 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
 def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
     phone_norm = _norm_phone(identifier)
+    limiter.hit(key=f"otp:login:verify:{identifier.lower()}", limit=12, window_seconds=10 * 60, detail="Too many OTP attempts")
     user = db.execute(
         select(User).where(
             (User.email == identifier.lower())
@@ -567,6 +588,7 @@ def guest(db: Annotated[Session, Depends(get_db)]):
 def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
     phone_norm = _norm_phone(identifier)
+    limiter.hit(key=f"otp:forgot:req:{identifier.lower()}", limit=5, window_seconds=10 * 60, detail="Too many OTP requests")
     user = db.execute(
         select(User).where(
             (User.email == identifier.lower())
@@ -596,6 +618,7 @@ def forgot_request_otp(data: ForgotRequestOtpIn, db: Annotated[Session, Depends(
 def forgot_reset(data: ForgotResetIn, db: Annotated[Session, Depends(get_db)]):
     identifier = data.identifier.strip()
     phone_norm = _norm_phone(identifier)
+    limiter.hit(key=f"otp:forgot:reset:{identifier.lower()}", limit=10, window_seconds=10 * 60, detail="Too many reset attempts")
     user = db.execute(
         select(User).where(
             (User.email == identifier.lower())
@@ -699,12 +722,18 @@ def verify_subscription(
     - If Google Play API credentials are configured, it performs real server-side validation.
     - Otherwise, it falls back to a dev-mode activation (keeps current environments working).
     """
+    limiter.hit(key=f"sub:verify:{me.id}", limit=20, window_seconds=10 * 60, detail="Too many verification attempts")
     _ensure_plans(db)
     product_id = (data.product_id or "").strip()
     token = (data.purchase_token or "").strip()
     plan = db.get(SubscriptionPlan, product_id)
     if not plan:
         raise HTTPException(status_code=400, detail="Unknown product_id")
+
+    # Idempotency / abuse prevention: purchase tokens must be unique.
+    existing_token = db.execute(select(UserSubscription).where(UserSubscription.purchase_token == token)).scalar_one_or_none()
+    if existing_token and int(existing_token.user_id) != int(me.id):
+        raise HTTPException(status_code=409, detail="Purchase token already used by another account")
 
     now = dt.datetime.now(dt.timezone.utc)
 
@@ -843,6 +872,7 @@ def me_change_email_request_otp(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
     new_email = (data.new_email or "").strip().lower()
+    limiter.hit(key=f"otp:change_email:req:{me.id}", limit=5, window_seconds=10 * 60, detail="Too many OTP requests")
     if not new_email or "@" not in new_email:
         raise HTTPException(status_code=400, detail="Invalid email")
     if new_email == (me.email or "").lower():
@@ -876,6 +906,7 @@ def me_change_email_verify(
 ) -> dict[str, Any]:
     new_email = (data.new_email or "").strip().lower()
     otp = (data.otp or "").strip()
+    limiter.hit(key=f"otp:change_email:verify:{me.id}", limit=12, window_seconds=10 * 60, detail="Too many OTP attempts")
     if not new_email or "@" not in new_email:
         raise HTTPException(status_code=400, detail="Invalid email")
     if not otp:
@@ -917,6 +948,7 @@ def me_change_phone_request_otp(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
     new_phone = (data.new_phone or "").strip()
+    limiter.hit(key=f"otp:change_phone:req:{me.id}", limit=5, window_seconds=10 * 60, detail="Too many OTP requests")
     phone_norm = _norm_phone(new_phone)
     if not phone_norm or len(re.sub(r"[^0-9]", "", phone_norm)) < 6:
         raise HTTPException(status_code=400, detail="Invalid phone")
@@ -953,6 +985,7 @@ def me_change_phone_verify(
 ) -> dict[str, Any]:
     new_phone = (data.new_phone or "").strip()
     otp = (data.otp or "").strip()
+    limiter.hit(key=f"otp:change_phone:verify:{me.id}", limit=12, window_seconds=10 * 60, detail="Too many OTP attempts")
     phone_norm = _norm_phone(new_phone)
     if not phone_norm:
         raise HTTPException(status_code=400, detail="Invalid phone")
@@ -1216,6 +1249,7 @@ def get_property_contact(
     me: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    limiter.hit(key=f"contact:{me.id}", limit=60, window_seconds=60, detail="Too many contact unlock requests")
     p = db.get(Property, int(property_id))
     if not p or p.status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
