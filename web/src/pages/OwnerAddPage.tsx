@@ -39,16 +39,6 @@ export default function OwnerAddPage() {
     localStorage.setItem("pd_district", district || "");
   }, [district]);
 
-  if ((s.user?.role || "").toLowerCase() !== "owner") {
-    return (
-      <div className="panel">
-        <p className="h1">Publish Ad  🏢</p>
-        <p className="muted">Publish Ad access only. Please login/register with a Publish Ad account to publish ads.</p>
-        <Link to="/home">Back</Link>
-      </div>
-    );
-  }
-
   const districts = districtsForState(state);
 
   async function loadMyAds() {

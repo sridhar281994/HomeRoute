@@ -33,7 +33,7 @@ export default function App() {
             <>
               <Link to="/subscription">Subscription</Link>
               <Link to="/profile">Settings</Link>
-              {role === "owner" ? <Link to="/owner/add">Publish Ad</Link> : null}
+              <Link to="/owner/add">Publish Ad</Link>
             </>
           ) : null}
           {!isLoggedIn ? (

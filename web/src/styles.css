@@ -1,6 +1,6 @@
 :root{
-  --bg:#1a0b05;
-  --panel:rgba(0,0,0,.45);
+  --bg:#ff7a18;
+  --panel:rgba(255,255,255,.14);
   --text:rgba(255,255,255,.92);
   --muted:rgba(255,255,255,.68);
   --accent:#ff7a18;   /* orange */
@@ -15,10 +15,10 @@ body{
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
   font-weight: 600;
   background:
-    radial-gradient(900px 600px at 10% -10%, rgba(255,122,24,.34), transparent 60%),
-    radial-gradient(700px 520px at 90% 110%, rgba(255,255,255,.10), transparent 55%),
-    radial-gradient(800px 600px at 75% 15%, rgba(255,195,77,.16), transparent 58%),
-    linear-gradient(180deg, #140803, var(--bg));
+    radial-gradient(900px 600px at 10% -10%, rgba(255,255,255,.26), transparent 60%),
+    radial-gradient(700px 520px at 90% 110%, rgba(255,255,255,.20), transparent 55%),
+    radial-gradient(800px 600px at 75% 15%, rgba(255,195,77,.28), transparent 58%),
+    linear-gradient(180deg, #ff7a18, #ff9a3d 55%, #ff7a18);
 }
 
 a{color:inherit}
@@ -50,19 +50,19 @@ a{color:inherit}
   text-decoration:none;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.20);
+  border: 1px solid rgba(255,255,255,.70);
+  background: rgba(255,255,255,.16);
   transition: transform .10s ease, background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
 .topbar-links a:hover{
-  background: rgba(255,122,24,.22);
-  border-color: rgba(255,195,77,.26);
+  background: rgba(255,255,255,.22);
+  border-color: rgba(255,255,255,.88);
   box-shadow: 0 10px 28px rgba(0,0,0,.20);
   transform: translateY(-1px);
 }
 .topbar-links a:active{
   transform: translateY(0px) scale(0.99);
-  background: rgba(255,122,24,.30);
+  background: rgba(255,255,255,.26);
 }
 @media (max-width: 720px){
   .topbar-brand{min-width: auto;}
@@ -93,11 +93,11 @@ a{color:inherit}
   inset: 0;
   z-index: -1;
   background-image:
-    radial-gradient(900px 640px at 12% 18%, rgba(255,122,24,.36), transparent 62%),
-    radial-gradient(820px 640px at 86% 72%, rgba(124,58,237,.32), transparent 60%),
-    radial-gradient(740px 560px at 60% 10%, rgba(255,195,77,.16), transparent 58%),
-    linear-gradient(135deg, rgba(124,58,237,.12), rgba(255,122,24,.10)),
-    linear-gradient(180deg, #0a0714, #12060f 52%, #140803);
+    radial-gradient(900px 640px at 12% 18%, rgba(255,255,255,.24), transparent 62%),
+    radial-gradient(820px 640px at 86% 72%, rgba(255,195,77,.22), transparent 60%),
+    radial-gradient(740px 560px at 60% 10%, rgba(255,255,255,.16), transparent 58%),
+    linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,122,24,.10)),
+    linear-gradient(180deg, #ff7a18, #ff9a3d 55%, #ff7a18);
   background-size: 140% 140%, 140% 140%, 120% 120%, 200% 200%, auto;
   background-position: 10% 10%, 90% 70%, 60% 5%, 0% 0%, center;
   animation: aurora 12s ease-in-out infinite;
@@ -143,8 +143,8 @@ a{color:inherit}
 
 input, select, textarea{
   width:100%;
-  background: rgba(0,0,0,.35);
-  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.18);
+  border: 1px solid rgba(255,255,255,.55);
   color: var(--text);
   padding: 10px 12px;
   border-radius: 12px;
@@ -185,38 +185,38 @@ input, select, textarea{
 
 button{
   cursor:pointer;
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,122,24,.18);
-  color: var(--text);
+  border: 1px solid rgba(255,255,255,.90);
+  background: rgba(255,255,255,.96);
+  color: #ff7a18;
   padding: 10px 12px;
   border-radius: 12px;
   font-weight: 700;
   transition: transform .10s ease, background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
-button.primary{background: rgba(255,195,77,.18);}
-button.danger{background: rgba(255,80,110,.18);}
+button.primary{background: rgba(255,255,255,.98); color:#ff7a18;}
+button.danger{background: rgba(255,255,255,.98); color:#ef4444; border-color: rgba(255,255,255,.92);}
 
 button:hover{
-  background: rgba(255,122,24,.28);
-  border-color: rgba(255,195,77,.28);
+  background: #fff7ed;
+  border-color: rgba(255,255,255,.98);
   box-shadow: 0 10px 28px rgba(0,0,0,.26);
   transform: translateY(-1px);
 }
 button.primary:hover{
-  background: rgba(255,195,77,.26);
-  border-color: rgba(255,195,77,.34);
+  background: #fff7ed;
+  border-color: rgba(255,255,255,.98);
 }
 button.danger:hover{
-  background: rgba(255,80,110,.26);
-  border-color: rgba(255,80,110,.34);
+  background: #fff1f2;
+  border-color: rgba(255,255,255,.98);
 }
 
 button:active{
   transform: translateY(0px) scale(0.98);
-  background: rgba(255,122,24,.36);
+  background: #ffedd5;
 }
-button.primary:active{background: rgba(255,195,77,.34);}
-button.danger:active{background: rgba(255,80,110,.34);}
+button.primary:active{background: #ffedd5;}
+button.danger:active{background: #ffe4e6;}
 
 button:focus-visible{
   outline: 2px solid rgba(255,195,77,.65);
@@ -246,19 +246,19 @@ button:focus-visible{
   text-decoration:none;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.20);
+  border: 1px solid rgba(255,255,255,.70);
+  background: rgba(255,255,255,.16);
   transition: transform .10s ease, background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
 .nav a:hover{
-  background: rgba(255,122,24,.22);
-  border-color: rgba(255,195,77,.26);
+  background: rgba(255,255,255,.22);
+  border-color: rgba(255,255,255,.88);
   box-shadow: 0 10px 28px rgba(0,0,0,.20);
   transform: translateY(-1px);
 }
 .nav a:active{
   transform: translateY(0px) scale(0.99);
-  background: rgba(255,122,24,.30);
+  background: rgba(255,255,255,.26);
 }
 
 /* Home background image */
@@ -295,12 +295,14 @@ button:focus-visible{
 
 /* Role toggle chips */
 button.chip{
-  background: rgba(0,0,0,.20);
-  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.92);
+  border: 1px solid rgba(255,255,255,.92);
+  color: #ff7a18;
 }
 button.chip-on{
-  background: rgba(255,122,24,.26);
-  border-color: rgba(255,195,77,.35);
+  background: rgba(255,255,255,.98);
+  border-color: rgba(255,255,255,.98);
+  box-shadow: 0 10px 28px rgba(0,0,0,.18);
 }
 
 /* Tiny animated sparkle (gif-like) */
