@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getContact, getProperty, getSession } from "../api";
+import { getContact, getProperty, getSession, toApiUrl } from "../api";
 import { Link, useParams } from "react-router-dom";
 
 export default function PropertyPage() {
@@ -50,11 +50,33 @@ export default function PropertyPage() {
         <div className="col-12">
           <div className="card">
             <div className="h2">Photos</div>
-            <div className="muted" style={{ marginTop: 6 }}>
-              {p.images?.length
-                ? p.images.map((i: any) => i.url).join(" • ")
-                : "No images yet (owner uploads via Publish Ad screen)."}
-            </div>
+            {p.images?.length ? (
+              <div className="grid" style={{ marginTop: 10 }}>
+                {p.images.map((i: any) => (
+                  <div className="col-6" key={i.id ?? i.url}>
+                    <a href={toApiUrl(i.url)} target="_blank" rel="noreferrer">
+                      <img
+                        src={toApiUrl(i.url)}
+                        alt={`Property ${p.id} photo`}
+                        style={{
+                          width: "100%",
+                          height: 220,
+                          objectFit: "cover",
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,.14)",
+                          background: "rgba(0,0,0,.25)",
+                        }}
+                        loading="lazy"
+                      />
+                    </a>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="muted" style={{ marginTop: 6 }}>
+                No images yet (upload from Publish Ad).
+              </div>
+            )}
           </div>
         </div>
         <div className="col-12">

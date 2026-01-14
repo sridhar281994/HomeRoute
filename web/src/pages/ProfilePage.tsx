@@ -7,6 +7,7 @@ import {
   requestChangeEmailOtp,
   requestChangePhoneOtp,
   setSession,
+  toApiUrl,
   updateMe,
   uploadProfileImage,
   verifyChangeEmailOtp,
@@ -86,7 +87,7 @@ export default function ProfilePage() {
             <div className="row" style={{ marginTop: 10, alignItems: "center" }}>
               {newPhotoPreview || profileImageUrl ? (
                 <img
-                  src={newPhotoPreview || profileImageUrl}
+                  src={newPhotoPreview || toApiUrl(profileImageUrl)}
                   alt="Profile"
                   style={{ width: 92, height: 92, objectFit: "cover", borderRadius: 18, border: "1px solid rgba(255,255,255,.14)" }}
                 />

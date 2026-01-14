@@ -11,6 +11,7 @@ import ProfilePage from "./pages/ProfilePage";
 import OwnerAddPage from "./pages/OwnerAddPage";
 import AdminReviewPage from "./pages/AdminReviewPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import MyPostsPage from "./pages/MyPostsPage";
 
 export default function App() {
   const loc = useLocation();
@@ -32,6 +33,7 @@ export default function App() {
           {isLoggedIn ? (
             <>
               <Link to="/subscription">Subscription</Link>
+              <Link to="/myposts">My Posts</Link>
               <Link to="/profile">Settings</Link>
               <Link to="/owner/add">Publish Ad</Link>
             </>
@@ -63,6 +65,7 @@ export default function App() {
         <Route path="/subscription" element={<SubscriptionPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/owner/add" element={<OwnerAddPage />} />
+        <Route path="/myposts" element={<MyPostsPage />} />
         <Route path="/admin/review" element={<AdminReviewPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

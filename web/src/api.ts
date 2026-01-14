@@ -49,6 +49,17 @@ const _envBase: string | undefined = (import.meta as any).env?.VITE_API_BASE_URL
 const _defaultBase: string = (import.meta as any).env?.DEV ? "http://127.0.0.1:8000" : "";
 export const API_BASE = String(_envBase ?? _defaultBase).replace(/\/+$/, "");
 
+export function toApiUrl(url: string): string {
+  const u = String(url || "").trim();
+  if (!u) return "";
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("//")) return u;
+  // If web UI is served from same origin as API (prod build), API_BASE is "".
+  if (!API_BASE) return u;
+  if (u.startsWith("/")) return `${API_BASE}${u}`;
+  return `${API_BASE}/${u}`;
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const s = getSession();
   const headers = new Headers(init?.headers || {});
