@@ -1,35 +1,9 @@
-import { useMemo, useState } from "react";
-import { getSession, registerUser } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { getCategoryCatalog, getSession, registerUser } from "../api";
 import { INDIA_STATES } from "../indiaStates";
 import { districtsForState } from "../indiaDistricts";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import PasswordField from "../components/PasswordField";
-
-const OWNER_CATEGORIES = [
-  // Property & Real Estate
-  "Apartment Owner",
-  "Villa Owner",
-  "Plot Owner",
-  "PG Owner",
-  "Marriage Hall Owner",
-  "Party Hall Owner",
-  // Construction & Materials
-  "Retailer / Hardware Shop",
-  "Steel Supplier",
-  "Brick Supplier",
-  "Sand Supplier",
-  "M-Sand Supplier",
-  "Cement Supplier",
-  // Services & Workforce
-  "Interior Designer",
-  "Carpenter / Wood Works",
-  "Mason / Labor Contractor",
-  "Electrician",
-  "Plumber",
-  "Painter",
-  "Gardener / Landscaping",
-  "Cleaning Services",
-] as const;
 
 export default function RegisterPage() {
   const nav = useNavigate();
@@ -43,11 +17,24 @@ export default function RegisterPage() {
   const [district, setDistrict] = useState("");
   const [role, setRole] = useState<"customer" | "owner">("customer");
   const [ownerCategory, setOwnerCategory] = useState("");
+  const [ownerCategories, setOwnerCategories] = useState<string[]>([]);
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string>("");
 
   const stateOptions = useMemo(() => INDIA_STATES, []);
   const districtOptions = useMemo(() => districtsForState(state), [state]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const c = await getCategoryCatalog();
+        setOwnerCategories((c.owner_categories || []).map((x) => String(x || "").trim()).filter(Boolean));
+      } catch {
+        // Non-fatal: registration can still proceed without category metadata.
+        setOwnerCategories([]);
+      }
+    })();
+  }, []);
 
   return (
     <div className="panel">
@@ -86,14 +73,23 @@ export default function RegisterPage() {
         {role === "owner" ? (
           <div className="col-12">
             <label className="muted">Publish Ad category</label>
-            <select value={ownerCategory} onChange={(e) => setOwnerCategory(e.target.value)}>
-              <option value="">Select category</option>
-              {OWNER_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            {ownerCategories.length ? (
+              <select value={ownerCategory} onChange={(e) => setOwnerCategory(e.target.value)}>
+                <option value="">Select category</option>
+                {ownerCategories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <input value={ownerCategory} onChange={(e) => setOwnerCategory(e.target.value)} placeholder="Enter category" />
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Category list is loading.
+                </div>
+              </>
+            )}
           </div>
         ) : null}
         <div className="col-6">

@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "updated": "2026-01-09",
+  "version": "1.1",
+  "updated": "2026-01-13",
   "categories": [
     {
       "group": "Property & Space",
@@ -116,13 +116,23 @@
       ]
     },
     {
+      "group": "Packers & Movers",
+      "items": [
+        "House Shifting Packers",
+        "Office Relocation Packers",
+        "Local Packers & Movers",
+        "Intercity Packers & Movers",
+        "Vehicle Transport Service",
+        "Storage & Warehousing Service"
+      ]
+    },
+    {
       "group": "Maintenance & Support",
       "items": [
         "Cleaning Service",
         "Pest Control Service",
         "Security Service",
         "Waste Management Service",
-        "House Shifting / Packers",
         "Scrap Buyer",
         "Septic Tank Cleaning"
       ]

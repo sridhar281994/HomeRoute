@@ -1378,8 +1378,8 @@ def owner_list_properties(
     me: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if me.role not in {"owner", "admin"}:
-        raise HTTPException(status_code=403, detail="Owner account required")
+    if me.role not in {"user", "owner", "admin"}:
+        raise HTTPException(status_code=403, detail="Login required")
     stmt = select(Property).where(Property.owner_id == me.id).order_by(Property.created_at.desc(), Property.id.desc())
     items = [_property_out(p, owner=me, include_unapproved_images=True, include_internal=True) for p in db.execute(stmt).scalars().all()]
     return {"items": items}
@@ -1391,8 +1391,8 @@ def owner_delete_property(
     me: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if me.role not in {"owner", "admin"}:
-        raise HTTPException(status_code=403, detail="Owner account required")
+    if me.role not in {"user", "owner", "admin"}:
+        raise HTTPException(status_code=403, detail="Login required")
     p = db.get(Property, int(property_id))
     if not p:
         raise HTTPException(status_code=404, detail="Ad not found")
@@ -1427,8 +1427,8 @@ def owner_create_property(
     me: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if me.role not in {"owner", "admin"}:
-        raise HTTPException(status_code=403, detail="Owner account required")
+    if me.role not in {"user", "owner", "admin"}:
+        raise HTTPException(status_code=403, detail="Login required")
     if me.role == "owner" and (me.approval_status or "") != "approved":
         raise HTTPException(status_code=403, detail="Owner account is pending admin approval")
 
