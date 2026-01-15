@@ -55,19 +55,35 @@ export default function PropertyPage() {
                 {p.images.map((i: any) => (
                   <div className="col-6" key={i.id ?? i.url}>
                     <a href={toApiUrl(i.url)} target="_blank" rel="noreferrer">
-                      <img
-                        src={toApiUrl(i.url)}
-                        alt={`Property ${p.id} photo`}
-                        style={{
-                          width: "100%",
-                          height: 220,
-                          objectFit: "cover",
-                          borderRadius: 14,
-                          border: "1px solid rgba(255,255,255,.14)",
-                          background: "rgba(0,0,0,.25)",
-                        }}
-                        loading="lazy"
-                      />
+                      {String(i.content_type || "").toLowerCase().startsWith("video/") ? (
+                        <video
+                          controls
+                          preload="metadata"
+                          src={toApiUrl(i.url)}
+                          style={{
+                            width: "100%",
+                            height: 220,
+                            objectFit: "cover",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,.14)",
+                            background: "rgba(0,0,0,.25)",
+                          }}
+                        />
+                      ) : (
+                        <img
+                          src={toApiUrl(i.url)}
+                          alt={`Property ${p.id} media`}
+                          style={{
+                            width: "100%",
+                            height: 220,
+                            objectFit: "cover",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,.14)",
+                            background: "rgba(0,0,0,.25)",
+                          }}
+                          loading="lazy"
+                        />
+                      )}
                     </a>
                   </div>
                 ))}

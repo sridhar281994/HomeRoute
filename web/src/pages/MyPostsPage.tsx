@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getSession, ownerDeleteProperty, ownerListProperties } from "../api";
+import { getSession, ownerDeleteProperty, ownerListProperties, toApiUrl } from "../api";
 import { Link, useNavigate } from "react-router-dom";
 
 function groupByStatus(items: any[]) {
@@ -70,14 +70,18 @@ export default function MyPostsPage() {
                 <div className="grid" style={{ marginTop: 10 }}>
                   {arr.map((p) => (
                     <div className="col-12" key={p.id}>
-                      <div className="card">
-                        <div className="row">
+                      <div className="card post-card">
+                        <div className="post-header">
+                          <div className="post-avatar" aria-hidden="true">
+                            {String(p.title || "A").trim().slice(0, 1).toUpperCase()}
+                          </div>
                           <div>
-                            <div className="h2">
-                              #{p.id} • {p.title}
+                            <div className="h2" style={{ margin: 0 }}>
+                              {p.title}
                             </div>
-                            <div className="muted">
-                              {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display}
+                            <div className="muted post-meta">
+                              Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • status: {p.status} • {p.rent_sale} •{" "}
+                              {p.property_type} • {p.price_display} • {p.location_display}
                               {p.created_at ? ` • ${new Date(p.created_at).toLocaleString()}` : ""}
                             </div>
                           </div>
@@ -86,11 +90,12 @@ export default function MyPostsPage() {
                           <button
                             className="danger"
                             onClick={async () => {
-                              const ok = window.confirm(`Delete post #${p.id}? This cannot be undone.`);
+                              const label = String(p.adv_number || p.ad_number || p.id || "").trim();
+                              const ok = window.confirm(`Delete Ad #${label}? This cannot be undone.`);
                               if (!ok) return;
                               try {
                                 await ownerDeleteProperty(Number(p.id));
-                                setMsg(`Deleted post #${p.id}`);
+                                setMsg(`Deleted Ad #${label}`);
                                 load();
                               } catch (e: any) {
                                 setMsg(e.message || "Delete failed");
@@ -100,6 +105,22 @@ export default function MyPostsPage() {
                             Remove
                           </button>
                         </div>
+
+                        {p.images?.length ? (
+                          <div className="post-media">
+                            {String(p.images[0]?.content_type || "").toLowerCase().startsWith("video/") ? (
+                              <video controls preload="metadata" src={toApiUrl(p.images[0].url)} />
+                            ) : (
+                              <img src={toApiUrl(p.images[0].url)} alt={`Ad ${p.id} media`} loading="lazy" />
+                            )}
+                          </div>
+                        ) : null}
+
+                        {p.description ? (
+                          <div className="post-body">
+                            <div className="muted post-text">{p.description}</div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ))}

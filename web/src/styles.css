@@ -330,3 +330,53 @@ button.chip-on{
   100%{transform: scale(.85); opacity:.55;}
 }
 
+/* Feed-style "post" cards (Facebook-like) */
+.post-card{
+  padding: 14px;
+}
+.post-header{
+  display:flex;
+  align-items:center;
+  gap: 12px;
+}
+.post-avatar{
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight: 800;
+  letter-spacing: .3px;
+  color: rgba(255,255,255,.92);
+  background:
+    radial-gradient(16px 16px at 30% 30%, rgba(255,255,255,.30), transparent 60%),
+    linear-gradient(135deg, rgba(168,85,247,.95), rgba(96,165,250,.85));
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 10px 28px rgba(0,0,0,.18);
+  flex: 0 0 auto;
+}
+.post-meta{
+  margin-top: 2px;
+  opacity: .88;
+}
+.post-media{
+  margin-top: 10px;
+  border-radius: 14px;
+  overflow:hidden;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.25);
+}
+.post-media img,
+.post-media video{
+  width: 100%;
+  height: 320px;
+  object-fit: cover;
+  display:block;
+}
+.post-body{
+  margin-top: 10px;
+}
+.post-body .post-text{
+  white-space: pre-wrap;
+}

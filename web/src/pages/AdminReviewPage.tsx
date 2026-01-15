@@ -199,13 +199,66 @@ export default function AdminReviewPage() {
               <div className="row">
                 <div>
                   <div className="h2">
-                    #{p.id} — {p.title}
+                    Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} — {p.title}
                   </div>
                   <div className="muted">
                     {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display} • status: {p.status}
                   </div>
+                  {p.description ? (
+                    <div className="muted" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {p.description}
+                    </div>
+                  ) : null}
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    Owner: {p.owner_company_name || p.owner_name || p.owner_username || "—"}
+                    {p.owner_id ? ` (id: ${p.owner_id})` : ""}
+                    {p.owner_phone ? ` • owner phone: ${p.owner_phone}` : ""}
+                    {p.owner_email ? ` • owner email: ${p.owner_email}` : ""}
+                  </div>
+                  {p.contact_phone || p.contact_email ? (
+                    <div className="muted">
+                      Ad contact: {p.contact_phone || "—"} {p.contact_email ? ` • ${p.contact_email}` : ""}
+                    </div>
+                  ) : null}
+                  {p.address ? <div className="muted">Address: {p.address}</div> : null}
+                  {p.moderation_reason ? (
+                    <div className="muted" style={{ marginTop: 6 }}>
+                      Moderation reason: {p.moderation_reason}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="spacer" />
+                {p.images?.length ? (
+                  String(p.images[0]?.content_type || "").toLowerCase().startsWith("video/") ? (
+                    <video
+                      controls
+                      preload="metadata"
+                      src={toApiUrl(p.images[0].url)}
+                      style={{
+                        width: 180,
+                        height: 120,
+                        objectFit: "cover",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,.14)",
+                        background: "rgba(0,0,0,.25)",
+                      }}
+                    />
+                  ) : (
+                    <img
+                      src={toApiUrl(p.images[0].url)}
+                      alt={`Listing ${p.id} preview`}
+                      style={{
+                        width: 180,
+                        height: 120,
+                        objectFit: "cover",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,.14)",
+                        background: "rgba(0,0,0,.25)",
+                      }}
+                      loading="lazy"
+                    />
+                  )
+                ) : null}
                 <button
                   onClick={async () => {
                     try {

@@ -147,12 +147,12 @@ export default function OwnerAddPage() {
           <div className="card">
             <div className="h2">Upload photos</div>
             <p className="muted" style={{ marginTop: 6 }}>
-              Supports multiple images. Stored on server under <code>/uploads</code>.
+              Supports multiple images/videos. Media is optimized server-side and stored under <code>/uploads</code>.
             </p>
             <input
               type="file"
               multiple
-              accept="image/*"
+              accept="image/*,video/*"
               onChange={(e) => setFiles(e.target.files)}
             />
             <div className="row" style={{ marginTop: 10 }}>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getCategoryCatalog, getSession, listProperties } from "../api";
+import { getCategoryCatalog, getSession, listProperties, toApiUrl } from "../api";
 import { Link } from "react-router-dom";
 import { INDIA_STATES } from "../indiaStates";
 import { districtsForState } from "../indiaDistricts";
@@ -182,19 +182,43 @@ export default function HomePage() {
 
       <div className="grid" style={{ marginTop: 12 }}>
         {items.map((p) => (
-          <div className="col-6" key={p.id}>
-            <div className="card">
-              <div className="row">
+          <div className="col-12" key={p.id}>
+            <div className="card post-card">
+              <div className="post-header">
+                <div className="post-avatar" aria-hidden="true">
+                  {String(p.owner_company_name || p.owner_name || p.title || "A").trim().slice(0, 1).toUpperCase()}
+                </div>
                 <div>
-                  <div className="h2">{p.title}</div>
-                  <div className="muted">
-                    {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display}
+                  <div className="h2" style={{ margin: 0 }}>
+                    {p.title}
+                  </div>
+                  <div className="muted post-meta">
+                    Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} •{" "}
+                    {p.location_display}
                     {p.created_at ? ` • ${new Date(p.created_at).toLocaleDateString()}` : ""}
                   </div>
                 </div>
                 <div className="spacer" />
                 <Link to={`/property/${p.id}`}>Open ➜</Link>
               </div>
+
+              {p.images?.length ? (
+                <div className="post-media">
+                  {String(p.images[0]?.content_type || "").toLowerCase().startsWith("video/") ? (
+                    <video controls preload="metadata" src={toApiUrl(p.images[0].url)} />
+                  ) : (
+                    <img src={toApiUrl(p.images[0].url)} alt={`Ad ${p.id} media`} loading="lazy" />
+                  )}
+                </div>
+              ) : null}
+
+              {p.description ? (
+                <div className="post-body">
+                  <div className="muted post-text">
+                    {String(p.description).length > 220 ? `${String(p.description).slice(0, 220)}…` : p.description}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         ))}
