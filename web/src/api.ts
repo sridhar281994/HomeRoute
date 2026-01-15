@@ -345,6 +345,15 @@ export function adminImageSuspend(id: number, reason = "") {
   });
 }
 
+export function adminLogs(params?: { entity_type?: string; entity_id?: number; limit?: number }) {
+  const sp = new URLSearchParams();
+  if (params?.entity_type) sp.set("entity_type", params.entity_type);
+  if (params?.entity_id != null) sp.set("entity_id", String(params.entity_id));
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  const qs = sp.toString() ? `?${sp.toString()}` : "";
+  return api<{ items: any[] }>(`/admin/logs${qs}`);
+}
+
 export function getCategoryCatalog() {
   return api<CategoryCatalog>(`/meta/categories`);
 }

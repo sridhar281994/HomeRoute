@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import base64
 import hashlib
 import io
 import json
@@ -24,6 +25,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from PIL import Image, ImageOps
+import requests
 
 from app.config import allowed_hosts, enforce_secure_secrets, otp_exp_minutes
 from app.db import session_scope
@@ -176,6 +178,139 @@ def _max_profile_image_dim() -> int:
         return int(os.environ.get("MAX_PROFILE_IMAGE_DIM") or "512")
     except Exception:
         return 512
+
+
+def _enable_media_ai_moderation() -> bool:
+    v = (os.environ.get("ENABLE_MEDIA_AI_MODERATION") or "1").strip().lower()
+    return v not in {"0", "false", "no", "off"}
+
+
+def _openai_api_key() -> str:
+    return (os.environ.get("OPENAI_API_KEY") or "").strip()
+
+
+def _openai_moderation_model() -> str:
+    return (os.environ.get("OPENAI_MODERATION_MODEL") or "omni-moderation-latest").strip()
+
+
+def _require_ai_moderation_configured() -> None:
+    if not _enable_media_ai_moderation():
+        return
+    if not _openai_api_key():
+        raise HTTPException(status_code=503, detail="AI moderation is enabled but not configured (missing OPENAI_API_KEY)")
+
+
+def _openai_moderate_image(*, raw: bytes) -> dict[str, Any]:
+    """
+    Calls OpenAI image moderation. Returns a dict with:
+      - ok: bool
+      - flagged: bool
+      - summary: str
+      - raw: response JSON (best-effort)
+    """
+    _require_ai_moderation_configured()
+    if not _enable_media_ai_moderation():
+        return {"ok": True, "flagged": False, "summary": "ai_moderation_disabled", "raw": {}}
+
+    # Use a data URL to avoid file hosting; OpenAI moderation accepts image_url inputs.
+    b64 = base64.b64encode(raw).decode("ascii")
+    data_url = f"data:application/octet-stream;base64,{b64}"
+    payload = {
+        "model": _openai_moderation_model(),
+        "input": [
+            {
+                "type": "image_url",
+                "image_url": {"url": data_url},
+            }
+        ],
+    }
+
+    try:
+        resp = requests.post(
+            "https://api.openai.com/v1/moderations",
+            headers={"Authorization": f"Bearer {_openai_api_key()}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=20,
+        )
+    except Exception:
+        raise HTTPException(status_code=503, detail="AI moderation service unavailable")
+
+    data: dict[str, Any] = {}
+    try:
+        data = resp.json()
+    except Exception:
+        data = {}
+
+    if not resp.ok:
+        # Fail-closed: do not store unmoderated media.
+        raise HTTPException(status_code=503, detail="AI moderation failed")
+
+    results = (data or {}).get("results") or []
+    r0 = results[0] if results else {}
+    flagged = bool((r0 or {}).get("flagged", False))
+
+    # Build a compact summary of categories for admin logs.
+    cats = (r0 or {}).get("categories") or {}
+    flagged_cats = [k for k, v in cats.items() if v is True]
+    summary = "flagged: " + ", ".join(flagged_cats) if flagged_cats else ("flagged" if flagged else "ok")
+    return {"ok": True, "flagged": flagged, "summary": summary, "raw": data}
+
+
+def _openai_moderate_video(*, raw: bytes, max_frames: int = 8) -> dict[str, Any]:
+    """
+    Video moderation via frame sampling + image moderation.
+    Requires ffmpeg. Fail-closed if moderation cannot be performed.
+    """
+    _require_ai_moderation_configured()
+    if not _enable_media_ai_moderation():
+        return {"ok": True, "flagged": False, "summary": "ai_moderation_disabled", "raw": {}}
+    if not shutil.which("ffmpeg"):
+        raise HTTPException(status_code=503, detail="AI moderation requires ffmpeg (missing)")
+
+    with tempfile.TemporaryDirectory(prefix="ch_vid_mod_") as td:
+        in_path = os.path.join(td, "in")
+        out_glob = os.path.join(td, "frame_%02d.jpg")
+        with open(in_path, "wb") as f:
+            f.write(raw)
+
+        # Sample 1 fps, cap frames. Keep it small for moderation.
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            in_path,
+            "-vf",
+            "fps=1,scale=640:-2",
+            "-vframes",
+            str(int(max_frames)),
+            out_glob,
+        ]
+        try:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid video upload")
+
+        # Moderate each extracted frame; reject if any flagged.
+        flagged_frames: list[dict[str, Any]] = []
+        for i in range(1, int(max_frames) + 1):
+            fp = os.path.join(td, f"frame_{i:02d}.jpg")
+            if not os.path.exists(fp):
+                continue
+            try:
+                with open(fp, "rb") as f:
+                    frame = f.read()
+            except Exception:
+                continue
+            if not frame:
+                continue
+            res = _openai_moderate_image(raw=frame)
+            if bool(res.get("flagged")):
+                flagged_frames.append({"frame": i, "summary": res.get("summary")})
+                break  # fail fast
+
+        if flagged_frames:
+            return {"ok": True, "flagged": True, "summary": f"flagged_frame_{flagged_frames[0]['frame']}: {flagged_frames[0]['summary']}", "raw": {"flagged_frames": flagged_frames}}
+        return {"ok": True, "flagged": False, "summary": "ok", "raw": {}}
 
 
 def _raise_if_too_large(*, size_bytes: int, max_bytes: int) -> None:
@@ -1046,6 +1181,19 @@ def me_upload_profile_image(
     if not raw:
         raise HTTPException(status_code=400, detail="Empty upload")
     _raise_if_too_large(size_bytes=len(raw), max_bytes=_max_upload_image_bytes())
+
+    # AI moderation (reject before any storage).
+    mod = _openai_moderate_image(raw=raw)
+    if bool(mod.get("flagged")):
+        _log_moderation(
+            db,
+            actor_user_id=me.id,
+            entity_type="user_profile_media_upload",
+            entity_id=int(me.id),
+            action="reject",
+            reason=f"Unsafe media rejected by AI moderation ({mod.get('summary')})",
+        )
+        raise HTTPException(status_code=400, detail="Unsafe media detected. Upload rejected.")
 
     optimized = _optimize_image_to_webp(raw, max_dim=_max_profile_image_dim())
 
@@ -2105,12 +2253,36 @@ def upload_property_image(
 
     if is_image:
         _raise_if_too_large(size_bytes=len(raw), max_bytes=_max_upload_image_bytes())
+        # AI moderation (reject before any storage).
+        mod = _openai_moderate_image(raw=raw)
+        if bool(mod.get("flagged")):
+            _log_moderation(
+                db,
+                actor_user_id=me.id,
+                entity_type="property_media_upload",
+                entity_id=int(p.id),
+                action="reject",
+                reason=f"Unsafe image rejected by AI moderation ({mod.get('summary')})",
+            )
+            raise HTTPException(status_code=400, detail="Unsafe media detected. Upload rejected.")
         optimized = _optimize_image_to_webp(raw, max_dim=_max_property_media_dim())
         stored_bytes = optimized
         stored_ext = ".webp"
         stored_content_type = "image/webp"
     else:
         _raise_if_too_large(size_bytes=len(raw), max_bytes=_max_upload_video_bytes())
+        # AI moderation (reject before any storage).
+        mod = _openai_moderate_video(raw=raw)
+        if bool(mod.get("flagged")):
+            _log_moderation(
+                db,
+                actor_user_id=me.id,
+                entity_type="property_media_upload",
+                entity_id=int(p.id),
+                action="reject",
+                reason=f"Unsafe video rejected by AI moderation ({mod.get('summary')})",
+            )
+            raise HTTPException(status_code=400, detail="Unsafe media detected. Upload rejected.")
         optimized = _transcode_video_to_mp4(raw, max_dim=_max_property_media_dim())
         # Block extremely large optimized outputs as well.
         _raise_if_too_large(size_bytes=len(optimized), max_bytes=_max_upload_video_bytes())

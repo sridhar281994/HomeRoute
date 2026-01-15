@@ -4,6 +4,7 @@ import {
   adminImageApprove,
   adminImageReject,
   adminImagesPending,
+  adminLogs,
   adminOwnerApprove,
   adminOwnerReject,
   adminOwnersPending,
@@ -19,16 +20,23 @@ export default function AdminReviewPage() {
   const [items, setItems] = useState<any[]>([]);
   const [owners, setOwners] = useState<any[]>([]);
   const [images, setImages] = useState<any[]>([]);
+  const [violations, setViolations] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
 
   async function load() {
     setMsg("");
     try {
-      const [resListings, resOwners, resImages] = await Promise.all([adminPending(), adminOwnersPending(), adminImagesPending()]);
+      const [resListings, resOwners, resImages, resLogs] = await Promise.all([
+        adminPending(),
+        adminOwnersPending(),
+        adminImagesPending(),
+        adminLogs({ entity_type: "property_media_upload", limit: 200 }),
+      ]);
       setItems(resListings.items || []);
       setOwners(resOwners.items || []);
       setImages(resImages.items || []);
+      setViolations((resLogs.items || []).filter((x: any) => String(x.action || "").toLowerCase() === "reject"));
     } catch (e: any) {
       setMsg(e.message || "Failed");
     }
@@ -186,6 +194,31 @@ export default function AdminReviewPage() {
             </div>
           ))}
           {!images.length ? <div className="col-12 muted">No pending images.</div> : null}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="h2">Rejected Media Uploads (AI moderation)</div>
+        <div className="muted" style={{ marginTop: 6 }}>
+          These are rejected before storage; they are logged for review.
+        </div>
+        <div className="grid" style={{ marginTop: 10 }}>
+          {violations.map((v) => (
+            <div key={v.id} className="col-12">
+              <div className="row">
+                <div>
+                  <div className="h2">Log #{v.id} — Property #{v.entity_id}</div>
+                  <div className="muted">
+                    actor: {v.actor_user_id} • action: {v.action} • {v.created_at ? new Date(v.created_at).toLocaleString() : ""}
+                  </div>
+                  <div className="muted" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                    {v.reason}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+          {!violations.length ? <div className="col-12 muted">No AI moderation rejections logged.</div> : null}
         </div>
       </div>
 
