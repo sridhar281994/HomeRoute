@@ -203,6 +203,25 @@ def _image_sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+_AD_NUMBER_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+
+def _new_ad_number() -> str:
+    # 6-char uppercase alphanumeric.
+    return "".join(secrets.choice(_AD_NUMBER_ALPHABET) for _ in range(6))
+
+
+def _ensure_property_ad_number(db: Session) -> str:
+    # Extremely low collision probability, but still enforce uniqueness at DB level.
+    for _ in range(50):
+        code = _new_ad_number()
+        exists = db.execute(select(Property.id).where(Property.ad_number == code)).first()
+        if not exists:
+            return code
+    # Fallback: if RNG keeps colliding (unlikely), fail deterministically.
+    raise HTTPException(status_code=500, detail="Failed to allocate ad number")
+
+
 def _log_moderation(
     db: Session,
     *,
@@ -1093,9 +1112,10 @@ def _property_out(
     o = owner or getattr(p, "owner", None)
     owner_name = (getattr(o, "name", "") or "").strip() if o else ""
     owner_company_name = (getattr(o, "company_name", "") or "").strip() if o else ""
+    adv_number = (getattr(p, "ad_number", "") or "").strip() or str(p.id)
     out: dict[str, Any] = {
         "id": p.id,
-        "adv_number": p.id,
+        "adv_number": adv_number,
         "title": p.title,
         "description": p.description,
         "property_type": p.property_type,
@@ -1141,11 +1161,7 @@ def list_properties(
 ):
     state_in = (state or "").strip()
     district_in = (district or "").strip()
-    if not me:
-        # Guest/unauthenticated browsing must be scoped to a location.
-        if not state_in or not district_in:
-            raise HTTPException(status_code=400, detail="State and District are required for guest search")
-    else:
+    if me:
         # If a logged-in user didn't pass filters, fall back to their profile.
         if not state_in and (me.state or "").strip():
             state_in = (me.state or "").strip()
@@ -1335,11 +1351,11 @@ def get_property_contact(
             db.add(ContactUsage(user_id=me.id, property_id=int(property_id), subscription_id=usub.id))
 
     # Notify the customer via email + SMS (best-effort).
-    adv_no = int(p.id)
+    adv_no = (p.ad_number or "").strip() or str(p.id)
     owner_name = (owner.name or "").strip() or "Owner"
     owner_phone = (p.contact_phone or "").strip()
     customer_email = (me.email or "").strip()
-    customer_phone = (me.phone or "").strip()
+    customer_phone = (me.phone_normalized or me.phone or "").strip()
     try:
         if customer_email and "@" in customer_email:
             send_email(
@@ -1470,6 +1486,7 @@ def owner_create_property(
 
     p = Property(
         owner_id=me.id,
+        ad_number=_ensure_property_ad_number(db),
         title=(data.title or "").strip() or "Untitled",
         description=(data.description or "").strip(),
         property_type=(data.property_type or "apartment").strip(),
@@ -1484,7 +1501,9 @@ def owner_create_property(
         district_normalized=_norm_key(district),
         amenities_json=json.dumps(list(data.amenities or [])),
         availability=(data.availability or "available").strip(),
-        status="pending",
+        # Make newly posted ads visible immediately.
+        # Admins can still suspend/reject later via moderation endpoints.
+        status="approved",
         contact_phone=contact_phone,
         contact_phone_normalized=contact_phone_norm,
         contact_email=(data.contact_email or "").strip(),
@@ -1493,7 +1512,7 @@ def owner_create_property(
     db.add(p)
     db.flush()
     _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="create", reason="")
-    return {"id": p.id, "status": p.status}
+    return {"id": p.id, "ad_number": (p.ad_number or "").strip() or str(p.id), "status": p.status}
 
 
 # -----------------------
