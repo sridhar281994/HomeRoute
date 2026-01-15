@@ -17,6 +17,7 @@ export default function OwnerAddPage() {
   const [useCompanyName, setUseCompanyName] = useState<boolean>(false);
   const [companyName, setCompanyName] = useState<string>(((s.user as any)?.company_name as string) || "");
   const [propertyId, setPropertyId] = useState<number | null>(null);
+  const [adNumber, setAdNumber] = useState<string>("");
   const [msg, setMsg] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
   const [myAds, setMyAds] = useState<any[]>([]);
@@ -163,7 +164,8 @@ export default function OwnerAddPage() {
                     for (let i = 0; i < files.length; i++) {
                       await uploadPropertyImage(propertyId, files[i], i);
                     }
-                    setMsg(`Uploaded ${files.length} image(s) to listing #${propertyId}.`);
+                    const label = adNumber ? `Ad #${adNumber}` : `listing #${propertyId}`;
+                    setMsg(`Uploaded ${files.length} image(s) to ${label}.`);
                   } catch (e: any) {
                     setMsg(e.message || "Upload failed");
                   }
@@ -172,7 +174,7 @@ export default function OwnerAddPage() {
                 Upload
               </button>
               <span className="muted">
-                {propertyId ? `Listing: #${propertyId}` : "Listing: (not created yet)"}
+                {propertyId ? `Ad: #${adNumber || propertyId}` : "Ad: (not created yet)"}
               </span>
             </div>
           </div>
@@ -207,14 +209,17 @@ export default function OwnerAddPage() {
                 });
 
                 setPropertyId(res.id);
+                setAdNumber(String((res as any).ad_number || (res as any).adv_number || res.id || "").trim());
 
                 if (files?.length) {
                   for (let i = 0; i < files.length; i++) {
                     await uploadPropertyImage(res.id, files[i], i);
                   }
-                  setMsg(`Submitted Ad #${res.id} (status: ${res.status}) and uploaded ${files.length} photo(s).`);
+                  const label = String((res as any).ad_number || res.id || "").trim();
+                  setMsg(`Submitted Ad #${label} (status: ${res.status}) and uploaded ${files.length} photo(s).`);
                 } else {
-                  setMsg(`Submitted Ad #${res.id} (status: ${res.status}).`);
+                  const label = String((res as any).ad_number || res.id || "").trim();
+                  setMsg(`Submitted Ad #${label} (status: ${res.status}).`);
                 }
                 loadMyAds();
               } catch (e: any) {
@@ -222,7 +227,7 @@ export default function OwnerAddPage() {
               }
             }}
           >
-            Submit Ad (goes to admin review)
+            Submit Ad
           </button>
           <span className="muted">{msg}</span>
         </div>
@@ -244,7 +249,7 @@ export default function OwnerAddPage() {
                     <div className="row">
                       <div>
                         <div className="h2">
-                          #{p.id} • {p.title}
+                          Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.title}
                         </div>
                         <div className="muted">
                           Status: {p.status} {p.created_at ? `• ${new Date(p.created_at).toLocaleString()}` : ""}
@@ -254,11 +259,12 @@ export default function OwnerAddPage() {
                       <button
                         className="danger"
                         onClick={async () => {
-                          const ok = window.confirm(`Delete Ad #${p.id}? This cannot be undone.`);
+                          const label = String(p.adv_number || p.ad_number || p.id || "").trim();
+                          const ok = window.confirm(`Delete Ad #${label}? This cannot be undone.`);
                           if (!ok) return;
                           try {
                             await ownerDeleteProperty(Number(p.id));
-                            setMsg(`Deleted Ad #${p.id}`);
+                            setMsg(`Deleted Ad #${label}`);
                             loadMyAds();
                           } catch (e: any) {
                             setMsg(e.message || "Delete failed");

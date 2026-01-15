@@ -152,6 +152,13 @@ input, select, textarea{
   outline: none;
 }
 
+/* Ensure dropdown list options are readable (many browsers render options on a light bg). */
+select option,
+select optgroup{
+  color: #111;
+  background: #fff;
+}
+
 .input-icon-wrap{
   position: relative;
 }

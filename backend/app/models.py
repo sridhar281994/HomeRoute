@@ -113,6 +113,8 @@ class Property(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # Public-facing ad/post number (6-char alphanumeric).
+    ad_number: Mapped[str] = mapped_column(String(6), default="", index=True, unique=True)
 
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")

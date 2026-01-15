@@ -28,17 +28,13 @@ export default function HomePage() {
     setErr("");
     try {
       const isGuest = !session.token;
-      if (isGuest && (!state || !district)) {
-        setItems([]);
-        throw new Error("Select State and District to search as guest.");
-      }
       const res = await listProperties({
         q: (need || "").trim() || undefined,
         max_price: maxPrice || undefined,
         rent_sale: rentSale || undefined,
         // For registered users: state is auto-picked from profile by backend if omitted.
         state: isGuest ? state || undefined : undefined,
-        district: district || undefined,
+        district: isGuest ? district || undefined : district || undefined,
         sort_budget: sortBudget || undefined,
         posted_within_days: postedWithinDays || undefined,
       });
@@ -99,7 +95,7 @@ export default function HomePage() {
       <div className="grid" style={{ marginTop: 12 }}>
         {isGuest ? (
           <div className="col-6">
-            <label className="muted">State (required for Guest)</label>
+            <label className="muted">State (optional)</label>
             <select
               value={state}
               onChange={(e) => {
@@ -122,7 +118,7 @@ export default function HomePage() {
           </div>
         )}
         <div className="col-6">
-          <label className="muted">District {isGuest ? "(required for Guest)" : ""}</label>
+          <label className="muted">District (optional)</label>
           <select value={district} onChange={(e) => setDistrict(e.target.value)} disabled={!effectiveState}>
             <option value="">{effectiveState ? "Select district…" : "Select state first"}</option>
             {districts.map((d) => (
