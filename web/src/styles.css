@@ -1,14 +1,15 @@
 :root{
-  --bg:#ff7a18;
+  --bg:#2a0a5e;
   --panel:rgba(255,255,255,.14);
   --text:rgba(255,255,255,.92);
   --muted:rgba(255,255,255,.68);
-  --accent:#ff7a18;   /* orange */
-  --accent2:#ffc34d;  /* warm shine */
-  --purple:#7c3aed;
+  --accent:#a855f7;   /* purple */
+  --accent2:#60a5fa;  /* blue shine */
+  --purple:#a855f7;
 }
 
 html,body{height:100%;}
+*, *::before, *::after{ box-sizing: border-box; }
 body{
   margin:0;
   color:var(--text);
@@ -17,8 +18,8 @@ body{
   background:
     radial-gradient(900px 600px at 10% -10%, rgba(255,255,255,.26), transparent 60%),
     radial-gradient(700px 520px at 90% 110%, rgba(255,255,255,.20), transparent 55%),
-    radial-gradient(800px 600px at 75% 15%, rgba(255,195,77,.28), transparent 58%),
-    linear-gradient(180deg, #ff7a18, #ff9a3d 55%, #ff7a18);
+    radial-gradient(800px 600px at 75% 15%, rgba(168,85,247,.26), transparent 58%),
+    linear-gradient(180deg, #1b053b, #2a0a5e 55%, #12022b);
 }
 
 a{color:inherit}
@@ -94,10 +95,10 @@ a{color:inherit}
   z-index: -1;
   background-image:
     radial-gradient(900px 640px at 12% 18%, rgba(255,255,255,.24), transparent 62%),
-    radial-gradient(820px 640px at 86% 72%, rgba(255,195,77,.22), transparent 60%),
+    radial-gradient(820px 640px at 86% 72%, rgba(168,85,247,.22), transparent 60%),
     radial-gradient(740px 560px at 60% 10%, rgba(255,255,255,.16), transparent 58%),
-    linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,122,24,.10)),
-    linear-gradient(180deg, #ff7a18, #ff9a3d 55%, #ff7a18);
+    linear-gradient(135deg, rgba(255,255,255,.10), rgba(168,85,247,.10)),
+    linear-gradient(180deg, #1b053b, #2a0a5e 55%, #12022b);
   background-size: 140% 140%, 140% 140%, 120% 120%, 200% 200%, auto;
   background-position: 10% 10%, 90% 70%, 60% 5%, 0% 0%, center;
   animation: aurora 12s ease-in-out infinite;
@@ -187,13 +188,13 @@ button{
   cursor:pointer;
   border: 1px solid rgba(255,255,255,.90);
   background: rgba(255,255,255,.96);
-  color: #ff7a18;
+  color: var(--accent);
   padding: 10px 12px;
   border-radius: 12px;
   font-weight: 700;
   transition: transform .10s ease, background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
-button.primary{background: rgba(255,255,255,.98); color:#ff7a18;}
+button.primary{background: rgba(255,255,255,.98); color:var(--accent);}
 button.danger{background: rgba(255,255,255,.98); color:#ef4444; border-color: rgba(255,255,255,.92);}
 
 button:hover{
@@ -219,7 +220,7 @@ button.primary:active{background: #ffedd5;}
 button.danger:active{background: #ffe4e6;}
 
 button:focus-visible{
-  outline: 2px solid rgba(255,195,77,.65);
+  outline: 2px solid rgba(168,85,247,.55);
   outline-offset: 2px;
 }
 
@@ -270,10 +271,10 @@ button:focus-visible{
   inset: 0;
   z-index: -1;
   background-image:
-    radial-gradient(900px 600px at 10% -10%, rgba(255,122,24,.28), transparent 60%),
+    radial-gradient(900px 600px at 10% -10%, rgba(168,85,247,.22), transparent 60%),
     radial-gradient(760px 520px at 90% 110%, rgba(255,255,255,.10), transparent 55%),
-    radial-gradient(820px 620px at 75% 15%, rgba(255,195,77,.14), transparent 58%),
-    linear-gradient(180deg, #140803, var(--bg));
+    radial-gradient(820px 620px at 75% 15%, rgba(96,165,250,.14), transparent 58%),
+    linear-gradient(180deg, #0b0422, var(--bg));
   background-size: auto, auto, auto, auto;
   background-position: center, center, center, center;
   filter: saturate(1.08) contrast(1.04);
@@ -297,7 +298,7 @@ button:focus-visible{
 button.chip{
   background: rgba(255,255,255,.92);
   border: 1px solid rgba(255,255,255,.92);
-  color: #ff7a18;
+  color: var(--accent);
 }
 button.chip-on{
   background: rgba(255,255,255,.98);
@@ -312,8 +313,8 @@ button.chip-on{
   height: 10px;
   margin-left: 6px;
   border-radius: 999px;
-  background: rgba(255,195,77,.75);
-  box-shadow: 0 0 16px rgba(255,195,77,.55);
+  background: rgba(168,85,247,.65);
+  box-shadow: 0 0 16px rgba(168,85,247,.45);
   animation: sparkle 1.1s ease-in-out infinite;
 }
 @keyframes sparkle{

@@ -123,7 +123,7 @@ export default function HomePage() {
         )}
         <div className="col-6">
           <label className="muted">District {isGuest ? "(required for Guest)" : ""}</label>
-          <select value={district} onChange={(e) => setDistrict(e.target.value)} disabled={!state}>
+          <select value={district} onChange={(e) => setDistrict(e.target.value)} disabled={!effectiveState}>
             <option value="">{effectiveState ? "Select district…" : "Select state first"}</option>
             {districts.map((d) => (
               <option key={d} value={d}>

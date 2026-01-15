@@ -10,6 +10,7 @@ import {
   adminPending,
   adminReject,
   getSession,
+  toApiUrl,
 } from "../api";
 import { useNavigate } from "react-router-dom";
 
@@ -127,9 +128,28 @@ export default function AdminReviewPage() {
                     hash: {img.image_hash?.slice(0, 12)}… • {img.content_type} • {img.size_bytes} bytes
                   </div>
                   <div className="muted">
-                    Preview: <a href={img.url} target="_blank" rel="noreferrer">{img.url}</a>
+                    Preview:{" "}
+                    <a href={toApiUrl(img.url)} target="_blank" rel="noreferrer">
+                      {img.url}
+                    </a>
                   </div>
                 </div>
+                <div className="spacer" />
+                {img.url ? (
+                  <img
+                    src={toApiUrl(img.url)}
+                    alt={`Listing ${img.property_id} image ${img.id}`}
+                    style={{
+                      width: 180,
+                      height: 120,
+                      objectFit: "cover",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,.14)",
+                      background: "rgba(0,0,0,.25)",
+                    }}
+                    loading="lazy"
+                  />
+                ) : null}
                 <div className="spacer" />
                 <input
                   placeholder="Reject reason (optional)"

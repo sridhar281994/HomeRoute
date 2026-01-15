@@ -66,7 +66,7 @@ export default function OwnerAddPage() {
         <Link to="/home">Back</Link>
       </div>
       <p className="muted">
-        Create the ad first, then upload photos.
+        Choose photos (optional), then submit.
       </p>
       <p className="muted" style={{ marginTop: 6 }}>
         Important note: only the account that created an ad can remove it.
@@ -142,42 +142,6 @@ export default function OwnerAddPage() {
           <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
         </div>
 
-        <div className="col-12 row">
-          <button
-            className="primary"
-            onClick={async () => {
-              setMsg("");
-              try {
-                if (useCompanyName && !companyName.trim()) throw new Error("Please enter company name (or select No).");
-                const res = await ownerCreateProperty({
-                  state,
-                  district,
-                  title,
-                  // UI request: remove explicit Location/Address.
-                  // Use district as a simple display + duplicate detection key.
-                  location: district || "",
-                  address: "",
-                  price: Number(price || 0),
-                  rent_sale: rentSale,
-                  property_type: category,
-                  contact_phone: contactPhone,
-                  contact_email: "",
-                  company_name: useCompanyName ? companyName.trim() : "",
-                  amenities: [],
-                });
-                setPropertyId(res.id);
-                setMsg(`Created listing #${res.id} (status: ${res.status}). Upload photos below.`);
-                loadMyAds();
-              } catch (e: any) {
-                setMsg(e.message || "Failed");
-              }
-            }}
-          >
-            Submit listing (goes to admin review)
-          </button>
-          <span className="muted">{msg}</span>
-        </div>
-
         <div className="col-12">
           <div className="card">
             <div className="h2">Upload photos</div>
@@ -212,6 +176,55 @@ export default function OwnerAddPage() {
               </span>
             </div>
           </div>
+        </div>
+
+        <div className="col-12 row">
+          <button
+            className="primary"
+            onClick={async () => {
+              setMsg("");
+              try {
+                if (!state) throw new Error("Select state.");
+                if (!district) throw new Error("Select district.");
+                if (!title.trim()) throw new Error("Enter title.");
+                if (useCompanyName && !companyName.trim()) throw new Error("Please enter company name (or select No).");
+
+                const res = await ownerCreateProperty({
+                  state,
+                  district,
+                  title,
+                  // UI request: remove explicit Location/Address.
+                  // Use district as a simple display + duplicate detection key.
+                  location: district || "",
+                  address: "",
+                  price: Number(price || 0),
+                  rent_sale: rentSale,
+                  property_type: category,
+                  contact_phone: contactPhone,
+                  contact_email: "",
+                  company_name: useCompanyName ? companyName.trim() : "",
+                  amenities: [],
+                });
+
+                setPropertyId(res.id);
+
+                if (files?.length) {
+                  for (let i = 0; i < files.length; i++) {
+                    await uploadPropertyImage(res.id, files[i], i);
+                  }
+                  setMsg(`Submitted Ad #${res.id} (status: ${res.status}) and uploaded ${files.length} photo(s).`);
+                } else {
+                  setMsg(`Submitted Ad #${res.id} (status: ${res.status}).`);
+                }
+                loadMyAds();
+              } catch (e: any) {
+                setMsg(e.message || "Failed");
+              }
+            }}
+          >
+            Submit Ad (goes to admin review)
+          </button>
+          <span className="muted">{msg}</span>
         </div>
 
         <div className="col-12">

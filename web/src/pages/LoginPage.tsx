@@ -18,7 +18,15 @@ export default function LoginPage() {
 
   return (
     <div className="panel">
-      <p className="h1">Login</p>
+      <div className="row" style={{ alignItems: "baseline" }}>
+        <p className="h1" style={{ margin: 0 }}>
+          Login
+        </p>
+        <div className="spacer" />
+        <Link className="muted" to="/forgot" style={{ textDecoration: "none" }}>
+          Forgot password?
+        </Link>
+      </div>
       <p className="muted">Request an OTP, then verify to login.</p>
 
       <div className="grid" style={{ marginTop: 12 }}>
@@ -28,11 +36,6 @@ export default function LoginPage() {
         </div>
         <div className="col-6">
           <PasswordField label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
-        </div>
-        <div className="col-12 row">
-          <Link className="muted" to="/forgot">
-            Forgot password?
-          </Link>
         </div>
         <div className="col-12 row">
           <button

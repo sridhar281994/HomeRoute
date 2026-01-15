@@ -45,7 +45,19 @@ def get_remember_me() -> bool:
 def set_session(*, token: str, user: dict[str, Any], remember: bool) -> None:
     d = _read()
     d["token"] = token or ""
-    d["user"] = user or {}
+    # Normalize any relative upload URLs to absolute URLs for Kivy AsyncImage.
+    try:
+        from frontend_app.utils.api import _base_url  # local import to avoid import cycles
+
+        base = str(_base_url() or "").rstrip("/")
+        u = dict(user or {})
+        for key in ["profile_image_url"]:
+            v = str(u.get(key) or "").strip()
+            if v.startswith("/"):
+                u[key] = f"{base}{v}"
+        d["user"] = u
+    except Exception:
+        d["user"] = user or {}
     d["remember_me"] = bool(remember)
     _write(d)
 
