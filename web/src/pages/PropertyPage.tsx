@@ -43,7 +43,7 @@ export default function PropertyPage() {
         <Link to="/home">Back</Link>
       </div>
       <p className="muted">
-        {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display}
+        Ad #{String(p.adv_number || p.advNo || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display}
       </p>
 
       <div className="grid" style={{ marginTop: 12 }}>
@@ -100,18 +100,18 @@ export default function PropertyPage() {
                 const advNo = String(contact.adv_number || contact.advNo || "").trim();
                 const header = advNo ? `Ad #${advNo}` : "Ad";
                 const who = ownerName ? ` (${ownerName})` : "";
-                if (phone && email) setMsg(`${header}${who} contact: ${phone} / ${email}`);
-                else if (phone) setMsg(`${header}${who} contact: ${phone}`);
-                else if (email) setMsg(`${header}${who} contact: ${email}`);
-                else setMsg("Owner contact: N/A");
+                const sent = "Contact details sent to your registered email/SMS.";
+                if (phone && email) setMsg(`${sent} ${header}${who} contact: ${phone} / ${email}`);
+                else if (phone) setMsg(`${sent} ${header}${who} contact: ${phone}`);
+                else if (email) setMsg(`${sent} ${header}${who} contact: ${email}`);
+                else setMsg(`${sent} ${header}${who} contact: N/A`);
               } catch (e: any) {
                 setMsg(e.message || "Locked");
               }
             }}
           >
-            Unlock Contact  🔓
+            Contact owner
           </button>
-          {getSession().token ? <Link to="/subscription">Subscription</Link> : <Link to="/login">Login</Link>}
           <span className="muted">{msg}</span>
         </div>
       </div>
