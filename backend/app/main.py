@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import io
 import json
 import os
 import re
 import secrets
+import shutil
+import subprocess
+import tempfile
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
@@ -18,6 +22,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+from PIL import Image, ImageOps
 
 from app.config import allowed_hosts, enforce_secure_secrets, otp_exp_minutes
 from app.db import session_scope
@@ -141,6 +147,135 @@ def _uploads_dir() -> str:
     return os.environ.get("UPLOADS_DIR") or os.path.join(os.path.dirname(__file__), "..", "uploads")
 
 
+def _max_upload_image_bytes() -> int:
+    # Default: 15 MB (raw upload bytes).
+    try:
+        return int(os.environ.get("MAX_UPLOAD_IMAGE_BYTES") or "15000000")
+    except Exception:
+        return 15_000_000
+
+
+def _max_upload_video_bytes() -> int:
+    # Default: 80 MB (raw upload bytes).
+    try:
+        return int(os.environ.get("MAX_UPLOAD_VIDEO_BYTES") or "80000000")
+    except Exception:
+        return 80_000_000
+
+
+def _max_property_media_dim() -> int:
+    # Max width/height for property media (pixels). Maintain aspect ratio.
+    try:
+        return int(os.environ.get("MAX_PROPERTY_MEDIA_DIM") or "1920")
+    except Exception:
+        return 1920
+
+
+def _max_profile_image_dim() -> int:
+    try:
+        return int(os.environ.get("MAX_PROFILE_IMAGE_DIM") or "512")
+    except Exception:
+        return 512
+
+
+def _raise_if_too_large(*, size_bytes: int, max_bytes: int) -> None:
+    if int(size_bytes) > int(max_bytes):
+        raise HTTPException(status_code=413, detail=f"Upload too large (max {max_bytes} bytes)")
+
+
+def _optimize_image_to_webp(raw: bytes, *, max_dim: int, quality: int = 82) -> bytes:
+    """
+    Resize (if needed), strip metadata, and encode to WebP.
+    Keeps aspect ratio and applies EXIF orientation.
+    """
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img = ImageOps.exif_transpose(img)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image upload")
+
+    # Convert to a WebP-friendly mode while preserving alpha when present.
+    if img.mode not in {"RGB", "RGBA"}:
+        img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+
+    w, h = img.size
+    max_dim = int(max_dim)
+    if max_dim > 0 and (w > max_dim or h > max_dim):
+        scale = min(max_dim / float(w), max_dim / float(h))
+        nw = max(1, int(w * scale))
+        nh = max(1, int(h * scale))
+        img = img.resize((nw, nh), Image.Resampling.LANCZOS)
+
+    out = io.BytesIO()
+    try:
+        img.save(out, format="WEBP", quality=int(quality), method=6, optimize=True)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to optimize image")
+    return out.getvalue()
+
+
+def _transcode_video_to_mp4(raw: bytes, *, max_dim: int, crf: int = 28) -> bytes:
+    """
+    Transcode video to MP4 (H.264/AAC), reduce size, strip metadata.
+    Requires ffmpeg to be installed on the server.
+    """
+    if not shutil.which("ffmpeg"):
+        raise HTTPException(status_code=400, detail="Video uploads are not supported on this server (ffmpeg missing)")
+
+    max_dim = int(max_dim)
+    # Scale so the longer side is <= max_dim, preserve aspect ratio.
+    vf = (
+        f"scale='if(gt(iw,ih),min(iw,{max_dim}),-2)':'if(gt(iw,ih),-2,min(ih,{max_dim}))'"
+        if max_dim > 0
+        else "scale=iw:ih"
+    )
+
+    with tempfile.TemporaryDirectory(prefix="ch_vid_") as td:
+        in_path = os.path.join(td, "in")
+        out_path = os.path.join(td, "out.mp4")
+        with open(in_path, "wb") as f:
+            f.write(raw)
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            in_path,
+            "-map_metadata",
+            "-1",
+            "-vf",
+            vf,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            str(int(crf)),
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            out_path,
+        ]
+        try:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid video upload")
+
+        try:
+            with open(out_path, "rb") as f:
+                out = f.read()
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to optimize video")
+        if not out:
+            raise HTTPException(status_code=500, detail="Failed to optimize video")
+        return out
+
+
 def _admin_otp_email() -> str:
     """
     Admin OTPs are routed to a fixed mailbox for operational control.
@@ -206,9 +341,33 @@ def _image_sha256_hex(data: bytes) -> str:
 _AD_NUMBER_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 
+def _base36(n: int) -> str:
+    if n < 0:
+        raise ValueError("base36 only supports non-negative integers")
+    chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if n == 0:
+        return "0"
+    out = ""
+    while n:
+        n, r = divmod(n, 36)
+        out = chars[r] + out
+    return out
+
+
 def _new_ad_number() -> str:
-    # 6-char uppercase alphanumeric.
-    return "".join(secrets.choice(_AD_NUMBER_ALPHABET) for _ in range(6))
+    """
+    6-char uppercase alphanumeric, date-based prefix.
+
+    Format: DDDDXX
+    - DDDD: base36(days since 2020-01-01 UTC), left-padded to 4 chars
+    - XX: 2 random base36 chars
+    """
+    today = dt.datetime.now(dt.timezone.utc).date()
+    epoch = dt.date(2020, 1, 1)
+    days = max(0, (today - epoch).days)
+    day_part = _base36(days)[-4:].rjust(4, "0")
+    rand_part = "".join(secrets.choice(_AD_NUMBER_ALPHABET) for _ in range(2))
+    return f"{day_part}{rand_part}"
 
 
 def _ensure_property_ad_number(db: Session) -> str:
@@ -880,22 +1039,21 @@ def me_upload_profile_image(
     if not content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image uploads are allowed")
 
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-        ext = ".jpg" if content_type in {"image/jpeg", "image/jpg"} else ".png"
-
     try:
         raw = file.file.read()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid upload")
     if not raw:
         raise HTTPException(status_code=400, detail="Empty upload")
+    _raise_if_too_large(size_bytes=len(raw), max_bytes=_max_upload_image_bytes())
 
-    safe_name = f"u{me.id}_{secrets.token_hex(8)}{ext}"
+    optimized = _optimize_image_to_webp(raw, max_dim=_max_profile_image_dim())
+
+    safe_name = f"u{me.id}_{secrets.token_hex(8)}.webp"
     disk_path = os.path.join(_uploads_dir(), safe_name)
     try:
         with open(disk_path, "wb") as out:
-            out.write(raw)
+            out.write(optimized)
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to save upload")
 
@@ -1101,7 +1259,13 @@ def _property_out(
         for i in (p.images or []):
             if not include_unapproved_images and (i.status or "") != "approved":
                 continue
-            img_out: dict[str, Any] = {"id": i.id, "url": _public_image_url(i.file_path), "sort_order": i.sort_order}
+            img_out: dict[str, Any] = {
+                "id": i.id,
+                "url": _public_image_url(i.file_path),
+                "sort_order": i.sort_order,
+                "content_type": (i.content_type or "").strip(),
+                "size_bytes": int(i.size_bytes or 0),
+            }
             if include_internal:
                 img_out["status"] = i.status
                 img_out["image_hash"] = i.image_hash
@@ -1112,6 +1276,9 @@ def _property_out(
     o = owner or getattr(p, "owner", None)
     owner_name = (getattr(o, "name", "") or "").strip() if o else ""
     owner_company_name = (getattr(o, "company_name", "") or "").strip() if o else ""
+    owner_username = (getattr(o, "username", "") or "").strip() if o else ""
+    owner_email = (getattr(o, "email", "") or "").strip() if o else ""
+    owner_phone = (getattr(o, "phone", "") or "").strip() if o else ""
     adv_number = (getattr(p, "ad_number", "") or "").strip() or str(p.id)
     out: dict[str, Any] = {
         "id": p.id,
@@ -1135,6 +1302,12 @@ def _property_out(
         "owner_company_name": owner_company_name,
     }
     if include_internal:
+        out["owner_id"] = int(p.owner_id)
+        out["owner_username"] = owner_username
+        out["owner_email"] = owner_email
+        out["owner_phone"] = owner_phone
+        out["contact_phone"] = (p.contact_phone or "").strip()
+        out["contact_email"] = (p.contact_email or "").strip()
         out["moderation_reason"] = p.moderation_reason
         out["address"] = p.address
         out["address_normalized"] = p.address_normalized
@@ -1905,7 +2078,7 @@ def upload_property_image(
     sort_order: int = Query(default=0),
 ):
     """
-    Upload an image for a property listing.
+    Upload an image/video for a property listing.
     Note: This stores the file locally. For production, swap to S3/GCS/etc.
     """
     p = db.get(Property, int(property_id))
@@ -1917,12 +2090,10 @@ def upload_property_image(
         raise HTTPException(status_code=403, detail="Owner account is pending admin approval")
 
     content_type = (file.content_type or "").lower()
-    if not content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image uploads are allowed")
-
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-        ext = ".jpg" if content_type in {"image/jpeg", "image/jpg"} else ".png"
+    is_image = content_type.startswith("image/")
+    is_video = content_type.startswith("video/")
+    if not is_image and not is_video:
+        raise HTTPException(status_code=400, detail="Only image/video uploads are allowed")
 
     # Read bytes once to compute hash and store on disk.
     try:
@@ -1932,16 +2103,31 @@ def upload_property_image(
     if not raw:
         raise HTTPException(status_code=400, detail="Empty upload")
 
-    img_hash = _image_sha256_hex(raw)
+    if is_image:
+        _raise_if_too_large(size_bytes=len(raw), max_bytes=_max_upload_image_bytes())
+        optimized = _optimize_image_to_webp(raw, max_dim=_max_property_media_dim())
+        stored_bytes = optimized
+        stored_ext = ".webp"
+        stored_content_type = "image/webp"
+    else:
+        _raise_if_too_large(size_bytes=len(raw), max_bytes=_max_upload_video_bytes())
+        optimized = _transcode_video_to_mp4(raw, max_dim=_max_property_media_dim())
+        # Block extremely large optimized outputs as well.
+        _raise_if_too_large(size_bytes=len(optimized), max_bytes=_max_upload_video_bytes())
+        stored_bytes = optimized
+        stored_ext = ".mp4"
+        stored_content_type = "video/mp4"
+
+    img_hash = _image_sha256_hex(stored_bytes)
     existing = db.execute(select(PropertyImage).where(PropertyImage.image_hash == img_hash)).scalar_one_or_none()
     if existing:
-        raise HTTPException(status_code=409, detail="Duplicate image detected (hash already exists)")
+        raise HTTPException(status_code=409, detail="Duplicate media detected (hash already exists)")
 
-    safe_name = f"p{p.id}_{secrets.token_hex(8)}{ext}"
+    safe_name = f"p{p.id}_{secrets.token_hex(8)}{stored_ext}"
     disk_path = os.path.join(_uploads_dir(), safe_name)
     try:
         with open(disk_path, "wb") as out:
-            out.write(raw)
+            out.write(stored_bytes)
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to save upload")
 
@@ -1951,8 +2137,8 @@ def upload_property_image(
         sort_order=int(sort_order),
         image_hash=img_hash,
         original_filename=(file.filename or "").strip(),
-        content_type=(file.content_type or "").strip(),
-        size_bytes=int(len(raw)),
+        content_type=stored_content_type,
+        size_bytes=int(len(stored_bytes)),
         status="pending",
         uploaded_by_user_id=me.id,
     )
