@@ -27,12 +27,13 @@ jobs:
           done
           docker image inspect "${IMAGE}" >/dev/null
           docker run --rm \
+            --entrypoint bash \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
             -w /home/user/hostcwd/mobile \
             "${IMAGE}" \
-            bash -lc '
+            -lc '
               set -euo pipefail
 
               # Let buildozer create SDK/NDK folders first (it may exit early on missing licenses).
