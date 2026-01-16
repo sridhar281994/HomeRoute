@@ -108,6 +108,20 @@ class ContactUsage(Base):
     used_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 
 
+class FreeContactUsage(Base):
+    """
+    Tracks free contact unlocks (first N unique properties per user).
+    """
+
+    __tablename__ = "free_contact_usage"
+    __table_args__ = (UniqueConstraint("user_id", "property_id", name="uq_free_usage_user_property"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"), index=True)
+    used_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+
+
 class Property(Base):
     __tablename__ = "properties"
 

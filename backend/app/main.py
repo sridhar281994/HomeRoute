@@ -35,6 +35,7 @@ from app.mailer import EmailSendError, send_email, send_otp_email
 from app.rate_limit import limiter
 from app.models import (
     ContactUsage,
+    FreeContactUsage,
     ModerationLog,
     OtpCode,
     Property,
@@ -419,6 +420,13 @@ def _admin_otp_email() -> str:
     Override with env `ADMIN_OTP_EMAIL` if needed.
     """
     return (os.environ.get("ADMIN_OTP_EMAIL") or "info@srtech.co.in").strip() or "info@srtech.co.in"
+
+
+def _free_contact_limit() -> int:
+    try:
+        return max(0, int(os.environ.get("FREE_CONTACT_LIMIT") or "5"))
+    except Exception:
+        return 5
 
 
 def _public_image_url(file_path: str) -> str:
@@ -1496,7 +1504,7 @@ def _property_out(
         amenities = []
     images = []
     try:
-        for i in (p.images or []):
+        for i in sorted((p.images or []), key=lambda x: (int(getattr(x, "sort_order", 0) or 0), int(getattr(x, "id", 0) or 0))):
             if not include_unapproved_images and (i.status or "") != "approved":
                 continue
             img_out: dict[str, Any] = {
@@ -1861,47 +1869,80 @@ def get_property_contact(
     if not owner or owner.approval_status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
 
+    # If this property was already unlocked via free quota, return immediately.
+    already_free = db.execute(
+        select(FreeContactUsage.id).where((FreeContactUsage.user_id == me.id) & (FreeContactUsage.property_id == int(property_id)))
+    ).first()
+    if already_free:
+        return {
+            "adv_number": (p.ad_number or "").strip() or str(p.id),
+            "owner_name": (owner.name or "").strip() or "Owner",
+            "owner_company_name": (owner.company_name or "").strip(),
+            "phone": p.contact_phone,
+            "email": p.contact_email,
+        }
+
     sub = db.execute(select(Subscription).where(Subscription.user_id == me.id)).scalar_one_or_none()
-    if not sub or (sub.status or "").lower() != "active":
-        raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
+    subscribed = bool(sub and (sub.status or "").lower() == "active")
 
     # Abuse prevention: enforce plan contact_limit per active subscription period.
     _ensure_plans(db)
     now = dt.datetime.now(dt.timezone.utc)
-    usub = (
-        db.execute(
-            select(UserSubscription)
-            .where((UserSubscription.user_id == me.id) & (UserSubscription.active == True))  # noqa: E712
-            .order_by(UserSubscription.id.desc())
-        )
-        .scalars()
-        .first()
-    )
-    if not usub:
-        raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
-    if usub.end_time and usub.end_time <= now:
-        usub.active = False
-        db.add(usub)
-        raise HTTPException(status_code=402, detail="Subscription expired")
-
-    plan = db.get(SubscriptionPlan, usub.plan_id)
-    limit = int(plan.contact_limit or 0) if plan else 0
-    if limit > 0:
-        # Don't double-count repeated unlocks of the same property for the same subscription.
-        existing = db.execute(
-            select(ContactUsage.id).where(
-                (ContactUsage.user_id == me.id)
-                & (ContactUsage.property_id == int(property_id))
-                & (ContactUsage.subscription_id == usub.id)
+    if subscribed:
+        usub = (
+            db.execute(
+                select(UserSubscription)
+                .where((UserSubscription.user_id == me.id) & (UserSubscription.active == True))  # noqa: E712
+                .order_by(UserSubscription.id.desc())
             )
+            .scalars()
+            .first()
+        )
+        if usub:
+            if usub.end_time and usub.end_time <= now:
+                usub.active = False
+                db.add(usub)
+                # fall back to free quota below
+                subscribed = False
+            else:
+                plan = db.get(SubscriptionPlan, usub.plan_id)
+                limit = int(plan.contact_limit or 0) if plan else 0
+                if limit > 0:
+                    # Don't double-count repeated unlocks of the same property for the same subscription.
+                    existing = db.execute(
+                        select(ContactUsage.id).where(
+                            (ContactUsage.user_id == me.id)
+                            & (ContactUsage.property_id == int(property_id))
+                            & (ContactUsage.subscription_id == usub.id)
+                        )
+                    ).first()
+                    if not existing:
+                        used_count = db.execute(
+                            select(ContactUsage.id).where((ContactUsage.user_id == me.id) & (ContactUsage.subscription_id == usub.id))
+                        ).all()
+                        if len(used_count) >= limit:
+                            raise HTTPException(status_code=429, detail="Contact unlock limit reached for your plan")
+                        db.add(ContactUsage(user_id=me.id, property_id=int(property_id), subscription_id=usub.id))
+        else:
+            # Backward-compatibility: if legacy subscription is active but no user_subscriptions row exists,
+            # still allow contact unlock (best-effort).
+            pass
+
+    if not subscribed:
+        free_limit = _free_contact_limit()
+        if free_limit <= 0:
+            raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
+
+        free_count = db.execute(select(func.count(FreeContactUsage.id)).where(FreeContactUsage.user_id == me.id)).scalar() or 0
+        if int(free_count) >= int(free_limit):
+            raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
+
+        # Don't double-count repeated unlocks of the same property.
+        existing_free2 = db.execute(
+            select(FreeContactUsage.id).where((FreeContactUsage.user_id == me.id) & (FreeContactUsage.property_id == int(property_id)))
         ).first()
-        if not existing:
-            used_count = db.execute(
-                select(ContactUsage.id).where((ContactUsage.user_id == me.id) & (ContactUsage.subscription_id == usub.id))
-            ).all()
-            if len(used_count) >= limit:
-                raise HTTPException(status_code=429, detail="Contact unlock limit reached for your plan")
-            db.add(ContactUsage(user_id=me.id, property_id=int(property_id), subscription_id=usub.id))
+        if not existing_free2:
+            db.add(FreeContactUsage(user_id=me.id, property_id=int(property_id)))
 
     # Notify the customer via email + SMS (best-effort).
     adv_no = (p.ad_number or "").strip() or str(p.id)
@@ -2559,7 +2600,8 @@ def upload_property_image(
         original_filename=(file.filename or "").strip(),
         content_type=stored_content_type,
         size_bytes=int(len(stored_bytes)),
-        status="pending",
+        # Make uploads visible immediately (AI moderation already ran before storage).
+        status="approved",
         uploaded_by_user_id=me.id,
     )
     db.add(img)
