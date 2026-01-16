@@ -1,29 +1,50 @@
 # Shiny purple theme (professional)
 # NOTE: keep names stable to avoid touching every screen rule.
-#:set BG_PURPLE (0.10, 0.04, 0.20, 1)               # deep purple base
-#:set SHINE_PURPLE (0.70, 0.36, 0.98, 0.28)         # purple shine
-#:set SHINE_WHITE (1, 1, 1, 0.09)
+#:set BG_PURPLE (0.11, 0.02, 0.23, 1)               # deep purple base (web-like)
+#:set SHINE_PURPLE (0.66, 0.33, 0.97, 0.26)         # purple shine
+#:set SHINE_WHITE (1, 1, 1, 0.10)
+#:set PANEL_BG (1, 1, 1, 0.14)
+#:set CARD_BG (0, 0, 0, 0.35)
+#:set TEXT_MAIN (1, 1, 1, 0.92)
+#:set TEXT_MUTED (1, 1, 1, 0.68)
+#:set ACCENT_PURPLE (0.66, 0.33, 0.97, 1)
+#:set ACCENT_BLUE (0.38, 0.65, 0.98, 1)
+#:set BTN_BG (1, 1, 1, 0.96)
 
 # Global typography (bold-ish via markup)
 <Label>:
     markup: True
     bold: True
-    color: 1, 1, 1, 1
+    color: TEXT_MAIN
+    font_name: "AppFont"
 
 <Button>:
     markup: True
     font_size: sp(16)
     bold: True
+    font_name: "AppFont"
+    color: ACCENT_PURPLE
+
+<TextInput>:
+    font_name: "AppFont"
+    background_normal: ""
+    background_active: ""
+    background_color: (1, 1, 1, 0.18)
+    foreground_color: TEXT_MAIN
+    cursor_color: TEXT_MAIN
+    selection_color: (0.66, 0.33, 0.97, 0.35)
+    padding: [dp(12), dp(10), dp(12), dp(10)]
 
 <AppButton@HoverButton>:
     markup: True
     font_size: sp(16)
     bold: True
+    font_name: "AppFont"
     background_normal: ""
     background_down: ""
     background_disabled_normal: ""
-    background_color: (0.22, 0.56, 0.95, 1)
-    color: 1, 1, 1, 1
+    background_color: BTN_BG
+    color: ACCENT_PURPLE
     # Use the existing `background_color` set by screens as the base color.
     # Hover/pressed is computed automatically (desktop hover; press everywhere).
     canvas.before:
@@ -47,27 +68,27 @@
             size: self.size
             radius: [14]
         Color:
-            rgba: (1, 1, 1, 0) if self.background_color[3] == 0 else (1, 1, 1, 0.10)
+            rgba: (1, 1, 1, 0) if self.background_color[3] == 0 else (1, 1, 1, 0.85)
         Line:
-            width: 1.0
+            width: 1.1
             rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
 
 <PrettySpinnerOption@SpinnerOption>:
     background_normal: ""
     background_down: ""
     background_color: (0, 0, 0, 0)
-    color: 1, 1, 1, 1
+    color: (0.12, 0.12, 0.12, 1)
     size_hint_y: None
     height: dp(44)
     canvas.before:
         Color:
-            rgba: (0.20, 0.14, 0.30, 0.98) if self.state == "normal" else (0.30, 0.20, 0.42, 1)
+            rgba: (1, 1, 1, 0.98) if self.state == "normal" else (1, 0.97, 0.93, 1)
         RoundedRectangle:
             pos: self.pos
             size: self.size
             radius: [10]
         Color:
-            rgba: (1, 1, 1, 0.10)
+            rgba: (0.82, 0.82, 0.82, 0.9)
         Line:
             width: 1.0
             rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
@@ -77,18 +98,19 @@
     background_normal: ""
     background_down: ""
     background_color: (0, 0, 0, 0)
-    color: 1, 1, 1, 1
+    color: TEXT_MAIN
     font_size: sp(16)
+    font_name: "AppFont"
     padding: [dp(12), dp(10)]
     canvas.before:
         Color:
-            rgba: (0.12, 0.16, 0.30, 0.86) if self.state == "normal" else (0.16, 0.20, 0.36, 0.95)
+            rgba: (1, 1, 1, 0.18) if self.state == "normal" else (1, 1, 1, 0.22)
         RoundedRectangle:
             pos: self.pos
             size: self.size
             radius: [12]
         Color:
-            rgba: (1, 1, 1, 0.10)
+            rgba: (1, 1, 1, 0.55)
         Line:
             width: 1.0
             rounded_rectangle: [self.x, self.y, self.width, self.height, 12]
@@ -169,20 +191,35 @@
             pos_hint: {'center_x': 0.5, 'center_y': 0.5}
             canvas.before:
                 Color:
-                    rgba: 0, 0, 0, 0.6
+                    rgba: PANEL_BG
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
                     radius: [20]
+                Color:
+                    rgba: (1, 1, 1, 0.12)
+                Line:
+                    width: 1.0
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
 
             Label:
-                text: "[b]Unlock your path[/b]  🏠✨"
+                text: "[b]Find your perfect place[/b]  [font=EmojiFont]🏠✨[/font]"
                 font_size: min(root.width * 0.08, sp(28))
                 size_hint_y: None
                 halign: "center"
                 valign: "middle"
                 text_size: (self.width, None)
                 height: self.texture_size[1] + dp(20)
+
+            Label:
+                text: "Browse properties for free. Unlock contact with a subscription."
+                font_size: min(root.width * 0.045, sp(16))
+                color: TEXT_MUTED
+                size_hint_y: None
+                halign: "center"
+                valign: "middle"
+                text_size: (self.width, None)
+                height: self.texture_size[1] + dp(10)
 
             Image:
                 source: "assets/QuickRent.png"
@@ -196,16 +233,21 @@
                 font_size: min(root.width * 0.05, sp(18))
                 size_hint_y: None
                 height: dp(50)
-                background_color: (0.2, 0.5, 1, 1)
                 on_release: root.manager.current = 'login'
 
             AppButton:
-                text: "Register"
+                text: "Register  [font=EmojiFont]✨[/font]"
                 font_size: min(root.width * 0.05, sp(18))
                 size_hint_y: None
                 height: dp(50)
-                background_color: (0.3, 0.8, 0.3, 1)
                 on_release: root.manager.current = 'register'
+
+            AppButton:
+                text: "Continue as Guest"
+                font_size: min(root.width * 0.05, sp(18))
+                size_hint_y: None
+                height: dp(50)
+                on_release: root.manager.current = 'home'
 
         Label:
             text: "© 2025 SRTech Games"
@@ -254,14 +296,19 @@
                 padding: dp(20)
                 canvas.before:
                     Color:
-                        rgba: 0, 0, 0, 0.6
+                        rgba: PANEL_BG
                     RoundedRectangle:
                         pos: self.pos
                         size: self.size
                         radius: [20]
+                    Color:
+                        rgba: (1, 1, 1, 0.12)
+                    Line:
+                        width: 1.0
+                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
 
                 Label:
-                    text: "[b]Secure Login[/b]  🔐"
+                    text: "[b]Secure Login[/b]  [font=EmojiFont]🔐[/font]"
                     font_size: sp(24)
                     halign: "center"
                     valign: "middle"
@@ -278,11 +325,16 @@
                     padding: dp(10)
                     canvas.before:
                         Color:
-                            rgba: 0.1, 0.15, 0.3, 0.8
+                            rgba: CARD_BG
                         RoundedRectangle:
                             pos: self.pos
                             size: self.size
                             radius: [10]
+                        Color:
+                            rgba: (1, 1, 1, 0.12)
+                        Line:
+                            width: 1.0
+                            rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
 
                     Label:
                         text: "Account Details"
@@ -298,8 +350,8 @@
                         font_size: sp(16)
                         size_hint_y: None
                         height: dp(48)
-                        background_color: (0.95, 0.95, 0.95, 1)
-                        foreground_color: (0.1, 0.1, 0.1, 1)
+                        background_color: (1, 1, 1, 0.18)
+                        foreground_color: TEXT_MAIN
 
                     RelativeLayout:
                         size_hint_y: None
@@ -311,8 +363,8 @@
                             multiline: False
                             font_size: sp(16)
                             size_hint: 1, 1
-                            background_color: (0.95, 0.95, 0.95, 1)
-                            foreground_color: (0.1, 0.1, 0.1, 1)
+                            background_color: (1, 1, 1, 0.18)
+                            foreground_color: TEXT_MAIN
                             padding: [dp(10), dp(10), dp(40), dp(10)]
                         ToggleButton:
                             id: login_password_toggle
@@ -372,8 +424,7 @@
                         text: "Request OTP"
                         size_hint_y: None
                         height: dp(44)
-                        background_color: (0.9, 0.6, 0.2, 1)
-                        on_release: root.send_otp_to_user()
+                        on_press: root.send_otp_to_user()
 
                 # OTP Box
                 BoxLayout:
@@ -386,11 +437,16 @@
                     disabled: False
                     canvas.before:
                         Color:
-                            rgba: 0.2, 0.1, 0.25, 0.8
+                            rgba: CARD_BG
                         RoundedRectangle:
                             pos: self.pos
                             size: self.size
                             radius: [10]
+                        Color:
+                            rgba: (1, 1, 1, 0.12)
+                        Line:
+                            width: 1.0
+                            rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
 
                     Label:
                         text: "OTP Verification"
@@ -406,14 +462,13 @@
                         font_size: sp(16)
                         size_hint_y: None
                         height: dp(48)
-                        background_color: (0.95, 0.95, 0.95, 1)
-                        foreground_color: (0.1, 0.1, 0.1, 1)
+                        background_color: (1, 1, 1, 0.18)
+                        foreground_color: TEXT_MAIN
 
                     AppButton:
                         text: "Verify & Login"
                         size_hint_y: None
                         height: dp(48)
-                        background_color: (0.3, 0.8, 0.4, 1)
                         on_release: root.verify_and_login()
 
                     AppButton:
@@ -427,7 +482,7 @@
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.7, 0.2, 0.2, 1)
+                    color: (0.94, 0.27, 0.27, 1)
                     on_release: root.go_back()
 
 <ForgotPasswordScreen>:
@@ -465,11 +520,16 @@
                 x: (root.width - self.width) / 2
                 canvas.before:
                     Color:
-                        rgba: 0, 0, 0, 0.6
+                        rgba: PANEL_BG
                     RoundedRectangle:
                         pos: self.pos
                         size: self.size
                         radius: [20]
+                    Color:
+                        rgba: (1, 1, 1, 0.12)
+                    Line:
+                        width: 1.0
+                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
 
                 Label:
                     text: root.header_text
@@ -510,7 +570,7 @@
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.7, 0.2, 0.2, 1)
+                    color: (0.94, 0.27, 0.27, 1)
                     on_release: root.go_back()
 
 <ResetPasswordScreen>:
@@ -548,11 +608,16 @@
                 x: (root.width - self.width) / 2
                 canvas.before:
                     Color:
-                        rgba: 0, 0, 0, 0.6
+                        rgba: PANEL_BG
                     RoundedRectangle:
                         pos: self.pos
                         size: self.size
                         radius: [20]
+                    Color:
+                        rgba: (1, 1, 1, 0.12)
+                    Line:
+                        width: 1.0
+                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
 
                 Label:
                     text: "Reset Password"
@@ -628,14 +693,13 @@
                     text: "Save Password"
                     size_hint_y: None
                     height: dp(48)
-                    background_color: (0.3, 0.8, 0.4, 1)
                     on_release: root.save_new_password()
 
                 AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.7, 0.2, 0.2, 1)
+                    color: (0.94, 0.27, 0.27, 1)
                     on_release: root.go_back()
 
 <SettingsScreen>:
@@ -673,14 +737,19 @@
                 x: (root.width - self.width) / 2
                 canvas.before:
                     Color:
-                        rgba: 0, 0, 0, 0.6
+                        rgba: PANEL_BG
                     RoundedRectangle:
                         pos: self.pos
                         size: self.size
                         radius: [20]
+                    Color:
+                        rgba: (1, 1, 1, 0.12)
+                    Line:
+                        width: 1.0
+                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
 
                 Label:
-                    text: "[b]Settings[/b]  ⚙️"
+                    text: "[b]Settings[/b]  [font=EmojiFont]⚙️[/font]"
                     font_size: sp(24)
                     size_hint_y: None
                     height: dp(40)
@@ -694,11 +763,16 @@
                     padding: [0, dp(6), 0, dp(6)]
                     canvas.before:
                         Color:
-                            rgba: 0.1, 0.15, 0.3, 0.8
+                            rgba: CARD_BG
                         RoundedRectangle:
                             pos: self.pos
                             size: self.size
                             radius: [14]
+                        Color:
+                            rgba: (1, 1, 1, 0.12)
+                        Line:
+                            width: 1.0
+                            rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
 
                     AsyncImage:
                         source: root.profile_image_url if root.profile_image_url else ""
@@ -724,7 +798,6 @@
                             text: "Change Photo"
                             size_hint_y: None
                             height: dp(42)
-                            background_color: (0.2, 0.6, 0.9, 1)
                             on_release: root.open_image_picker()
 
                 # Name update (server-backed)
@@ -738,10 +811,9 @@
                     multiline: False
 
                 AppButton:
-                    text: "Save Name  💾"
+                    text: "Save Name  [font=EmojiFont]💾[/font]"
                     size_hint_y: None
                     height: dp(48)
-                    background_color: (0.3, 0.8, 0.4, 1)
                     on_release: root.save_name()
 
                 # Current email/phone (read-only)
@@ -784,7 +856,6 @@
                     text: "Send Email OTP"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.9, 0.6, 0.2, 1)
                     on_release: root.request_email_otp()
 
                 TextInput:
@@ -799,7 +870,6 @@
                     text: "Verify & Update Email"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.3, 0.8, 0.4, 1)
                     on_release: root.verify_email_otp()
 
                 # Change Phone with OTP
@@ -821,7 +891,6 @@
                     text: "Send Phone OTP"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.9, 0.6, 0.2, 1)
                     on_release: root.request_phone_otp()
 
                 TextInput:
@@ -836,14 +905,12 @@
                     text: "Verify & Update Phone"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.3, 0.8, 0.4, 1)
                     on_release: root.verify_phone_otp()
 
                 AppButton:
                     text: "Refresh Subscription Status"
                     size_hint_y: None
                     height: dp(48)
-                    background_color: (0.3, 0.8, 0.4, 1)
                     on_release: root.refresh_subscription()
 
                 # Subscription quick actions
@@ -855,11 +922,16 @@
                     padding: dp(10)
                     canvas.before:
                         Color:
-                            rgba: 0.1, 0.15, 0.3, 0.8
+                            rgba: CARD_BG
                         RoundedRectangle:
                             pos: self.pos
                             size: self.size
                             radius: [10]
+                        Color:
+                            rgba: (1, 1, 1, 0.12)
+                        Line:
+                            width: 1.0
+                            rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
 
                     Label:
                         text: "Subscription"
@@ -871,7 +943,6 @@
                         text: "Manage Subscription (Google Play)"
                         size_hint_y: None
                         height: dp(44)
-                        background_color: (0.2, 0.5, 0.9, 1)
                         on_release: root.manage_subscription()
 
                 Label:
@@ -884,14 +955,12 @@
                     text: "Subscription Status: " + root.subscription_status
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.2, 0.5, 0.8, 1)
                     on_release: root.manage_subscription()
 
                 AppButton:
                     text: "Change Password"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.2, 0.5, 0.8, 1)
                     on_release:
                         root.manager.get_screen("forgot_password").open_from(source_screen="profile", title="Change Password")
                         root.manager.current = "forgot_password"
@@ -900,21 +969,21 @@
                     text: "Logout"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.8, 0.2, 0.2, 1)
+                    color: (0.94, 0.27, 0.27, 1)
                     on_release: root.logout()
 
                 AppButton:
                     text: "Delete account"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.75, 0.1, 0.1, 1)
+                    color: (0.94, 0.27, 0.27, 1)
                     on_release: root.delete_account()
 
                 AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.7, 0.2, 0.2, 1)
+                    color: (0.94, 0.27, 0.27, 1)
                     on_release: root.go_back()
 
 <RegisterScreen>:
@@ -953,14 +1022,19 @@
                 x: (root.width - self.width) / 2
                 canvas.before:
                     Color:
-                        rgba: 0, 0, 0, 0.6
+                        rgba: PANEL_BG
                     RoundedRectangle:
                         pos: self.pos
                         size: self.size
                         radius: [20]
+                    Color:
+                        rgba: (1, 1, 1, 0.12)
+                    Line:
+                        width: 1.0
+                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
 
                 Label:
-                    text: "[b]Create Account[/b]  ✨"
+                    text: "[b]Create Account[/b]  [font=EmojiFont]✨[/font]"
                     font_size: sp(26)
                     size_hint_y: None
                     height: dp(50)
@@ -989,12 +1063,12 @@
                     height: dp(48)
                     spacing: dp(10)
                     ToggleButton:
-                        text: "[b]Owner[/b]  🏢"
+                        text: "[b]Owner[/b]  [font=EmojiFont]🏢[/font]"
                         group: "role_group"
                         on_state:
                             if self.state == "down": root.set_role("owner")
                     ToggleButton:
-                        text: "[b]Customer[/b]  🧍"
+                        text: "[b]Customer[/b]  [font=EmojiFont]🧍[/font]"
                         group: "role_group"
                         state: "down"
                         on_state:
@@ -1019,7 +1093,7 @@
                     disabled: True
                     spacing: dp(8)
                     Label:
-                        text: "[b]Owner Category Selection[/b]  🏗️"
+                        text: "[b]Owner Category Selection[/b]  [font=EmojiFont]🏗️[/font]"
                         size_hint_y: None
                         height: dp(24)
                         color: 1, 1, 1, 0.9
@@ -1079,31 +1153,28 @@
                                 width: 1.2
 
                 AppButton:
-                    text: "[b]Register[/b]  ✅"
+                    text: "[b]Register[/b]  [font=EmojiFont]✅[/font]"
                     size_hint_y: None
                     height: dp(50)
-                    background_color: (0.3, 0.7, 0.3, 1)
                     on_release: root.save_profile()
 
                 AppButton:
                     text: "Login via Gmail"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.9, 0.6, 0.2, 1)
                     on_release: root.social_login("gmail")
 
                 AppButton:
                     text: "Login via FB / Insta"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.2, 0.4, 0.9, 1)
                     on_release: root.social_login("fb/insta")
 
                 AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.7, 0.2, 0.2, 1)
+                    color: (0.94, 0.27, 0.27, 1)
                     on_release: root.go_back()
 
 <HomeScreen>:
@@ -1135,23 +1206,28 @@
             padding: dp(12)
             canvas.before:
                 Color:
-                    rgba: 0, 0, 0, 0.55
+                    rgba: PANEL_BG
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
                     radius: [16]
+                Color:
+                    rgba: (1, 1, 1, 0.12)
+                Line:
+                    width: 1.0
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
 
             BoxLayout:
                 size_hint_y: None
                 height: dp(44)
                 spacing: dp(8)
                 Label:
-                    text: "[b]Home[/b]  🏡✨  [color=cccccc]Discover amazing places[/color]"
+                    text: "[b]Home[/b]  [font=EmojiFont]🏡✨[/font]  [color=cccccc]Discover amazing places[/color]"
                     halign: "left"
                     valign: "middle"
                     text_size: self.size
                 AppButton:
-                    text: "Profile  👤"
+                    text: "Profile  [font=EmojiFont]👤[/font]"
                     size_hint_x: None
                     width: dp(90)
                     on_release: root.go_profile()
@@ -1209,10 +1285,9 @@
                     text: "Apply Filters"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.2, 0.6, 0.9, 1)
                     on_release: root.refresh()
                 AppButton:
-                    text: "Publish Ad  🏢"
+                text: "Publish Ad  [font=EmojiFont]🏢[/font]"
                     size_hint_y: None
                     height: dp(44)
                     on_release: root.go_owner()
@@ -1224,7 +1299,7 @@
                 text: "Loading..." if root.is_loading else "Listings"
                 size_hint_y: None
                 height: dp(24)
-                color: 1, 1, 1, 0.85
+                color: TEXT_MUTED
 
             ScrollView:
                 do_scroll_x: False
@@ -1264,11 +1339,16 @@
             padding: dp(12)
             canvas.before:
                 Color:
-                    rgba: 0, 0, 0, 0.55
+                    rgba: PANEL_BG
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
                     radius: [16]
+                Color:
+                    rgba: (1, 1, 1, 0.12)
+                Line:
+                    width: 1.0
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
 
             BoxLayout:
                 size_hint_y: None
@@ -1304,14 +1384,12 @@
                 text: "Unlock Contact"
                 size_hint_y: None
                 height: dp(50)
-                background_color: (0.2, 0.6, 0.9, 1)
                 on_release: root.unlock_contact()
 
             AppButton:
                 text: "Save / Share (demo)"
                 size_hint_y: None
                 height: dp(44)
-                background_color: (0.3, 0.8, 0.3, 1)
 
 <SubscriptionScreen>:
     name: "subscription"
@@ -1341,11 +1419,16 @@
             padding: dp(16)
             canvas.before:
                 Color:
-                    rgba: 0, 0, 0, 0.55
+                    rgba: PANEL_BG
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
                     radius: [16]
+                Color:
+                    rgba: (1, 1, 1, 0.12)
+                Line:
+                    width: 1.0
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
 
             Label:
                 text: "Subscription"
@@ -1366,35 +1449,31 @@
                 text: "Aggressive — ₹10"
                 size_hint_y: None
                 height: dp(48)
-                background_color: (0.2, 0.6, 0.9, 1)
                 on_release: root.simulate_google_play_success("aggressive_10")
 
             AppButton:
                 text: "Instant — ₹79"
                 size_hint_y: None
                 height: dp(48)
-                background_color: (0.2, 0.6, 0.9, 1)
                 on_release: root.simulate_google_play_success("instant_79")
 
             AppButton:
                 text: "Smart — ₹199 / month"
                 size_hint_y: None
                 height: dp(48)
-                background_color: (0.2, 0.6, 0.9, 1)
                 on_release: root.simulate_google_play_success("smart_monthly_199")
 
             AppButton:
                 text: "Business — ₹499 / 3 months"
                 size_hint_y: None
                 height: dp(48)
-                background_color: (0.2, 0.6, 0.9, 1)
                 on_release: root.simulate_google_play_success("business_quarterly_499")
 
             AppButton:
                 text: "Back"
                 size_hint_y: None
                 height: dp(44)
-                background_color: (0.7, 0.2, 0.2, 1)
+                color: (0.94, 0.27, 0.27, 1)
                 on_release: root.back()
 
 <OwnerDashboardScreen>:
@@ -1424,13 +1503,18 @@
             padding: dp(16)
             canvas.before:
                 Color:
-                    rgba: 0, 0, 0, 0.55
+                    rgba: PANEL_BG
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
                     radius: [16]
+                Color:
+                    rgba: (1, 1, 1, 0.12)
+                Line:
+                    width: 1.0
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
             Label:
-                text: "[b]Publish Ad Dashboard[/b]  🏢"
+                text: "[b]Publish Ad Dashboard[/b]  [font=EmojiFont]🏢[/font]"
                 font_size: sp(24)
                 size_hint_y: None
                 height: dp(40)
@@ -1447,10 +1531,9 @@
                 color: 1, 1, 1, 0.85
 
             AppButton:
-                text: "Create Listing  ➕"
+                text: "Create Listing  [font=EmojiFont]➕[/font]"
                 size_hint_y: None
                 height: dp(50)
-                background_color: (0.2, 0.6, 0.9, 1)
                 on_release: root.go_add()
             Label:
                 text: "My Listings (demo)"
@@ -1459,7 +1542,7 @@
                 text: "Back"
                 size_hint_y: None
                 height: dp(44)
-                background_color: (0.7, 0.2, 0.2, 1)
+                color: (0.94, 0.27, 0.27, 1)
                 on_release: root.go_back()
 
 <OwnerAddPropertyScreen>:
@@ -1489,11 +1572,16 @@
             padding: dp(16)
             canvas.before:
                 Color:
-                    rgba: 0, 0, 0, 0.55
+                    rgba: PANEL_BG
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
                     radius: [16]
+                Color:
+                    rgba: (1, 1, 1, 0.12)
+                Line:
+                    width: 1.0
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
             Label:
                 text: "Publish Ad"
                 font_size: sp(24)
@@ -1566,7 +1654,6 @@
                     text: "Choose Photos / Video"
                     size_hint_y: None
                     height: dp(44)
-                    background_color: (0.2, 0.6, 0.9, 1)
                     on_release: root.open_media_picker()
                 Label:
                     id: media_summary
@@ -1578,12 +1665,11 @@
                 text: "Submit (goes to admin review)"
                 size_hint_y: None
                 height: dp(50)
-                background_color: (0.3, 0.8, 0.3, 1)
                 on_release: root.submit_listing()
             AppButton:
                 text: "Back"
                 size_hint_y: None
                 height: dp(44)
-                background_color: (0.7, 0.2, 0.2, 1)
+                color: (0.94, 0.27, 0.27, 1)
                 on_release: root.go_back()
 

@@ -90,7 +90,7 @@ export default function PropertyPage() {
               </div>
             ) : (
               <div className="muted" style={{ marginTop: 6 }}>
-                No images yet (upload from Publish Ad).
+                Photos will appear once uploaded.
               </div>
             )}
           </div>

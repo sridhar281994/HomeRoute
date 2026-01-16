@@ -165,7 +165,7 @@ export function listProperties(params: {
   if (params.rent_sale) sp.set("rent_sale", params.rent_sale);
   if (params.property_type) sp.set("property_type", params.property_type);
   if (params.max_price) sp.set("max_price", params.max_price);
-  // Location is mandatory for guest browsing; backend enforces this too.
+  // Location filters are optional; pass them only when selected.
   if (params.state) sp.set("state", params.state);
   if (params.district) sp.set("district", params.district);
   if (params.area) sp.set("area", params.area);

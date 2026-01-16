@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from kivy.clock import Clock
+from kivy.factory import Factory
 from kivy.properties import BooleanProperty, DictProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.filechooser import FileChooserListView
@@ -12,9 +13,8 @@ from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
-from kivy.graphics import Color, RoundedRectangle
+from kivy.graphics import Color, RoundedRectangle, Line
 
-from screens.widgets import HoverButton
 from frontend_app.utils.api import (
     ApiError,
     api_location_areas,
@@ -147,12 +147,15 @@ class HomeScreen(Screen):
 
         # Card background
         with card.canvas.before:
-            Color(0, 0, 0, 0.55)
+            Color(0, 0, 0, 0.35)
             rect = RoundedRectangle(pos=card.pos, size=card.size, radius=[16])
+            Color(1, 1, 1, 0.12)
+            border = Line(rounded_rectangle=[card.x, card.y, card.width, card.height, 16], width=1.0)
 
         def _sync_bg(*_):
             rect.pos = card.pos
             rect.size = card.size
+            border.rounded_rectangle = [card.x, card.y, card.width, card.height, 16]
 
         card.bind(pos=_sync_bg, size=_sync_bg)
 
@@ -178,10 +181,10 @@ class HomeScreen(Screen):
             else:
                 card.add_widget(Label(text="(Video attached)", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
         else:
-            card.add_widget(Label(text="No photos.", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+            card.add_widget(Label(text="Photos will appear once uploaded.", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
 
         btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
-        btn_open = HoverButton(text="Open", background_color=(0.2, 0.6, 0.9, 1))
+        btn_open = Factory.AppButton(text="Open", size_hint_y=None, height=44)
         btn_open.bind(on_release=lambda *_: self.open_post_popup(p))
         btn_row.add_widget(btn_open)
         card.add_widget(btn_row)
@@ -235,10 +238,16 @@ class HomeScreen(Screen):
                     need = need.split("—", 1)[1].strip()
                 q = (self.query or "").strip()
                 combined_q = " ".join([x for x in [need if need and need.lower() != "any" else "", q] if x]).strip()
+                rent_sale = (self.rent_sale or "").strip()
+                if rent_sale.lower() == "any":
+                    rent_sale = ""
+                property_type = (self.property_type or "").strip()
+                if property_type.lower() == "any":
+                    property_type = ""
                 data = api_list_properties(
                     q=combined_q,
-                    rent_sale=(self.rent_sale or "").strip(),
-                    property_type=(self.property_type or "").strip(),
+                    rent_sale=rent_sale,
+                    property_type=property_type,
                     max_price=(self.max_price or "").strip(),
                 )
                 cards: list[dict[str, Any]] = []
@@ -306,12 +315,12 @@ class HomeScreen(Screen):
             else:
                 root.add_widget(Label(text="(Video attached)", size_hint_y=None, height=22, color=(1, 1, 1, 0.85)))
         else:
-            root.add_widget(Label(text="No photos.", size_hint_y=None, height=22, color=(1, 1, 1, 0.85)))
+            root.add_widget(Label(text="Photos will appear once uploaded.", size_hint_y=None, height=22, color=(1, 1, 1, 0.85)))
 
         root.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
         root.add_widget(Label(text=(", ".join([str(x) for x in amenities]) if amenities else "—"), size_hint_y=None, height=44, color=(1, 1, 1, 0.85)))
 
-        btn_contact = HoverButton(text="Contact owner", size_hint_y=None, height=46, background_color=(0.2, 0.6, 0.9, 1))
+        btn_contact = Factory.AppButton(text="Contact owner", size_hint_y=None, height=46)
         root.add_widget(btn_contact)
         lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
         root.add_widget(lbl_status)
@@ -590,7 +599,7 @@ class SettingsScreen(Screen):
             pass
 
         buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
-        btn_cancel = HoverButton(text="Cancel", background_color=(0.7, 0.2, 0.2, 1))
+        btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
         buttons.add_widget(btn_cancel)
 
         root = BoxLayout(orientation="vertical", spacing=8, padding=8)
@@ -719,8 +728,8 @@ class SettingsScreen(Screen):
             popup.dismiss()
 
         buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
-        btn_yes = HoverButton(text="Delete", background_color=(0.8, 0.2, 0.2, 1))
-        btn_no = HoverButton(text="Cancel", background_color=(0.2, 0.5, 0.9, 1))
+        btn_yes = Factory.AppButton(text="Delete", color=(0.94, 0.27, 0.27, 1))
+        btn_no = Factory.AppButton(text="Cancel")
         buttons.add_widget(btn_no)
         buttons.add_widget(btn_yes)
         root = BoxLayout(orientation="vertical", spacing=8, padding=8)
@@ -960,8 +969,8 @@ class OwnerAddPropertyScreen(Screen):
                 popup.dismiss()
 
         buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
-        btn_cancel = HoverButton(text="Cancel", background_color=(0.7, 0.2, 0.2, 1))
-        btn_ok = HoverButton(text="Use Selected", background_color=(0.2, 0.6, 0.9, 1))
+        btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
+        btn_ok = Factory.AppButton(text="Use Selected")
         buttons.add_widget(btn_cancel)
         buttons.add_widget(btn_ok)
 
