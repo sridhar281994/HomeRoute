@@ -15,7 +15,7 @@ export default function SplashPage() {
   return (
     <div className="panel" style={{ textAlign: "center", padding: 28 }}>
       <p className="h1" style={{ margin: 0 }}>
-        ConstructHub  🏗️
+        QuickRent
       </p>
       <p className="muted" style={{ marginTop: 10 }}>
         Loading...

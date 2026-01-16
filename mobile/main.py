@@ -22,7 +22,7 @@ from screens.shell_screens import (
 )
 
 
-class ConstructHubApp(App):
+class QuickRentApp(App):
     title = "QuickRent"
 
     def build(self):
@@ -49,5 +49,5 @@ class ConstructHubApp(App):
 
 
 if __name__ == "__main__":
-    ConstructHubApp().run()
+    QuickRentApp().run()
 
