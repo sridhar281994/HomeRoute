@@ -12,6 +12,7 @@ from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
+from kivy.graphics import Color, RoundedRectangle
 
 from screens.widgets import HoverButton
 from frontend_app.utils.api import (
@@ -128,6 +129,65 @@ class HomeScreen(Screen):
 
         Clock.schedule_once(lambda _dt: self.refresh(), 0)
 
+    def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
+        """
+        Build a feed card roughly matching the web UI:
+        title/meta header, optional media preview, and an action button.
+        """
+        p = raw or {}
+        title = str(p.get("title") or "Property").strip()
+        adv_no = str(p.get("adv_number") or p.get("ad_number") or p.get("id") or "").strip()
+        meta = " • ".join(
+            [x for x in [f"Ad #{adv_no}" if adv_no else "", str(p.get("rent_sale") or ""), str(p.get("property_type") or ""), str(p.get("price_display") or ""), str(p.get("location_display") or "")] if x]
+        )
+        images = p.get("images") or []
+
+        card = BoxLayout(orientation="vertical", padding=(12, 10), spacing=8, size_hint_y=None)
+        card.bind(minimum_height=card.setter("height"))
+
+        # Card background
+        with card.canvas.before:
+            Color(0, 0, 0, 0.55)
+            rect = RoundedRectangle(pos=card.pos, size=card.size, radius=[16])
+
+        def _sync_bg(*_):
+            rect.pos = card.pos
+            rect.size = card.size
+
+        card.bind(pos=_sync_bg, size=_sync_bg)
+
+        header = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=48)
+        avatar = Label(text=(title[:1].upper() if title else "A"), size_hint=(None, None), size=(42, 42), halign="center", valign="middle")
+        avatar.text_size = avatar.size
+        header.add_widget(avatar)
+
+        hb = BoxLayout(orientation="vertical", spacing=2)
+        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=24))
+        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+        header.add_widget(hb)
+        card.add_widget(header)
+
+        if images:
+            first = images[0] or {}
+            ctype = str(first.get("content_type") or "").lower()
+            if ctype.startswith("image/"):
+                img = AsyncImage(source=to_api_url(first.get("url") or ""), allow_stretch=True)
+                img.size_hint_y = None
+                img.height = 200
+                card.add_widget(img)
+            else:
+                card.add_widget(Label(text="(Video attached)", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+        else:
+            card.add_widget(Label(text="No photos.", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+
+        btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
+        btn_open = HoverButton(text="Open", background_color=(0.2, 0.6, 0.9, 1))
+        btn_open.bind(on_release=lambda *_: self.open_post_popup(p))
+        btn_row.add_widget(btn_open)
+        card.add_widget(btn_row)
+
+        return card
+
     def _load_need_categories(self):
         def work():
             try:
@@ -203,31 +263,8 @@ class HomeScreen(Screen):
                         if container is not None:
                             container.clear_widgets()
                             for c in cards:
-                                title = c.get("title") or "Property"
-                                meta = " • ".join(
-                                    [
-                                        x
-                                        for x in [
-                                            c.get("rent_sale"),
-                                            c.get("kind"),
-                                            c.get("price"),
-                                            c.get("location"),
-                                        ]
-                                        if x
-                                    ]
-                                )
-                                btn = HoverButton(
-                                    text=f"{title}\n{meta}",
-                                    size_hint_y=None,
-                                    height=88,
-                                    halign="left",
-                                    valign="middle",
-                                )
-                                btn.text_size = (btn.width, None)
-                                pid = int(c.get("id") or 0)
                                 raw = c.get("raw") or {}
-                                btn.bind(on_release=lambda _b, raw=raw: self.open_post_popup(raw))
-                                container.add_widget(btn)
+                                container.add_widget(self._feed_card(raw))
                     except Exception:
                         pass
                     self.is_loading = False
