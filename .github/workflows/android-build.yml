@@ -1,0 +1,35 @@
+name: Android APK (Buildozer)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/android-build.yml"
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build debug APK (docker)
+        run: |
+          mkdir -p mobile/.buildozer mobile/.gradle
+          docker pull kivy/buildozer
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
+            -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
+            -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
+            -w /home/user/hostcwd/mobile \
+            kivy/buildozer \
+            buildozer android debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickrent-apk
+          path: mobile/bin/*.apk
+          if-no-files-found: error
+
