@@ -187,6 +187,15 @@ def _enable_media_ai_moderation() -> bool:
     return v not in {"0", "false", "no", "off"}
 
 
+def _ai_moderation_fail_closed() -> bool:
+    """
+    If true, uploads fail when moderation cannot be performed.
+    Default is fail-open to avoid blocking uploads in production when OpenAI/ffmpeg isn't configured.
+    """
+    v = (os.environ.get("AI_MODERATION_FAIL_CLOSED") or "0").strip().lower()
+    return v in {"1", "true", "yes", "on"}
+
+
 def _openai_api_key() -> str:
     return (os.environ.get("OPENAI_API_KEY") or "").strip()
 
@@ -199,7 +208,10 @@ def _require_ai_moderation_configured() -> None:
     if not _enable_media_ai_moderation():
         return
     if not _openai_api_key():
-        raise HTTPException(status_code=503, detail="AI moderation is enabled but not configured (missing OPENAI_API_KEY)")
+        if _ai_moderation_fail_closed():
+            raise HTTPException(status_code=503, detail="AI moderation is enabled but not configured (missing OPENAI_API_KEY)")
+        # Fail-open by default to avoid breaking uploads when OpenAI isn't configured.
+        return
 
 
 def _openai_moderate_image(*, raw: bytes) -> dict[str, Any]:
@@ -210,9 +222,11 @@ def _openai_moderate_image(*, raw: bytes) -> dict[str, Any]:
       - summary: str
       - raw: response JSON (best-effort)
     """
-    _require_ai_moderation_configured()
     if not _enable_media_ai_moderation():
         return {"ok": True, "flagged": False, "summary": "ai_moderation_disabled", "raw": {}}
+    _require_ai_moderation_configured()
+    if not _openai_api_key():
+        return {"ok": True, "flagged": False, "summary": "ai_moderation_skipped_missing_openai_api_key", "raw": {}}
 
     # Use a data URL to avoid file hosting; OpenAI moderation accepts image_url inputs.
     b64 = base64.b64encode(raw).decode("ascii")
@@ -235,7 +249,9 @@ def _openai_moderate_image(*, raw: bytes) -> dict[str, Any]:
             timeout=20,
         )
     except Exception:
-        raise HTTPException(status_code=503, detail="AI moderation service unavailable")
+        if _ai_moderation_fail_closed():
+            raise HTTPException(status_code=503, detail="AI moderation service unavailable")
+        return {"ok": True, "flagged": False, "summary": "ai_moderation_skipped_service_unavailable", "raw": {}}
 
     data: dict[str, Any] = {}
     try:
@@ -244,8 +260,15 @@ def _openai_moderate_image(*, raw: bytes) -> dict[str, Any]:
         data = {}
 
     if not resp.ok:
-        # Fail-closed: do not store unmoderated media.
-        raise HTTPException(status_code=503, detail="AI moderation failed")
+        if _ai_moderation_fail_closed():
+            # Fail-closed: do not store unmoderated media.
+            raise HTTPException(status_code=503, detail="AI moderation failed")
+        return {
+            "ok": True,
+            "flagged": False,
+            "summary": f"ai_moderation_skipped_http_{int(resp.status_code)}",
+            "raw": data,
+        }
 
     results = (data or {}).get("results") or []
     r0 = results[0] if results else {}
@@ -263,11 +286,15 @@ def _openai_moderate_video(*, raw: bytes, max_frames: int = 8) -> dict[str, Any]
     Video moderation via frame sampling + image moderation.
     Requires ffmpeg. Fail-closed if moderation cannot be performed.
     """
-    _require_ai_moderation_configured()
     if not _enable_media_ai_moderation():
         return {"ok": True, "flagged": False, "summary": "ai_moderation_disabled", "raw": {}}
+    _require_ai_moderation_configured()
+    if not _openai_api_key():
+        return {"ok": True, "flagged": False, "summary": "ai_moderation_skipped_missing_openai_api_key", "raw": {}}
     if not shutil.which("ffmpeg"):
-        raise HTTPException(status_code=503, detail="AI moderation requires ffmpeg (missing)")
+        if _ai_moderation_fail_closed():
+            raise HTTPException(status_code=503, detail="AI moderation requires ffmpeg (missing)")
+        return {"ok": True, "flagged": False, "summary": "ai_moderation_skipped_missing_ffmpeg", "raw": {}}
 
     with tempfile.TemporaryDirectory(prefix="ch_vid_mod_") as td:
         in_path = os.path.join(td, "in")
@@ -1885,6 +1912,7 @@ def get_property_contact(
     adv_no = (p.ad_number or "").strip() or str(p.id)
     owner_name = (owner.name or "").strip() or "Owner"
     owner_phone = (p.contact_phone or "").strip()
+    owner_email_contact = (p.contact_email or "").strip()
     customer_email = (me.email or "").strip()
     customer_phone = (me.phone_normalized or me.phone or "").strip()
     try:
@@ -1896,6 +1924,7 @@ def get_property_contact(
                     f"Ad number: {adv_no}\n"
                     f"Owner name: {owner_name}\n"
                     f"Owner phone: {owner_phone or 'N/A'}\n"
+                    f"Owner email: {owner_email_contact or 'N/A'}\n"
                     f"Owner company: {(owner.company_name or '').strip() or 'N/A'}\n"
                 ),
             )
@@ -1906,7 +1935,7 @@ def get_property_contact(
         if customer_phone:
             send_sms(
                 to_phone=customer_phone,
-                text=f"Ad #{adv_no} contact: {owner_name} {owner_phone or ''}".strip(),
+                text=f"Ad #{adv_no} contact: {owner_name} {owner_phone or ''} {owner_email_contact or ''}".strip(),
             )
     except Exception:
         pass
@@ -2537,6 +2566,17 @@ def upload_property_image(
     if existing:
         raise HTTPException(status_code=409, detail="Duplicate media detected (hash already exists)")
 
+    requested_sort = int(sort_order)
+    # Clients commonly upload all media with sort_order=0.
+    # Keep DB uniqueness intact by auto-assigning the next available sort_order if needed.
+    try:
+        existing_orders = db.execute(select(PropertyImage.sort_order).where(PropertyImage.property_id == p.id)).scalars().all()
+        used = {int(x or 0) for x in existing_orders}
+    except Exception:
+        used = set()
+    if requested_sort in used:
+        requested_sort = (max(used) + 1) if used else 0
+
     safe_name = f"p{p.id}_{secrets.token_hex(8)}{stored_ext}"
     disk_path = os.path.join(_uploads_dir(), safe_name)
     try:
@@ -2548,7 +2588,7 @@ def upload_property_image(
     img = PropertyImage(
         property_id=p.id,
         file_path=safe_name,
-        sort_order=int(sort_order),
+        sort_order=int(requested_sort),
         image_hash=img_hash,
         original_filename=(file.filename or "").strip(),
         content_type=stored_content_type,
@@ -2558,7 +2598,26 @@ def upload_property_image(
         uploaded_by_user_id=me.id,
     )
     db.add(img)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # Best-effort: resolve a rare concurrent sort_order collision.
+        db.rollback()
+        max_sort = db.execute(select(func.max(PropertyImage.sort_order)).where(PropertyImage.property_id == p.id)).scalar()
+        next_sort = int(max_sort or -1) + 1
+        img = PropertyImage(
+            property_id=p.id,
+            file_path=safe_name,
+            sort_order=int(next_sort),
+            image_hash=img_hash,
+            original_filename=(file.filename or "").strip(),
+            content_type=stored_content_type,
+            size_bytes=int(len(stored_bytes)),
+            status="approved",
+            uploaded_by_user_id=me.id,
+        )
+        db.add(img)
+        db.flush()
     _log_moderation(db, actor_user_id=me.id, entity_type="property_image", entity_id=img.id, action="upload", reason="")
     return {
         "id": img.id,

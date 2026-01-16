@@ -29,7 +29,7 @@ export default function HomePage() {
   });
   const [area, setArea] = useState<string>(() => localStorage.getItem("pd_area") || "");
   const [radiusKm, setRadiusKm] = useState<string>(() => localStorage.getItem("pd_radius_km") || "20");
-  const [sortBudget, setSortBudget] = useState<string>("top");
+  const [sortBudget, setSortBudget] = useState<string>("");
   const [postedWithinDays, setPostedWithinDays] = useState<string>("");
   const [items, setItems] = useState<any[]>([]);
   const [err, setErr] = useState<string>("");
@@ -253,7 +253,7 @@ export default function HomePage() {
               setArea("");
             }}
           >
-            <option value="">Select state…</option>
+            <option value="">Any</option>
             {stateOptions.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -271,7 +271,7 @@ export default function HomePage() {
             }}
             disabled={!state}
           >
-            <option value="">{state ? "Select district…" : "Select state first"}</option>
+            <option value="">{state ? "Any" : "Any"}</option>
             {districtOptions.map((d) => (
               <option key={d} value={d}>
                 {d}
@@ -282,7 +282,7 @@ export default function HomePage() {
         <div className="col-6">
           <label className="muted">Area (optional)</label>
           <select value={area} onChange={(e) => setArea(e.target.value)} disabled={!state || !district}>
-            <option value="">{state && district ? "Select area…" : "Select state + district first"}</option>
+            <option value="">{state && district ? "Any" : "Any"}</option>
             {areaOptions.map((a) => (
               <option key={a} value={a}>
                 {a}
@@ -326,6 +326,7 @@ export default function HomePage() {
         <div className="col-6">
           <label className="muted">Sort (by budget)</label>
           <select value={sortBudget} onChange={(e) => setSortBudget(e.target.value)}>
+            <option value="">Any (Newest)</option>
             <option value="top">Top (high to low)</option>
             <option value="bottom">Bottom (low to high)</option>
           </select>
@@ -412,12 +413,13 @@ export default function HomePage() {
                       setContactMsg((m) => ({ ...m, [pid]: "" }));
                       try {
                         const contact = await getContact(pid);
-                        const phone = String(contact.phone || "").trim();
-                        const email = String(contact.email || "").trim();
+                        const ownerName = String(contact.owner_name || "").trim();
+                        const advNo = String(contact.adv_number || contact.advNo || p.adv_number || p.ad_number || p.id || "").trim();
                         const sent = "Contact details sent to your registered email/SMS.";
-                        const detail = phone && email ? `${phone} / ${email}` : phone || email || "N/A";
+                        const who = ownerName ? ` (${ownerName})` : "";
+                        const label = advNo ? ` Ad #${advNo}${who}.` : ` Ad${who}.`;
                         setContacted((c) => ({ ...c, [pid]: true }));
-                        setContactMsg((m) => ({ ...m, [pid]: `${sent} ${detail}`.trim() }));
+                        setContactMsg((m) => ({ ...m, [pid]: `${sent}${label}`.trim() }));
                       } catch (e: any) {
                         setContactMsg((m) => ({ ...m, [pid]: e.message || "Locked" }));
                       }

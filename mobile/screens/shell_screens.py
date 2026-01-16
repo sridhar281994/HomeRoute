@@ -12,6 +12,7 @@ from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
+from kivy.graphics import Color, RoundedRectangle
 
 from screens.widgets import HoverButton
 from frontend_app.utils.api import (
@@ -128,6 +129,65 @@ class HomeScreen(Screen):
 
         Clock.schedule_once(lambda _dt: self.refresh(), 0)
 
+    def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
+        """
+        Build a feed card roughly matching the web UI:
+        title/meta header, optional media preview, and an action button.
+        """
+        p = raw or {}
+        title = str(p.get("title") or "Property").strip()
+        adv_no = str(p.get("adv_number") or p.get("ad_number") or p.get("id") or "").strip()
+        meta = " • ".join(
+            [x for x in [f"Ad #{adv_no}" if adv_no else "", str(p.get("rent_sale") or ""), str(p.get("property_type") or ""), str(p.get("price_display") or ""), str(p.get("location_display") or "")] if x]
+        )
+        images = p.get("images") or []
+
+        card = BoxLayout(orientation="vertical", padding=(12, 10), spacing=8, size_hint_y=None)
+        card.bind(minimum_height=card.setter("height"))
+
+        # Card background
+        with card.canvas.before:
+            Color(0, 0, 0, 0.55)
+            rect = RoundedRectangle(pos=card.pos, size=card.size, radius=[16])
+
+        def _sync_bg(*_):
+            rect.pos = card.pos
+            rect.size = card.size
+
+        card.bind(pos=_sync_bg, size=_sync_bg)
+
+        header = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=48)
+        avatar = Label(text=(title[:1].upper() if title else "A"), size_hint=(None, None), size=(42, 42), halign="center", valign="middle")
+        avatar.text_size = avatar.size
+        header.add_widget(avatar)
+
+        hb = BoxLayout(orientation="vertical", spacing=2)
+        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=24))
+        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+        header.add_widget(hb)
+        card.add_widget(header)
+
+        if images:
+            first = images[0] or {}
+            ctype = str(first.get("content_type") or "").lower()
+            if ctype.startswith("image/"):
+                img = AsyncImage(source=to_api_url(first.get("url") or ""), allow_stretch=True)
+                img.size_hint_y = None
+                img.height = 200
+                card.add_widget(img)
+            else:
+                card.add_widget(Label(text="(Video attached)", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+        else:
+            card.add_widget(Label(text="No photos.", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+
+        btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
+        btn_open = HoverButton(text="Open", background_color=(0.2, 0.6, 0.9, 1))
+        btn_open.bind(on_release=lambda *_: self.open_post_popup(p))
+        btn_row.add_widget(btn_open)
+        card.add_widget(btn_row)
+
+        return card
+
     def _load_need_categories(self):
         def work():
             try:
@@ -203,31 +263,8 @@ class HomeScreen(Screen):
                         if container is not None:
                             container.clear_widgets()
                             for c in cards:
-                                title = c.get("title") or "Property"
-                                meta = " • ".join(
-                                    [
-                                        x
-                                        for x in [
-                                            c.get("rent_sale"),
-                                            c.get("kind"),
-                                            c.get("price"),
-                                            c.get("location"),
-                                        ]
-                                        if x
-                                    ]
-                                )
-                                btn = HoverButton(
-                                    text=f"{title}\n{meta}",
-                                    size_hint_y=None,
-                                    height=88,
-                                    halign="left",
-                                    valign="middle",
-                                )
-                                btn.text_size = (btn.width, None)
-                                pid = int(c.get("id") or 0)
                                 raw = c.get("raw") or {}
-                                btn.bind(on_release=lambda _b, raw=raw: self.open_post_popup(raw))
-                                container.add_widget(btn)
+                                container.add_widget(self._feed_card(raw))
                     except Exception:
                         pass
                     self.is_loading = False
@@ -295,12 +332,13 @@ class HomeScreen(Screen):
             def work():
                 try:
                     contact = api_get_property_contact(pid)
-                    phone = str(contact.get("phone") or "").strip() or "N/A"
-                    email = str(contact.get("email") or "").strip() or "N/A"
+                    owner_name = str(contact.get("owner_name") or "").strip()
+                    adv_no = str(contact.get("adv_number") or contact.get("advNo") or pid).strip()
 
                     def done(*_dt):
                         btn_contact.text = "Contacted"
-                        lbl_status.text = f"Phone: {phone}\\nEmail: {email}"
+                        who = f" ({owner_name})" if owner_name else ""
+                        lbl_status.text = f"Contact details sent to your registered email/SMS for Ad #{adv_no}{who}."
 
                     Clock.schedule_once(done, 0)
                 except ApiError as e:
@@ -376,8 +414,8 @@ class PropertyDetailScreen(Screen):
     def unlock_contact(self):
         """
         Contact Unlock Flow:
-        - If subscribed: fetch contact
-        - Else: show Subscription page
+        - Call the backend unlock endpoint (it enforces free quota / subscription).
+        - Show a confirmation that details were sent via Email/SMS.
         """
         sess = get_session() or {}
         if not (sess.get("token") or ""):
@@ -388,21 +426,19 @@ class PropertyDetailScreen(Screen):
 
         def work():
             try:
-                sub = api_subscription_status()
-                active = bool((sub.get("status") or "").lower() == "active")
-                if not active:
-                    Clock.schedule_once(lambda *_: self._go_subscription(), 0)
-                    return
                 contact = api_get_property_contact(self.property_id)
-                phone = contact.get("phone") or "N/A"
-                email = contact.get("email") or "N/A"
-                Clock.schedule_once(
-                    lambda *_: _popup("Owner Contact", f"Phone: {phone}\nEmail: {email}"),
-                    0,
-                )
+                owner_name = str(contact.get("owner_name") or "").strip()
+                adv_no = str(contact.get("adv_number") or contact.get("advNo") or self.property_id).strip()
+                who = f" ({owner_name})" if owner_name else ""
+                Clock.schedule_once(lambda *_: _popup("Success", f"Contact details sent to your registered email/SMS for Ad #{adv_no}{who}."), 0)
             except ApiError as e:
                 msg = str(e)
-                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+                def fail(*_dt):
+                    _popup("Error", msg)
+                    if "subscription required" in msg.lower() and self.manager:
+                        self.manager.current = "subscription"
+
+                Clock.schedule_once(fail, 0)
 
         from threading import Thread
 

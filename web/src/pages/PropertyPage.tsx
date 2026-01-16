@@ -110,17 +110,12 @@ export default function PropertyPage() {
               setMsg("");
               try {
                 const contact = await getContact(pid);
-                const phone = String(contact.phone || "").trim();
-                const email = String(contact.email || "").trim();
                 const ownerName = String(contact.owner_name || "").trim();
                 const advNo = String(contact.adv_number || contact.advNo || "").trim();
+                const sent = "Contact details sent to your registered email/SMS.";
                 const header = advNo ? `Ad #${advNo}` : "Ad";
                 const who = ownerName ? ` (${ownerName})` : "";
-                const sent = "Contact details sent to your registered email/SMS.";
-                if (phone && email) setMsg(`${sent} ${header}${who} contact: ${phone} / ${email}`);
-                else if (phone) setMsg(`${sent} ${header}${who} contact: ${phone}`);
-                else if (email) setMsg(`${sent} ${header}${who} contact: ${email}`);
-                else setMsg(`${sent} ${header}${who} contact: N/A`);
+                setMsg(`${sent} ${header}${who}.`);
               } catch (e: any) {
                 setMsg(e.message || "Locked");
               }
