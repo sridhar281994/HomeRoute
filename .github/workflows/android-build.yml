@@ -14,24 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Pre-accept Android SDK licenses (Buildozer cache)
-        run: |
-          # Buildozer's Android SDK is stored under the mounted /home/user/.buildozer volume.
-          # Pre-create license files so sdkmanager can install packages non-interactively.
-          LICENSE_DIR="mobile/.buildozer/android/platform/android-sdk/licenses"
-          mkdir -p "${LICENSE_DIR}"
-
-          # Common license IDs used by sdkmanager across SDK versions.
-          # (Multiple hashes are fine; sdkmanager checks for a matching one.)
-          printf '%s\n' \
-            '8933bad161af4178b1185d1a37fbf41ea5269c55' \
-            'd56f5187479451eabf01fb78af6dfcb131a6481e' \
-            > "${LICENSE_DIR}/android-sdk-license"
-
-          printf '%s\n' \
-            '84831b9409646a918e30573bab4c9c91346d8abd' \
-            > "${LICENSE_DIR}/android-sdk-preview-license"
-
       - name: Build debug APK (docker)
         run: |
           mkdir -p mobile/.buildozer mobile/.gradle
@@ -42,7 +24,42 @@ jobs:
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
             -w /home/user/hostcwd/mobile \
             kivy/buildozer \
-            android debug
+            bash -lc '
+              set -euo pipefail
+
+              # Let buildozer create SDK/NDK folders first (it may exit early on missing licenses).
+              buildozer android update || true
+
+              SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
+              LICENSE_DIR="${SDKROOT}/licenses"
+              mkdir -p "${LICENSE_DIR}"
+
+              # Write license files with known hashes (no interactive prompt).
+              printf "%s\n" \
+                "8933bad161af4178b1185d1a37fbf41ea5269c55" \
+                "d56f5187479451eabf01fb78af6dfcb131a6481e" \
+                > "${LICENSE_DIR}/android-sdk-license"
+              printf "%s\n" \
+                "84831b9409646a918e30573bab4c9c91346d8abd" \
+                > "${LICENSE_DIR}/android-sdk-preview-license"
+
+              # If sdkmanager exists, accept all licenses as well (future-proof).
+              SDKMANAGER=""
+              for p in \
+                "${SDKROOT}/cmdline-tools/latest/bin/sdkmanager" \
+                "${SDKROOT}/cmdline-tools/bin/sdkmanager" \
+                "${SDKROOT}/tools/bin/sdkmanager"; do
+                if [ -x "${p}" ]; then
+                  SDKMANAGER="${p}"
+                  break
+                fi
+              done
+              if [ -n "${SDKMANAGER}" ]; then
+                yes | "${SDKMANAGER}" --sdk_root="${SDKROOT}" --licenses || true
+              fi
+
+              buildozer android debug
+            '
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
