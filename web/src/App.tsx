@@ -25,7 +25,7 @@ export default function App() {
       <div className="app-bg" aria-hidden="true" />
       <div className="panel topbar" style={{ marginBottom: 14 }}>
         <div className="topbar-brand">
-          <div className="h2">ConstructHub  🏗️</div>
+          <div className="h2">QuickRent</div>
         </div>
         <div className="spacer" />
         <div className="topbar-links">

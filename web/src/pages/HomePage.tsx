@@ -17,8 +17,16 @@ export default function HomePage() {
   const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
-  const [state, setState] = useState<string>(() => localStorage.getItem("pd_state") || "");
-  const [district, setDistrict] = useState<string>(() => localStorage.getItem("pd_district") || "");
+  const [state, setState] = useState<string>(() => {
+    const s = getSession();
+    const fromProfile = String((s.user as any)?.state || "").trim();
+    return fromProfile || localStorage.getItem("pd_state") || "";
+  });
+  const [district, setDistrict] = useState<string>(() => {
+    const s = getSession();
+    const fromProfile = String((s.user as any)?.district || "").trim();
+    return fromProfile || localStorage.getItem("pd_district") || "";
+  });
   const [area, setArea] = useState<string>(() => localStorage.getItem("pd_area") || "");
   const [radiusKm, setRadiusKm] = useState<string>(() => localStorage.getItem("pd_radius_km") || "20");
   const [sortBudget, setSortBudget] = useState<string>("top");
@@ -32,6 +40,7 @@ export default function HomePage() {
   const [areaOptions, setAreaOptions] = useState<string[]>([]);
   const [contacted, setContacted] = useState<Record<number, boolean>>({});
   const [contactMsg, setContactMsg] = useState<Record<number, string>>({});
+  const [didAutoLoad, setDidAutoLoad] = useState<boolean>(false);
 
   const needGroups = useMemo(() => {
     const cats = (catalog?.categories || []) as Array<{ group: string; items: string[] }>;
@@ -79,9 +88,21 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    // Auto-load once when default state+district are known.
+    if (didAutoLoad) return;
+    if (!(state || "").trim() || !(district || "").trim()) return;
+    setDidAutoLoad(true);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [didAutoLoad, state, district]);
+
+  useEffect(() => {
+    // If GPS becomes available after the first load, reload once to show nearby + distance info.
+    if (!didAutoLoad) return;
+    if (!gps) return;
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gps, didAutoLoad]);
 
   useEffect(() => {
     (async () => {
@@ -96,16 +117,31 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    // Default state/district from user profile (if logged-in and not already chosen).
+    // Default state/district from user profile (if logged-in). Also avoid leaking location filters across users.
     (async () => {
       try {
         const s = getSession();
         if (!s.token) return;
-        if ((state || "").trim() && (district || "").trim()) return;
+
+        const userId = (s.user as any)?.id;
+        const prevUserId = localStorage.getItem("pd_user_id");
+        if (userId != null && prevUserId !== String(userId)) {
+          localStorage.setItem("pd_user_id", String(userId));
+          localStorage.removeItem("pd_state");
+          localStorage.removeItem("pd_district");
+          localStorage.removeItem("pd_area");
+          setState("");
+          setDistrict("");
+          setArea("");
+        }
+
+        // Prefer live profile (server is source of truth).
         const me = await getMe();
         const u: any = me.user || {};
-        if (!state && (u.state || "").trim()) setState(String(u.state || "").trim());
-        if (!district && (u.district || "").trim()) setDistrict(String(u.district || "").trim());
+        const st = String(u.state || "").trim();
+        const dist = String(u.district || "").trim();
+        if (st && !(state || "").trim()) setState(st);
+        if (dist && !(district || "").trim()) setDistrict(dist);
       } catch {
         // ignore
       }
@@ -200,7 +236,7 @@ export default function HomePage() {
       <div className="panel">
       <div className="row">
         <p className="h1" style={{ margin: 0 }}>
-          Home <span className="muted">Discover amazing places</span>
+          <span className="muted">Uncover the best, Good Luck</span>
         </p>
         <div className="spacer" />
         <button onClick={load}>Refresh</button>

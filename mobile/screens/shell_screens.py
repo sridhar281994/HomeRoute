@@ -488,7 +488,7 @@ class SettingsScreen(Screen):
             if self.ids.get("email_current"):
                 self.ids["email_current"].text = self.email_value
             if self.ids.get("role_display"):
-                self.ids["role_display"].text = "Publish Ad" if self.role_value.lower() == "owner" else "Customer"
+                self.ids["role_display"].text = "Owner" if self.role_value.lower() == "owner" else "Customer"
         except Exception:
             pass
 

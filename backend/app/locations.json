@@ -2126,6 +2126,208 @@
       "Market Square"
     ]
   },
+  "Tamil Nadu": {
+    "Ariyalur": [
+      "Jayankondam Road",
+      "Market Colony",
+      "College Nagar",
+      "Bypass Layout"
+    ],
+    "Chennai": [
+      "Guindy",
+      "Velachery",
+      "Anna Nagar",
+      "Adyar",
+      "Tambaram",
+      "Porur",
+      "T Nagar",
+      "Mylapore"
+    ],
+    "Coimbatore": [
+      "Gandhipuram",
+      "Peelamedu",
+      "RS Puram",
+      "Saravanampatti",
+      "Singanallur",
+      "Kuniyamuthur"
+    ],
+    "Cuddalore": [
+      "OT Nagar",
+      "Manjakuppam",
+      "Semmandalam",
+      "Thirupapuliyur"
+    ],
+    "Dharmapuri": [
+      "Pennagaram Road",
+      "Forest Colony",
+      "Collectorate Area",
+      "Bus Stand Nagar"
+    ],
+    "Dindigul": [
+      "RM Colony",
+      "Begampur",
+      "Nagal Nagar",
+      "Bypass Road"
+    ],
+    "Erode": [
+      "Perundurai Road",
+      "Teachers Colony",
+      "Solar Nagar",
+      "Sampath Nagar"
+    ],
+    "Kanchipuram": [
+      "Big Kanchipuram",
+      "Little Kanchipuram",
+      "Ennaikaran",
+      "Pallavan Nagar"
+    ],
+    "Kanyakumari": [
+      "Nagercoil Town",
+      "Vadasery",
+      "Colachel Road",
+      "Suchindram Area"
+    ],
+    "Karur": [
+      "Thanthonimalai",
+      "Gandhigramam",
+      "Pasupathipalayam",
+      "Collectorate Area"
+    ],
+    "Krishnagiri": [
+      "Hosur Road",
+      "Oldpet",
+      "Newpet",
+      "Industrial Area"
+    ],
+    "Madurai": [
+      "Anna Nagar",
+      "KK Nagar",
+      "Tallakulam",
+      "Simmakkal",
+      "Goripalayam"
+    ],
+    "Nagapattinam": [
+      "Velippalayam",
+      "Karaikal Road",
+      "Harbour Area",
+      "Beach Road"
+    ],
+    "Namakkal": [
+      "Mohanur Road",
+      "Thillaipuram",
+      "Fort Area",
+      "Bus Stand Colony"
+    ],
+    "Nilgiris": [
+      "Ooty Lake Area",
+      "Coonoor Market",
+      "Lovedale",
+      "Kotagiri Road"
+    ],
+    "Perambalur": [
+      "Four Road",
+      "Old Town",
+      "Bypass Nagar",
+      "Teachers Colony"
+    ],
+    "Pudukkottai": [
+      "Kambar Nagar",
+      "Sathiyamoorthy Nagar",
+      "Town Hall Area",
+      "Collectorate Road"
+    ],
+    "Ramanathapuram": [
+      "Kenikkarai",
+      "Collectorate Colony",
+      "Mandapam Road",
+      "Old Bus Stand"
+    ],
+    "Salem": [
+      "Fairlands",
+      "Alagapuram",
+      "Hasthampatti",
+      "Ammapet"
+    ],
+    "Sivaganga": [
+      "Thiruppuvanam Road",
+      "Market Street",
+      "Collectorate Area",
+      "Housing Board"
+    ],
+    "Thanjavur": [
+      "New Bus Stand Area",
+      "Medical College Road",
+      "Parisutham Nagar",
+      "Old Palace Road"
+    ],
+    "Theni": [
+      "Cumbum Road",
+      "Old Market",
+      "Housing Board Colony",
+      "Collectorate Area"
+    ],
+    "Thoothukudi": [
+      "Bryant Nagar",
+      "Millerpuram",
+      "Harbour Estate",
+      "Therespuram"
+    ],
+    "Tiruchirappalli": [
+      "Srirangam",
+      "Thillai Nagar",
+      "Woraiyur",
+      "K K Nagar",
+      "Cantonment"
+    ],
+    "Tirunelveli": [
+      "Palayamkottai",
+      "Vannarpettai",
+      "Maharaja Nagar",
+      "NGO Colony"
+    ],
+    "Tiruppur": [
+      "Avinashi Road",
+      "Kangeyam Road",
+      "PN Road",
+      "College Road"
+    ],
+    "Tiruvallur": [
+      "Thiruninravur",
+      "Poonamallee",
+      "Avadi",
+      "Veppampattu"
+    ],
+    "Tiruvannamalai": [
+      "Girivalam Road",
+      "Polur Road",
+      "Town Extension",
+      "Bypass Nagar"
+    ],
+    "Tiruvarur": [
+      "New Bus Stand Area",
+      "South Street",
+      "Market Road",
+      "Collectorate Nagar"
+    ],
+    "Vellore": [
+      "Gandhi Nagar",
+      "Katpadi",
+      "Sathuvachari",
+      "Bagayam"
+    ],
+    "Viluppuram": [
+      "K K Road",
+      "Collectorate Colony",
+      "Bus Stand Area",
+      "Housing Board"
+    ],
+    "Virudhunagar": [
+      "Sivakasi Road",
+      "Kamaraj Nagar",
+      "Industrial Area",
+      "Old Market"
+    ]
+  },
   "Telangana": {
     "Adilabad": [
       "Forest Edge Colony",

@@ -704,7 +704,7 @@
 
                         TextInput:
                             id: role_display
-                            text: "Publish Ad" if root.role_value.lower() == "owner" else "Customer"
+                            text: "Owner" if root.role_value.lower() == "owner" else "Customer"
                             hint_text: "Role"
                             size_hint_y: None
                             height: dp(42)
@@ -980,7 +980,7 @@
                     height: dp(48)
                     spacing: dp(10)
                     ToggleButton:
-                        text: "[b]Publish Ad[/b]  🏢"
+                        text: "[b]Owner[/b]  🏢"
                         group: "role_group"
                         on_state:
                             if self.state == "down": root.set_role("owner")

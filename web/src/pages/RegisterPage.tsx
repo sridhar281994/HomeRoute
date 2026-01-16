@@ -92,7 +92,7 @@ export default function RegisterPage() {
           <label className="muted">Role</label>
           <div className="row" style={{ gap: 10 }}>
             <button className={`chip ${role === "owner" ? "chip-on" : ""}`} onClick={() => setRole("owner")}>
-              Publish Ad  🏢
+              Owner  🏢
             </button>
             <button
               className={`chip ${role === "customer" ? "chip-on" : ""}`}
@@ -104,7 +104,7 @@ export default function RegisterPage() {
         </div>
         {role === "owner" ? (
           <div className="col-12">
-            <label className="muted">Publish Ad category</label>
+            <label className="muted">Owner category</label>
             {ownerCategories.length ? (
               <select value={ownerCategory} onChange={(e) => setOwnerCategory(e.target.value)}>
                 <option value="">Select category</option>
@@ -164,7 +164,7 @@ export default function RegisterPage() {
                 if (!district) throw new Error("Please select your district.");
                 const digits = (phone || "").replace(/\D/g, "");
                 if (digits.length < 8 || digits.length > 15) throw new Error("Enter a valid phone number.");
-                if (role === "owner" && !ownerCategory) throw new Error("Please select your Publish Ad category.");
+                if (role === "owner" && !ownerCategory) throw new Error("Please select your Owner category.");
                 await registerUser({
                   email,
                   phone,
