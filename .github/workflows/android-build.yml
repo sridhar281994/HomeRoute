@@ -16,9 +16,9 @@ jobs:
 
       - name: Build debug APK (docker)
         run: |
-          mkdir -p mobile/.buildozer mobile/.gradle
+          mkdir -p mobile/.buildozer mobile/.gradle mobile/bin
           # The container runs as a non-root user; ensure it can write to mounted volumes.
-          chmod -R a+rwx mobile/.buildozer mobile/.gradle
+          chmod -R a+rwx mobile/.buildozer mobile/.gradle mobile/bin
           IMAGE="kivy/buildozer:latest"
           # Docker Hub is occasionally flaky/rate-limited in CI; retry pulls.
           for i in 1 2 3 4; do
