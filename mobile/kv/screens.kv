@@ -173,7 +173,7 @@
                     radius: [20]
 
             Label:
-                text: "[b]Find Your Perfect Match[/b]  🏠✨"
+                text: "[b]Unlock your path[/b]  🏠✨"
                 font_size: min(root.width * 0.08, sp(28))
                 size_hint_y: None
                 halign: "center"
@@ -1542,6 +1542,29 @@
                 multiline: False
                 size_hint_y: None
                 height: dp(44)
+            # Media upload (optional): max 10 images + 1 video
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: dp(6)
+                Label:
+                    text: "Upload media (optional)"
+                    size_hint_y: None
+                    height: dp(20)
+                    color: 1, 1, 1, 0.85
+                AppButton:
+                    text: "Choose Photos / Video"
+                    size_hint_y: None
+                    height: dp(44)
+                    background_color: (0.2, 0.6, 0.9, 1)
+                    on_release: root.open_media_picker()
+                Label:
+                    id: media_summary
+                    text: ""
+                    size_hint_y: None
+                    height: dp(18)
+                    color: 1, 1, 1, 0.75
             AppButton:
                 text: "Submit (goes to admin review)"
                 size_hint_y: None

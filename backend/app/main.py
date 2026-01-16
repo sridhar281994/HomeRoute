@@ -26,7 +26,6 @@ from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from PIL import Image, ImageOps
 import requests
 
 from app.config import allowed_hosts, enforce_secure_secrets, otp_exp_minutes
@@ -321,99 +320,6 @@ def _raise_if_too_large(*, size_bytes: int, max_bytes: int) -> None:
         raise HTTPException(status_code=413, detail=f"Upload too large (max {max_bytes} bytes)")
 
 
-def _optimize_image_to_webp(raw: bytes, *, max_dim: int, quality: int = 82) -> bytes:
-    """
-    Resize (if needed), strip metadata, and encode to WebP.
-    Keeps aspect ratio and applies EXIF orientation.
-    """
-    try:
-        img = Image.open(io.BytesIO(raw))
-        img = ImageOps.exif_transpose(img)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid image upload")
-
-    # Convert to a WebP-friendly mode while preserving alpha when present.
-    if img.mode not in {"RGB", "RGBA"}:
-        img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
-
-    w, h = img.size
-    max_dim = int(max_dim)
-    if max_dim > 0 and (w > max_dim or h > max_dim):
-        scale = min(max_dim / float(w), max_dim / float(h))
-        nw = max(1, int(w * scale))
-        nh = max(1, int(h * scale))
-        img = img.resize((nw, nh), Image.Resampling.LANCZOS)
-
-    out = io.BytesIO()
-    try:
-        img.save(out, format="WEBP", quality=int(quality), method=6, optimize=True)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to optimize image")
-    return out.getvalue()
-
-
-def _transcode_video_to_mp4(raw: bytes, *, max_dim: int, crf: int = 28) -> bytes:
-    """
-    Transcode video to MP4 (H.264/AAC), reduce size, strip metadata.
-    Requires ffmpeg to be installed on the server.
-    """
-    if not shutil.which("ffmpeg"):
-        raise HTTPException(status_code=400, detail="Video uploads are not supported on this server (ffmpeg missing)")
-
-    max_dim = int(max_dim)
-    # Scale so the longer side is <= max_dim, preserve aspect ratio.
-    vf = (
-        f"scale='if(gt(iw,ih),min(iw,{max_dim}),-2)':'if(gt(iw,ih),-2,min(ih,{max_dim}))'"
-        if max_dim > 0
-        else "scale=iw:ih"
-    )
-
-    with tempfile.TemporaryDirectory(prefix="ch_vid_") as td:
-        in_path = os.path.join(td, "in")
-        out_path = os.path.join(td, "out.mp4")
-        with open(in_path, "wb") as f:
-            f.write(raw)
-
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            in_path,
-            "-map_metadata",
-            "-1",
-            "-vf",
-            vf,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            str(int(crf)),
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            out_path,
-        ]
-        try:
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid video upload")
-
-        try:
-            with open(out_path, "rb") as f:
-                out = f.read()
-        except Exception:
-            raise HTTPException(status_code=500, detail="Failed to optimize video")
-        if not out:
-            raise HTTPException(status_code=500, detail="Failed to optimize video")
-        return out
-
-
 def _admin_otp_email() -> str:
     """
     Admin OTPs are routed to a fixed mailbox for operational control.
@@ -494,6 +400,38 @@ def _validate_location_selection(*, state: str, district: str, area: str) -> Non
     areas = (data.get(st) or {}).get(d) or []
     if a not in areas:
         raise HTTPException(status_code=400, detail="Invalid Area for State/District")
+
+
+def _is_guest_account(u: User) -> bool:
+    """
+    Guest accounts are temporary users created via /auth/guest.
+    They must not be allowed to publish ads.
+    """
+    email = (getattr(u, "email", "") or "").strip().lower()
+    username = (getattr(u, "username", "") or "").strip().lower()
+    return email.endswith("@guest.local") or username.startswith("guest_") or username.startswith("guest-")
+
+
+def _safe_upload_ext(*, filename: str, content_type: str) -> str:
+    fn = (filename or "").strip()
+    ext = os.path.splitext(fn)[1].lower()
+    if ext and len(ext) <= 12 and re.match(r"^\.[a-z0-9]+$", ext):
+        return ext
+    ct = (content_type or "").lower().strip()
+    if ct in {"image/jpeg", "image/jpg"}:
+        return ".jpg"
+    if ct == "image/png":
+        return ".png"
+    if ct == "image/webp":
+        return ".webp"
+    if ct == "image/gif":
+        return ".gif"
+    if ct == "video/mp4":
+        return ".mp4"
+    if ct == "video/quicktime":
+        return ".mov"
+    # Safe generic fallback.
+    return ".bin"
 
 
 def _user_out(u: User) -> dict[str, Any]:
@@ -1295,13 +1233,12 @@ def me_upload_profile_image(
         )
         raise HTTPException(status_code=400, detail="Unsafe media detected. Upload rejected.")
 
-    optimized = _optimize_image_to_webp(raw, max_dim=_max_profile_image_dim())
-
-    safe_name = f"u{me.id}_{secrets.token_hex(8)}.webp"
+    stored_ext = _safe_upload_ext(filename=(file.filename or ""), content_type=content_type)
+    safe_name = f"u{me.id}_{secrets.token_hex(8)}{stored_ext}"
     disk_path = os.path.join(_uploads_dir(), safe_name)
     try:
         with open(disk_path, "wb") as out:
-            out.write(optimized)
+            out.write(raw)
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to save upload")
 
@@ -2039,6 +1976,8 @@ def owner_create_property(
 ):
     if me.role not in {"user", "owner", "admin"}:
         raise HTTPException(status_code=403, detail="Login required")
+    if _is_guest_account(me):
+        raise HTTPException(status_code=403, detail="Please register/login to publish ads")
     if me.role == "owner" and (me.approval_status or "") != "approved":
         raise HTTPException(status_code=403, detail="Owner account is pending admin approval")
 
@@ -2049,15 +1988,20 @@ def owner_create_property(
 
     lat = data.gps_lat
     lng = data.gps_lng
-    if lat is None or lng is None:
-        raise HTTPException(status_code=400, detail="GPS latitude and longitude are required")
-    try:
-        lat_f = float(lat)
-        lng_f = float(lng)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
-    if not (-90.0 <= lat_f <= 90.0) or not (-180.0 <= lng_f <= 180.0):
-        raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
+    lat_f: float | None = None
+    lng_f: float | None = None
+    # GPS is optional if State/District/Area are selected.
+    # If provided, both coordinates must be valid.
+    if lat is not None or lng is not None:
+        if lat is None or lng is None:
+            raise HTTPException(status_code=400, detail="Provide both GPS latitude and longitude (or omit both)")
+        try:
+            lat_f = float(lat)
+            lng_f = float(lng)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
+        if not (-90.0 <= lat_f <= 90.0) or not (-180.0 <= lng_f <= 180.0):
+            raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
     address = (data.address or "").strip() or (data.location or "").strip()
     address_norm = _norm_key(address)
     contact_phone = (data.contact_phone or "").strip()
@@ -2523,6 +2467,8 @@ def upload_property_image(
         raise HTTPException(status_code=404, detail="Property not found")
     if me.role != "admin" and p.owner_id != me.id:
         raise HTTPException(status_code=403, detail="Not allowed")
+    if _is_guest_account(me):
+        raise HTTPException(status_code=403, detail="Please register/login to publish ads")
     if me.role == "owner" and (me.approval_status or "") != "approved":
         raise HTTPException(status_code=403, detail="Owner account is pending admin approval")
 
@@ -2531,6 +2477,17 @@ def upload_property_image(
     is_video = content_type.startswith("video/")
     if not is_image and not is_video:
         raise HTTPException(status_code=400, detail="Only image/video uploads are allowed")
+
+    # Enforce per-ad media limits.
+    max_images = 10
+    max_videos = 1
+    existing_media = db.execute(select(PropertyImage.content_type).where(PropertyImage.property_id == p.id)).scalars().all()
+    existing_images = sum(1 for ct in existing_media if str(ct or "").lower().startswith("image/"))
+    existing_videos = sum(1 for ct in existing_media if str(ct or "").lower().startswith("video/"))
+    if is_image and existing_images >= max_images:
+        raise HTTPException(status_code=400, detail=f"Maximum {max_images} images are allowed per ad")
+    if is_video and existing_videos >= max_videos:
+        raise HTTPException(status_code=400, detail=f"Maximum {max_videos} video is allowed per ad")
 
     # Read bytes once to compute hash and store on disk.
     try:
@@ -2554,10 +2511,9 @@ def upload_property_image(
                 reason=f"Unsafe image rejected by AI moderation ({mod.get('summary')})",
             )
             raise HTTPException(status_code=400, detail="Unsafe media detected. Upload rejected.")
-        optimized = _optimize_image_to_webp(raw, max_dim=_max_property_media_dim())
-        stored_bytes = optimized
-        stored_ext = ".webp"
-        stored_content_type = "image/webp"
+        stored_bytes = raw
+        stored_ext = _safe_upload_ext(filename=(file.filename or ""), content_type=content_type)
+        stored_content_type = content_type
     else:
         _raise_if_too_large(size_bytes=len(raw), max_bytes=_max_upload_video_bytes())
         # AI moderation (reject before any storage).
@@ -2572,12 +2528,9 @@ def upload_property_image(
                 reason=f"Unsafe video rejected by AI moderation ({mod.get('summary')})",
             )
             raise HTTPException(status_code=400, detail="Unsafe media detected. Upload rejected.")
-        optimized = _transcode_video_to_mp4(raw, max_dim=_max_property_media_dim())
-        # Block extremely large optimized outputs as well.
-        _raise_if_too_large(size_bytes=len(optimized), max_bytes=_max_upload_video_bytes())
-        stored_bytes = optimized
-        stored_ext = ".mp4"
-        stored_content_type = "video/mp4"
+        stored_bytes = raw
+        stored_ext = _safe_upload_ext(filename=(file.filename or ""), content_type=content_type)
+        stored_content_type = content_type
 
     img_hash = _image_sha256_hex(stored_bytes)
     existing = db.execute(select(PropertyImage).where(PropertyImage.image_hash == img_hash)).scalar_one_or_none()

@@ -30,8 +30,20 @@ export default function OwnerAddPage() {
   const [adNumber, setAdNumber] = useState<string>("");
   const [msg, setMsg] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
+  const [selectedMediaSummary, setSelectedMediaSummary] = useState<string>("");
   const [myAds, setMyAds] = useState<any[]>([]);
   const [myAdsMsg, setMyAdsMsg] = useState<string>("");
+
+  function validateSelectedMedia(list: FileList | null): { ok: boolean; message: string; images: File[]; videos: File[] } {
+    const arr = list ? Array.from(list) : [];
+    const images = arr.filter((f) => String(f.type || "").toLowerCase().startsWith("image/"));
+    const videos = arr.filter((f) => String(f.type || "").toLowerCase().startsWith("video/"));
+    const others = arr.filter((f) => !String(f.type || "").toLowerCase().startsWith("image/") && !String(f.type || "").toLowerCase().startsWith("video/"));
+    if (others.length) return { ok: false, message: "Only image/video files are allowed.", images: [], videos: [] };
+    if (images.length > 10) return { ok: false, message: "Maximum 10 images are allowed.", images: [], videos: [] };
+    if (videos.length > 1) return { ok: false, message: "Maximum 1 video is allowed.", images: [], videos: [] };
+    return { ok: true, message: "", images, videos };
+  }
 
   useEffect(() => {
     if (!s.token) nav("/login");
@@ -243,27 +255,42 @@ export default function OwnerAddPage() {
 
         <div className="col-12">
           <div className="card">
-            <div className="h2">Upload photos</div>
-            <p className="muted" style={{ marginTop: 6 }}>
-              Supports multiple images/videos. Media is optimized server-side and stored under <code>/uploads</code>.
-            </p>
+            <div className="h2">Upload media</div>
             <input
               type="file"
               multiple
               accept="image/*,video/*"
-              onChange={(e) => setFiles(e.target.files)}
+              onChange={(e) => {
+                const next = e.target.files;
+                const v = validateSelectedMedia(next);
+                if (!v.ok) {
+                  setFiles(null);
+                  setSelectedMediaSummary("");
+                  setMsg(v.message);
+                  return;
+                }
+                setFiles(next);
+                const parts: string[] = [];
+                if (v.images.length) parts.push(`${v.images.length} image(s)`);
+                if (v.videos.length) parts.push(`${v.videos.length} video`);
+                setSelectedMediaSummary(parts.length ? `Selected: ${parts.join(" + ")}` : "");
+              }}
             />
+            {selectedMediaSummary ? <div className="muted" style={{ marginTop: 8 }}>{selectedMediaSummary}</div> : null}
             <div className="row" style={{ marginTop: 10 }}>
               <button
                 onClick={async () => {
                   if (!propertyId) return setMsg("Create the listing first.");
                   if (!files?.length) return setMsg("Choose at least one image.");
+                  const v = validateSelectedMedia(files);
+                  if (!v.ok) return setMsg(v.message);
                   try {
-                    for (let i = 0; i < files.length; i++) {
-                      await uploadPropertyImage(propertyId, files[i], i);
+                    const ordered = [...v.images, ...v.videos];
+                    for (let i = 0; i < ordered.length; i++) {
+                      await uploadPropertyImage(propertyId, ordered[i], i);
                     }
                     const label = adNumber ? `Ad #${adNumber}` : `listing #${propertyId}`;
-                    setMsg(`Uploaded ${files.length} image(s) to ${label}.`);
+                    setMsg(`Uploaded ${ordered.length} file(s) to ${label}.`);
                   } catch (e: any) {
                     setMsg(e.message || "Upload failed");
                   }
@@ -291,7 +318,14 @@ export default function OwnerAddPage() {
                 if (!title.trim()) throw new Error("Enter title.");
                 if (useCompanyName && !companyName.trim()) throw new Error("Please enter company name (or select No).");
 
-                const gps = await getBrowserGps({ timeoutMs: 8000 });
+                // GPS is optional (State/District/Area are mandatory).
+                // Best-effort: if user blocks location, proceed without GPS.
+                let gps: { lat: number; lon: number } | null = null;
+                try {
+                  gps = await getBrowserGps({ timeoutMs: 8000 });
+                } catch {
+                  gps = null;
+                }
                 const res = await ownerCreateProperty({
                   district,
                   state,
@@ -308,19 +342,22 @@ export default function OwnerAddPage() {
                   contact_email: "",
                   company_name: useCompanyName ? companyName.trim() : "",
                   amenities: [],
-                  gps_lat: gps.lat,
-                  gps_lng: gps.lon,
+                  gps_lat: gps ? gps.lat : null,
+                  gps_lng: gps ? gps.lon : null,
                 });
 
                 setPropertyId(res.id);
                 setAdNumber(String((res as any).ad_number || (res as any).adv_number || res.id || "").trim());
 
                 if (files?.length) {
-                  for (let i = 0; i < files.length; i++) {
-                    await uploadPropertyImage(res.id, files[i], i);
+                  const v = validateSelectedMedia(files);
+                  if (!v.ok) throw new Error(v.message);
+                  const ordered = [...v.images, ...v.videos];
+                  for (let i = 0; i < ordered.length; i++) {
+                    await uploadPropertyImage(res.id, ordered[i], i);
                   }
                   const label = String((res as any).ad_number || res.id || "").trim();
-                  setMsg(`Submitted Ad #${label} (status: ${res.status}) and uploaded ${files.length} photo(s).`);
+                  setMsg(`Submitted Ad #${label} (status: ${res.status}) and uploaded ${ordered.length} file(s).`);
                 } else {
                   const label = String((res as any).ad_number || res.id || "").trim();
                   setMsg(`Submitted Ad #${label} (status: ${res.status}).`);

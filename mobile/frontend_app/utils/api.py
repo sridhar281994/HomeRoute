@@ -177,6 +177,17 @@ def api_owner_create_property(*, payload: dict[str, Any]) -> dict[str, Any]:
     return _handle(resp)
 
 
+def api_upload_property_media(*, property_id: int, file_path: str, sort_order: int = 0) -> dict[str, Any]:
+    """
+    Upload an image/video for a property listing.
+    Backend endpoint: POST /properties/{property_id}/images
+    """
+    url = f"{_base_url()}/properties/{int(property_id)}/images"
+    with open(file_path, "rb") as f:
+        files = {"file": (os.path.basename(file_path), f)}
+        resp = requests.post(url, params={"sort_order": int(sort_order)}, files=files, headers=_headers(), timeout=60)
+    return _handle(resp)
+
 # -----------------------
 # Subscription
 # -----------------------
