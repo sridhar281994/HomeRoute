@@ -163,4 +163,4 @@ class LoginScreen(Screen):
 
         Thread(target=work, daemon=True).start()
 
-    # Admin login is done via the same OTP flow. Use the admin email (info@srtech.co.in).
+    # Admin login is done via the same OTP flow.

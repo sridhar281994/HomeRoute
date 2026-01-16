@@ -3,6 +3,7 @@ from __future__ import annotations
 from kivy.core.window import Window
 from kivy.properties import BooleanProperty
 from kivy.uix.button import Button
+from kivy.utils import platform
 
 
 class HoverBehavior:
@@ -18,12 +19,18 @@ class HoverBehavior:
         super().__init__(**kwargs)
         self.register_event_type("on_enter")
         self.register_event_type("on_leave")
-        Window.bind(mouse_pos=self._on_mouse_pos)
+        # Only bind hover on desktop platforms. On mobile, mouse_pos events can be noisy
+        # and are unnecessary; they can also interfere with touch interactions on some devices.
+        if platform not in {"android", "ios"}:
+            Window.bind(mouse_pos=self._on_mouse_pos)
 
     def _on_mouse_pos(self, _window, pos):
         if not self.get_root_window():
             return
-        inside = self.collide_point(*self.to_widget(*pos))
+        try:
+            inside = self.collide_point(*self.to_widget(*pos))
+        except Exception:
+            return
         if inside and not self.hovered:
             self.hovered = True
             self.dispatch("on_enter")

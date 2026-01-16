@@ -118,16 +118,19 @@
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
-        Label:
-            text: "[i][b]QuickRent[/b][/i]"
-            font_size: sp(30)
+        Image:
+            source: "assets/QuickRent.png"
+            allow_stretch: True
+            keep_ratio: True
+            size_hint: None, None
+            size: min(root.width * 0.7, dp(320)), min(root.width * 0.7, dp(320))
             pos_hint: {"center_x": 0.5, "center_y": 0.55}
 
         Label:
             text: "Loading..."
             font_size: sp(16)
             color: 1, 1, 1, 0.7
-            pos_hint: {"center_x": 0.5, "center_y": 0.45}
+            pos_hint: {"center_x": 0.5, "center_y": 0.38}
 
 <WelcomeScreen>:
     name: 'welcome'
@@ -180,6 +183,13 @@
                 valign: "middle"
                 text_size: (self.width, None)
                 height: self.texture_size[1] + dp(20)
+
+            Image:
+                source: "assets/QuickRent.png"
+                allow_stretch: True
+                keep_ratio: True
+                size_hint_y: None
+                height: dp(140)
 
             AppButton:
                 text: "Login"
@@ -353,11 +363,10 @@
                         height: dp(32)
                         spacing: dp(10)
                         Label:
-                            text: "[color=cccccc]Admin login uses OTP to[/color]  info@srtech.co.in"
-                            color: 1, 1, 1, 0.9
-                            halign: "left"
-                            valign: "middle"
-                            text_size: self.size
+                            text: ""
+                            size_hint_y: None
+                            height: 0
+                            opacity: 0
 
                     AppButton:
                         text: "Request OTP"
