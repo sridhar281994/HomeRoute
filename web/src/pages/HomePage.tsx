@@ -40,6 +40,7 @@ export default function HomePage() {
   const [areaOptions, setAreaOptions] = useState<string[]>([]);
   const [contacted, setContacted] = useState<Record<number, boolean>>({});
   const [contactMsg, setContactMsg] = useState<Record<number, string>>({});
+  const [didAutoLoad, setDidAutoLoad] = useState<boolean>(false);
 
   const needGroups = useMemo(() => {
     const cats = (catalog?.categories || []) as Array<{ group: string; items: string[] }>;
@@ -87,9 +88,21 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    // Auto-load once when default state+district are known.
+    if (didAutoLoad) return;
+    if (!(state || "").trim() || !(district || "").trim()) return;
+    setDidAutoLoad(true);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [didAutoLoad, state, district]);
+
+  useEffect(() => {
+    // If GPS becomes available after the first load, reload once to show nearby + distance info.
+    if (!didAutoLoad) return;
+    if (!gps) return;
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gps, didAutoLoad]);
 
   useEffect(() => {
     (async () => {
