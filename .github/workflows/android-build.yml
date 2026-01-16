@@ -30,8 +30,8 @@ jobs:
           docker image inspect "${IMAGE}" >/dev/null
           docker run --rm \
             --entrypoint bash \
-            --user 1000:1000 \
             -e HOME=/home/user \
+            -e USER=user \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
@@ -41,7 +41,7 @@ jobs:
               set -euo pipefail
 
               # Let buildozer create SDK/NDK folders first (it may exit early on missing licenses).
-              buildozer android update || true
+              printf "y\n" | buildozer android update || true
 
               SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
               LICENSE_DIR="${SDKROOT}/licenses"
@@ -71,7 +71,7 @@ jobs:
                 yes | "${SDKMANAGER}" --sdk_root="${SDKROOT}" --licenses || true
               fi
 
-              buildozer android debug
+              printf "y\n" | buildozer android debug
             '
 
       - name: Upload APK artifact
