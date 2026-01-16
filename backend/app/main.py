@@ -1912,6 +1912,7 @@ def get_property_contact(
     adv_no = (p.ad_number or "").strip() or str(p.id)
     owner_name = (owner.name or "").strip() or "Owner"
     owner_phone = (p.contact_phone or "").strip()
+    owner_email_contact = (p.contact_email or "").strip()
     customer_email = (me.email or "").strip()
     customer_phone = (me.phone_normalized or me.phone or "").strip()
     try:
@@ -1923,6 +1924,7 @@ def get_property_contact(
                     f"Ad number: {adv_no}\n"
                     f"Owner name: {owner_name}\n"
                     f"Owner phone: {owner_phone or 'N/A'}\n"
+                    f"Owner email: {owner_email_contact or 'N/A'}\n"
                     f"Owner company: {(owner.company_name or '').strip() or 'N/A'}\n"
                 ),
             )
@@ -1933,7 +1935,7 @@ def get_property_contact(
         if customer_phone:
             send_sms(
                 to_phone=customer_phone,
-                text=f"Ad #{adv_no} contact: {owner_name} {owner_phone or ''}".strip(),
+                text=f"Ad #{adv_no} contact: {owner_name} {owner_phone or ''} {owner_email_contact or ''}".strip(),
             )
     except Exception:
         pass
