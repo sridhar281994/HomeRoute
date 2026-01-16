@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { getSession, ownerCreateProperty, ownerDeleteProperty, ownerListProperties, uploadPropertyImage } from "../api";
 import { Link, useNavigate } from "react-router-dom";
-import { INDIA_STATES } from "../indiaStates";
-import { districtsForState } from "../indiaDistricts";
+import { getAreas, getDistricts, getStatesForDistrict, getBrowserGps, isValidAreaSelection } from "../location";
 
 export default function OwnerAddPage() {
   const nav = useNavigate();
   const s = getSession();
   const [title, setTitle] = useState("");
-  const [state, setState] = useState<string>(s.user?.state || localStorage.getItem("pd_state") || "");
-  const [district, setDistrict] = useState<string>(s.user?.district || localStorage.getItem("pd_district") || "");
+  const [district, setDistrict] = useState<string>(localStorage.getItem("pd_district") || "");
+  const [state, setState] = useState<string>(localStorage.getItem("pd_state") || "");
+  const [area, setArea] = useState<string>(localStorage.getItem("pd_area") || "");
   const [price, setPrice] = useState("");
   const [rentSale, setRentSale] = useState("rent");
   const [category, setCategory] = useState<"materials" | "services" | "property">("property");
@@ -39,8 +39,13 @@ export default function OwnerAddPage() {
   useEffect(() => {
     localStorage.setItem("pd_district", district || "");
   }, [district]);
+  useEffect(() => {
+    localStorage.setItem("pd_area", area || "");
+  }, [area]);
 
-  const districts = districtsForState(state);
+  const districts = getDistricts();
+  const states = district ? getStatesForDistrict(district) : [];
+  const areas = district && state ? getAreas(district, state) : [];
 
   async function loadMyAds() {
     setMyAdsMsg("");
@@ -75,32 +80,56 @@ export default function OwnerAddPage() {
 
       <div className="grid" style={{ marginTop: 12 }}>
         <div className="col-6">
-          <label className="muted">State</label>
+          <label className="muted">District *</label>
           <select
-            value={state}
+            value={district}
             onChange={(e) => {
-              setState(e.target.value);
-              setDistrict("");
+              setDistrict(e.target.value);
+              setState("");
+              setArea("");
             }}
           >
-            <option value="">Select state…</option>
-            {INDIA_STATES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="col-6">
-          <label className="muted">District</label>
-          <select value={district} onChange={(e) => setDistrict(e.target.value)} disabled={!state}>
-            <option value="">{state ? "Select district…" : "Select state first"}</option>
+            <option value="">Select district…</option>
             {districts.map((d) => (
               <option key={d} value={d}>
                 {d}
               </option>
             ))}
           </select>
+        </div>
+        <div className="col-6">
+          <label className="muted">State *</label>
+          <select
+            value={state}
+            onChange={(e) => {
+              setState(e.target.value);
+              setArea("");
+            }}
+            disabled={!district}
+          >
+            <option value="">{district ? "Select state…" : "Select district first"}</option>
+            {states.map((st) => (
+              <option key={st} value={st}>
+                {st}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-6">
+          <label className="muted">Area *</label>
+          <select value={area} onChange={(e) => setArea(e.target.value)} disabled={!district || !state}>
+            <option value="">{district && state ? "Select area…" : "Select district + state first"}</option>
+            {areas.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+          {area && !isValidAreaSelection(district, state, area) ? (
+            <div className="muted" style={{ marginTop: 6 }}>
+              Invalid area selection.
+            </div>
+          ) : null}
         </div>
         <div className="col-6">
           <label className="muted">Title</label>
@@ -147,12 +176,12 @@ export default function OwnerAddPage() {
           <div className="card">
             <div className="h2">Upload photos</div>
             <p className="muted" style={{ marginTop: 6 }}>
-              Supports multiple images. Stored on server under <code>/uploads</code>.
+              Supports multiple images/videos. Media is optimized server-side and stored under <code>/uploads</code>.
             </p>
             <input
               type="file"
               multiple
-              accept="image/*"
+              accept="image/*,video/*"
               onChange={(e) => setFiles(e.target.files)}
             />
             <div className="row" style={{ marginTop: 10 }}>
@@ -186,18 +215,22 @@ export default function OwnerAddPage() {
             onClick={async () => {
               setMsg("");
               try {
-                if (!state) throw new Error("Select state.");
                 if (!district) throw new Error("Select district.");
+                if (!state) throw new Error("Select state.");
+                if (!area) throw new Error("Select area.");
+                if (!isValidAreaSelection(district, state, area)) throw new Error("Invalid area selection.");
                 if (!title.trim()) throw new Error("Enter title.");
                 if (useCompanyName && !companyName.trim()) throw new Error("Please enter company name (or select No).");
 
+                const gps = await getBrowserGps({ timeoutMs: 8000 });
                 const res = await ownerCreateProperty({
-                  state,
                   district,
+                  state,
+                  area,
                   title,
                   // UI request: remove explicit Location/Address.
                   // Use district as a simple display + duplicate detection key.
-                  location: district || "",
+                  location: area || "",
                   address: "",
                   price: Number(price || 0),
                   rent_sale: rentSale,
@@ -206,6 +239,8 @@ export default function OwnerAddPage() {
                   contact_email: "",
                   company_name: useCompanyName ? companyName.trim() : "",
                   amenities: [],
+                  gps_lat: gps.lat,
+                  gps_lng: gps.lon,
                 });
 
                 setPropertyId(res.id);

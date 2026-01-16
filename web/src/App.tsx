@@ -32,6 +32,7 @@ export default function App() {
           <Link to="/home">Home</Link>
           {isLoggedIn ? (
             <>
+              {role === "admin" ? <Link to="/admin/review">Admin Review</Link> : null}
               <Link to="/subscription">Subscription</Link>
               <Link to="/myposts">My Posts</Link>
               <Link to="/profile">Settings</Link>

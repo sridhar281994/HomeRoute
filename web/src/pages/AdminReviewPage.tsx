@@ -4,6 +4,7 @@ import {
   adminImageApprove,
   adminImageReject,
   adminImagesPending,
+  adminLogs,
   adminOwnerApprove,
   adminOwnerReject,
   adminOwnersPending,
@@ -19,16 +20,23 @@ export default function AdminReviewPage() {
   const [items, setItems] = useState<any[]>([]);
   const [owners, setOwners] = useState<any[]>([]);
   const [images, setImages] = useState<any[]>([]);
+  const [violations, setViolations] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
 
   async function load() {
     setMsg("");
     try {
-      const [resListings, resOwners, resImages] = await Promise.all([adminPending(), adminOwnersPending(), adminImagesPending()]);
+      const [resListings, resOwners, resImages, resLogs] = await Promise.all([
+        adminPending(),
+        adminOwnersPending(),
+        adminImagesPending(),
+        adminLogs({ entity_type: "property_media_upload", limit: 200 }),
+      ]);
       setItems(resListings.items || []);
       setOwners(resOwners.items || []);
       setImages(resImages.items || []);
+      setViolations((resLogs.items || []).filter((x: any) => String(x.action || "").toLowerCase() === "reject"));
     } catch (e: any) {
       setMsg(e.message || "Failed");
     }
@@ -189,6 +197,31 @@ export default function AdminReviewPage() {
         </div>
       </div>
 
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="h2">Rejected Media Uploads (AI moderation)</div>
+        <div className="muted" style={{ marginTop: 6 }}>
+          These are rejected before storage; they are logged for review.
+        </div>
+        <div className="grid" style={{ marginTop: 10 }}>
+          {violations.map((v) => (
+            <div key={v.id} className="col-12">
+              <div className="row">
+                <div>
+                  <div className="h2">Log #{v.id} — Property #{v.entity_id}</div>
+                  <div className="muted">
+                    actor: {v.actor_user_id} • action: {v.action} • {v.created_at ? new Date(v.created_at).toLocaleString() : ""}
+                  </div>
+                  <div className="muted" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                    {v.reason}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+          {!violations.length ? <div className="col-12 muted">No AI moderation rejections logged.</div> : null}
+        </div>
+      </div>
+
       <div className="grid" style={{ marginTop: 12 }}>
         <div className="col-12">
           <div className="h2">Pending Listings</div>
@@ -199,13 +232,66 @@ export default function AdminReviewPage() {
               <div className="row">
                 <div>
                   <div className="h2">
-                    #{p.id} — {p.title}
+                    Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} — {p.title}
                   </div>
                   <div className="muted">
                     {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display} • status: {p.status}
                   </div>
+                  {p.description ? (
+                    <div className="muted" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {p.description}
+                    </div>
+                  ) : null}
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    Owner: {p.owner_company_name || p.owner_name || p.owner_username || "—"}
+                    {p.owner_id ? ` (id: ${p.owner_id})` : ""}
+                    {p.owner_phone ? ` • owner phone: ${p.owner_phone}` : ""}
+                    {p.owner_email ? ` • owner email: ${p.owner_email}` : ""}
+                  </div>
+                  {p.contact_phone || p.contact_email ? (
+                    <div className="muted">
+                      Ad contact: {p.contact_phone || "—"} {p.contact_email ? ` • ${p.contact_email}` : ""}
+                    </div>
+                  ) : null}
+                  {p.address ? <div className="muted">Address: {p.address}</div> : null}
+                  {p.moderation_reason ? (
+                    <div className="muted" style={{ marginTop: 6 }}>
+                      Moderation reason: {p.moderation_reason}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="spacer" />
+                {p.images?.length ? (
+                  String(p.images[0]?.content_type || "").toLowerCase().startsWith("video/") ? (
+                    <video
+                      controls
+                      preload="metadata"
+                      src={toApiUrl(p.images[0].url)}
+                      style={{
+                        width: 180,
+                        height: 120,
+                        objectFit: "cover",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,.14)",
+                        background: "rgba(0,0,0,.25)",
+                      }}
+                    />
+                  ) : (
+                    <img
+                      src={toApiUrl(p.images[0].url)}
+                      alt={`Listing ${p.id} preview`}
+                      style={{
+                        width: 180,
+                        height: 120,
+                        objectFit: "cover",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,.14)",
+                        background: "rgba(0,0,0,.25)",
+                      }}
+                      loading="lazy"
+                    />
+                  )
+                ) : null}
                 <button
                   onClick={async () => {
                     try {
