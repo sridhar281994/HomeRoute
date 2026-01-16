@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -130,8 +130,14 @@ class Property(Base):
     # Mandatory search filters (guest users must provide state+district)
     state: Mapped[str] = mapped_column(String(80), default="", index=True)
     district: Mapped[str] = mapped_column(String(120), default="", index=True)
+    area: Mapped[str] = mapped_column(String(160), default="", index=True)
     state_normalized: Mapped[str] = mapped_column(String(80), default="", index=True)
     district_normalized: Mapped[str] = mapped_column(String(120), default="", index=True)
+    area_normalized: Mapped[str] = mapped_column(String(160), default="", index=True)
+
+    # GPS coordinates (captured at posting time).
+    gps_lat: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    gps_lng: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
 
     amenities_json: Mapped[str] = mapped_column(Text, default="[]")  # JSON-encoded list of strings
 

@@ -12,13 +12,15 @@ import shutil
 import subprocess
 import tempfile
 from typing import Annotated, Any
+from functools import lru_cache
+import math
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select, update as sa_update
+from sqlalchemy import delete, func, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -427,6 +429,87 @@ def _public_image_url(file_path: str) -> str:
     return f"/uploads/{fp}"
 
 
+def _districts_towns_ts_path() -> str:
+    # Default assumes backend/ and web/ are in the same repo.
+    default = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "src", "districtsTowns.ts"))
+    return (os.environ.get("DISTRICTS_TOWNS_TS_PATH") or default).strip() or default
+
+
+@lru_cache(maxsize=1)
+def _load_districts_towns() -> dict[str, dict[str, list[str]]]:
+    """
+    Loads the District → State → Area dataset from `districtsTowns.ts`.
+
+    NOTE: For backend validation, the TS file must contain a JSON-compatible object
+    literal (double-quoted keys/strings, no trailing commas).
+    """
+    p = _districts_towns_ts_path()
+    if not os.path.exists(p):
+        raise HTTPException(status_code=503, detail=f"Location dataset missing at {p}")
+    try:
+        raw = open(p, "r", encoding="utf-8").read()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Failed to read location dataset")
+
+    # Strip common TS wrappers.
+    s = raw
+    s = re.sub(r"^\s*export\s+default\s+", "", s, flags=re.MULTILINE)
+    s = re.sub(r"^\s*export\s+const\s+\w+\s*=\s*", "", s, flags=re.MULTILINE)
+    s = re.sub(r"\s+as\s+const\s*;?\s*$", "", s, flags=re.MULTILINE)
+    s = s.strip().rstrip(";").strip()
+
+    # Extract the first object literal.
+    i = s.find("{")
+    j = s.rfind("}")
+    if i < 0 or j < 0 or j <= i:
+        raise HTTPException(status_code=503, detail="Invalid location dataset format")
+    obj = s[i : j + 1]
+
+    try:
+        data = json.loads(obj)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Location dataset must be valid JSON in the TS file")
+
+    if not isinstance(data, dict) or not data:
+        raise HTTPException(status_code=503, detail="Location dataset is empty")
+
+    # Validate shape: {district: {state: [areas...]}}
+    out: dict[str, dict[str, list[str]]] = {}
+    for d, states in data.items():
+        if not isinstance(d, str) or not d.strip():
+            continue
+        if not isinstance(states, dict):
+            continue
+        out_states: dict[str, list[str]] = {}
+        for st, areas in states.items():
+            if not isinstance(st, str) or not st.strip():
+                continue
+            if not isinstance(areas, list):
+                continue
+            out_states[st.strip()] = [str(a).strip() for a in areas if str(a).strip()]
+        if out_states:
+            out[d.strip()] = out_states
+    if not out:
+        raise HTTPException(status_code=503, detail="Location dataset has no valid entries")
+    return out
+
+
+def _validate_location_selection(*, district: str, state: str, area: str) -> None:
+    data = _load_districts_towns()
+    d = (district or "").strip()
+    st = (state or "").strip()
+    a = (area or "").strip()
+    if not d or not st or not a:
+        raise HTTPException(status_code=400, detail="District, State, and Area are required")
+    if d not in data:
+        raise HTTPException(status_code=400, detail="Invalid District")
+    if st not in (data.get(d) or {}):
+        raise HTTPException(status_code=400, detail="Invalid State for District")
+    areas = (data.get(d) or {}).get(st) or []
+    if a not in areas:
+        raise HTTPException(status_code=400, detail="Invalid Area for District/State")
+
+
 def _user_out(u: User) -> dict[str, Any]:
     img = (u.profile_image_path or "").strip()
     return {
@@ -694,6 +777,7 @@ class PropertyCreateIn(BaseModel):
     # New: structured location filtering + normalized address duplication checks.
     state: str = ""
     district: str = ""
+    area: str = ""
     address: str = ""
     amenities: list[str] = Field(default_factory=list)
     availability: str = "available"
@@ -702,6 +786,8 @@ class PropertyCreateIn(BaseModel):
     # Optional: owner company name to display on ads.
     # This updates the owner's profile (User.company_name) when provided.
     company_name: str = ""
+    gps_lat: float | None = None
+    gps_lng: float | None = None
 
 
 class ModerateIn(BaseModel):
@@ -1420,7 +1506,7 @@ def _property_out(
             images.append(img_out)
     except Exception:
         images = []
-    location_display = p.address or p.location
+    location_display = (p.area or "").strip() or p.address or p.location
     o = owner or getattr(p, "owner", None)
     owner_name = (getattr(o, "name", "") or "").strip() if o else ""
     owner_company_name = (getattr(o, "company_name", "") or "").strip() if o else ""
@@ -1441,6 +1527,7 @@ def _property_out(
         "location_display": location_display,
         "state": p.state,
         "district": p.district,
+        "area": getattr(p, "area", "") or "",
         "amenities": amenities,
         "availability": p.availability,
         "status": p.status,
@@ -1456,12 +1543,15 @@ def _property_out(
         out["owner_phone"] = owner_phone
         out["contact_phone"] = (p.contact_phone or "").strip()
         out["contact_email"] = (p.contact_email or "").strip()
+        out["gps_lat"] = getattr(p, "gps_lat", None)
+        out["gps_lng"] = getattr(p, "gps_lng", None)
         out["moderation_reason"] = p.moderation_reason
         out["address"] = p.address
         out["address_normalized"] = p.address_normalized
         out["contact_phone_normalized"] = p.contact_phone_normalized
         out["state_normalized"] = p.state_normalized
         out["district_normalized"] = p.district_normalized
+        out["area_normalized"] = getattr(p, "area_normalized", "") or ""
         out["allow_duplicate_address"] = p.allow_duplicate_address
         out["allow_duplicate_phone"] = p.allow_duplicate_phone
     return out
@@ -1477,11 +1567,13 @@ def list_properties(
     max_price: int | None = Query(default=None),
     state: str | None = Query(default=None),
     district: str | None = Query(default=None),
+    area: str | None = Query(default=None),
     sort_budget: str | None = Query(default=None),  # top|bottom|asc|desc
     posted_within_days: int | None = Query(default=None, ge=1, le=365),
 ):
     state_in = (state or "").strip()
     district_in = (district or "").strip()
+    area_in = (area or "").strip()
     if me:
         # If a logged-in user didn't pass filters, fall back to their profile.
         if not state_in and (me.state or "").strip():
@@ -1491,6 +1583,7 @@ def list_properties(
 
     state_norm = _norm_key(state_in)
     district_norm = _norm_key(district_in)
+    area_norm = _norm_key(area_in)
 
     # Only approved listings from approved (non-suspended) owners are visible.
     stmt = (
@@ -1505,8 +1598,16 @@ def list_properties(
         stmt = stmt.order_by(Property.price.asc(), Property.id.desc())
     else:
         stmt = stmt.order_by(Property.id.desc())
-    if state_norm and district_norm:
+    if district_norm and state_norm and area_norm:
+        stmt = stmt.where(
+            (Property.district_normalized == district_norm)
+            & (Property.state_normalized == state_norm)
+            & (Property.area_normalized == area_norm)
+        )
+    elif state_norm and district_norm:
         stmt = stmt.where((Property.state_normalized == state_norm) & (Property.district_normalized == district_norm))
+    elif district_norm:
+        stmt = stmt.where(Property.district_normalized == district_norm)
     if q:
         q_like = f"%{q.strip()}%"
         stmt = stmt.where((Property.title.ilike(q_like)) | (Property.location.ilike(q_like)))
@@ -1560,8 +1661,10 @@ def list_properties(
                     location="Downtown",
                     state="Karnataka",
                     district="Bengaluru (Bangalore) Urban",
+                    area="Downtown",
                     state_normalized=_norm_key("Karnataka"),
                     district_normalized=_norm_key("Bengaluru (Bangalore) Urban"),
+                    area_normalized=_norm_key("Downtown"),
                     address="Downtown",
                     address_normalized=_norm_key("Downtown"),
                     amenities_json='["wifi","parking","gym"]',
@@ -1569,6 +1672,8 @@ def list_properties(
                     contact_phone="+1 555 0100",
                     contact_email="owner@demo.local",
                     contact_phone_normalized=_norm_phone("+1 555 0100"),
+                    gps_lat=12.9716,
+                    gps_lng=77.5946,
                 )
                 p2 = Property(
                     owner_id=demo_owner.id,
@@ -1580,8 +1685,10 @@ def list_properties(
                     location="Greenwood",
                     state="Karnataka",
                     district="Bengaluru (Bangalore) Urban",
+                    area="Greenwood",
                     state_normalized=_norm_key("Karnataka"),
                     district_normalized=_norm_key("Bengaluru (Bangalore) Urban"),
+                    area_normalized=_norm_key("Greenwood"),
                     address="Greenwood",
                     address_normalized=_norm_key("Greenwood"),
                     amenities_json='["garden","parking"]',
@@ -1589,6 +1696,8 @@ def list_properties(
                     contact_phone="+1 555 0200",
                     contact_email="owner@demo.local",
                     contact_phone_normalized=_norm_phone("+1 555 0200"),
+                    gps_lat=12.9760,
+                    gps_lng=77.6030,
                 )
                 db.add_all([p1, p2])
                 db.flush()
@@ -1613,6 +1722,123 @@ def get_property(property_id: int, db: Annotated[Session, Depends(get_db)]):
     if not owner or owner.approval_status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
     return _property_out(p, owner=owner)
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 6371.0
+    p1 = math.radians(lat1)
+    p2 = math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * (math.sin(dlon / 2) ** 2)
+    c = 2 * math.asin(math.sqrt(a))
+    return r * c
+
+
+@app.get("/properties/nearby")
+def list_nearby_properties(
+    db: Annotated[Session, Depends(get_db)],
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    radius_km: float = Query(default=20.0, gt=0, le=500),
+    limit: int = Query(default=60, ge=1, le=200),
+    district: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    area: str | None = Query(default=None),
+    q: str | None = Query(default=None),
+    rent_sale: str | None = Query(default=None),
+    property_type: str | None = Query(default=None),
+    max_price: int | None = Query(default=None),
+    posted_within_days: int | None = Query(default=None, ge=1, le=365),
+):
+    """
+    Nearby ads using GPS proximity (Haversine). No external map APIs.
+    Optional filters by District/State/Area (validated at creation time).
+
+    Optimized approach:
+    - Bounding-box prefilter on lat/lon
+    - Distance calculation for ordering
+    """
+    district_norm = _norm_key((district or "").strip())
+    state_norm = _norm_key((state or "").strip())
+    area_norm = _norm_key((area or "").strip())
+
+    # Bounding box (fast prefilter).
+    lat_delta = float(radius_km) / 111.0
+    cos_lat = math.cos(math.radians(float(lat))) or 1e-9
+    lon_delta = float(radius_km) / (111.0 * cos_lat)
+    min_lat, max_lat = float(lat) - lat_delta, float(lat) + lat_delta
+    min_lon, max_lon = float(lon) - lon_delta, float(lon) + lon_delta
+
+    stmt = (
+        select(Property, User)
+        .join(User, Property.owner_id == User.id)
+        .where((Property.status == "approved") & (User.approval_status == "approved"))
+        .where(Property.gps_lat.is_not(None))
+        .where(Property.gps_lng.is_not(None))
+        .where((Property.gps_lat >= min_lat) & (Property.gps_lat <= max_lat))
+        .where((Property.gps_lng >= min_lon) & (Property.gps_lng <= max_lon))
+    )
+
+    if district_norm:
+        stmt = stmt.where(Property.district_normalized == district_norm)
+    if state_norm:
+        stmt = stmt.where(Property.state_normalized == state_norm)
+    if area_norm:
+        stmt = stmt.where(Property.area_normalized == area_norm)
+
+    if q:
+        q_like = f"%{q.strip()}%"
+        stmt = stmt.where((Property.title.ilike(q_like)) | (Property.location.ilike(q_like)))
+    if rent_sale:
+        stmt = stmt.where(Property.rent_sale == rent_sale)
+    if property_type:
+        stmt = stmt.where(Property.property_type == property_type)
+    if max_price is not None:
+        stmt = stmt.where(Property.price <= int(max_price))
+    if posted_within_days:
+        now = dt.datetime.now(dt.timezone.utc)
+        stmt = stmt.where(Property.created_at >= (now - dt.timedelta(days=int(posted_within_days))))
+
+    # Postgres can compute distance in SQL for correct ordering; SQLite fallback computes in Python.
+    dialect = getattr(getattr(db, "bind", None), "dialect", None)
+    dname = getattr(dialect, "name", "") if dialect else ""
+
+    if dname == "postgresql":
+        # Haversine in SQL (meters/km) + ORDER BY distance for true nearest results.
+        lat1 = func.radians(float(lat))
+        lon1 = func.radians(float(lon))
+        lat2 = func.radians(Property.gps_lat)
+        lon2 = func.radians(Property.gps_lng)
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = func.pow(func.sin(dlat / 2.0), 2) + func.cos(lat1) * func.cos(lat2) * func.pow(func.sin(dlon / 2.0), 2)
+        c = 2.0 * func.asin(func.sqrt(a))
+        dist_km = (6371.0 * c).label("distance_km")
+
+        stmt2 = stmt.add_columns(dist_km).order_by(dist_km.asc(), Property.id.desc()).limit(int(limit))
+        rows2 = db.execute(stmt2).all()
+        items2: list[dict[str, Any]] = []
+        for (p, u, dkm) in rows2:
+            if dkm is None:
+                continue
+            if float(dkm) <= float(radius_km):
+                item = _property_out(p, owner=u)
+                item["distance_km"] = round(float(dkm), 3)
+                items2.append(item)
+        return {"items": items2}
+
+    rows = db.execute(stmt.limit(int(limit) * 5)).all()
+    out_items: list[dict[str, Any]] = []
+    for (p, u) in rows:
+        dkm = _haversine_km(float(lat), float(lon), float(p.gps_lat or 0), float(p.gps_lng or 0))
+        if dkm <= float(radius_km):
+            item = _property_out(p, owner=u)
+            item["distance_km"] = round(float(dkm), 3)
+            out_items.append(item)
+
+    out_items.sort(key=lambda x: (float(x.get("distance_km") or 9e9), -int(x.get("id") or 0)))
+    return {"items": out_items[: int(limit)]}
 
 
 @app.get("/properties/{property_id}/contact")
@@ -1769,10 +1995,22 @@ def owner_create_property(
     if me.role == "owner" and (me.approval_status or "") != "approved":
         raise HTTPException(status_code=403, detail="Owner account is pending admin approval")
 
-    state = (data.state or "").strip() or (me.state or "").strip()
-    district = (data.district or "").strip() or (me.district or "").strip()
-    if not state or not district:
-        raise HTTPException(status_code=400, detail="State and District are required")
+    district = (data.district or "").strip()
+    state = (data.state or "").strip()
+    area = (data.area or "").strip()
+    _validate_location_selection(district=district, state=state, area=area)
+
+    lat = data.gps_lat
+    lng = data.gps_lng
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="GPS latitude and longitude are required")
+    try:
+        lat_f = float(lat)
+        lng_f = float(lng)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
+    if not (-90.0 <= lat_f <= 90.0) or not (-180.0 <= lng_f <= 180.0):
+        raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
     address = (data.address or "").strip() or (data.location or "").strip()
     address_norm = _norm_key(address)
     contact_phone = (data.contact_phone or "").strip()
@@ -1818,8 +2056,12 @@ def owner_create_property(
         address_normalized=address_norm,
         state=state,
         district=district,
+        area=area,
         state_normalized=_norm_key(state),
         district_normalized=_norm_key(district),
+        area_normalized=_norm_key(area),
+        gps_lat=lat_f,
+        gps_lng=lng_f,
         amenities_json=json.dumps(list(data.amenities or [])),
         availability=(data.availability or "available").strip(),
         # Make newly posted ads visible immediately.
