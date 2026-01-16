@@ -17,13 +17,21 @@ jobs:
       - name: Build debug APK (docker)
         run: |
           mkdir -p mobile/.buildozer mobile/.gradle
-          docker pull kivy/buildozer
+          IMAGE="kivy/buildozer:latest"
+          # Docker Hub is occasionally flaky/rate-limited in CI; retry pulls.
+          for i in 1 2 3 4; do
+            if docker pull "${IMAGE}"; then
+              break
+            fi
+            sleep $((i*i*5))
+          done
+          docker image inspect "${IMAGE}" >/dev/null
           docker run --rm \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
             -w /home/user/hostcwd/mobile \
-            kivy/buildozer \
+            "${IMAGE}" \
             bash -lc '
               set -euo pipefail
 
