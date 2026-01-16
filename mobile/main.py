@@ -23,7 +23,7 @@ from screens.shell_screens import (
 
 
 class ConstructHubApp(App):
-    title = "ConstructHub"
+    title = "QuickRent"
 
     def build(self):
         Builder.load_file("kv/screens.kv")

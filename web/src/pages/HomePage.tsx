@@ -1,14 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import { getCategoryCatalog, listNearbyProperties, listProperties, toApiUrl } from "../api";
-import { Link } from "react-router-dom";
-import { getAreas, getDistricts, getStatesForDistrict, getBrowserGps, isValidAreaSelection } from "../location";
+import {
+  getCategoryCatalog,
+  getMe,
+  getSession,
+  listLocationAreas,
+  listLocationDistricts,
+  listLocationStates,
+  listNearbyProperties,
+  listProperties,
+  toApiUrl,
+  getContact,
+} from "../api";
+import { getBrowserGps } from "../location";
 
 export default function HomePage() {
   const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
-  const [district, setDistrict] = useState<string>(() => localStorage.getItem("pd_district") || "");
   const [state, setState] = useState<string>(() => localStorage.getItem("pd_state") || "");
+  const [district, setDistrict] = useState<string>(() => localStorage.getItem("pd_district") || "");
   const [area, setArea] = useState<string>(() => localStorage.getItem("pd_area") || "");
   const [radiusKm, setRadiusKm] = useState<string>(() => localStorage.getItem("pd_radius_km") || "20");
   const [sortBudget, setSortBudget] = useState<string>("top");
@@ -17,6 +27,11 @@ export default function HomePage() {
   const [err, setErr] = useState<string>("");
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
   const [catalog, setCatalog] = useState<any>(null);
+  const [stateOptions, setStateOptions] = useState<string[]>([]);
+  const [districtOptions, setDistrictOptions] = useState<string[]>([]);
+  const [areaOptions, setAreaOptions] = useState<string[]>([]);
+  const [contacted, setContacted] = useState<Record<number, boolean>>({});
+  const [contactMsg, setContactMsg] = useState<Record<number, string>>({});
 
   const needGroups = useMemo(() => {
     const cats = (catalog?.categories || []) as Array<{ group: string; items: string[] }>;
@@ -71,6 +86,71 @@ export default function HomePage() {
   useEffect(() => {
     (async () => {
       try {
+        const r = await listLocationStates();
+        setStateOptions((r.items || []).map((x) => String(x || "").trim()).filter(Boolean));
+      } catch {
+        // Non-fatal: keep dropdown empty if API is unreachable.
+        setStateOptions([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    // Default state/district from user profile (if logged-in and not already chosen).
+    (async () => {
+      try {
+        const s = getSession();
+        if (!s.token) return;
+        if ((state || "").trim() && (district || "").trim()) return;
+        const me = await getMe();
+        const u: any = me.user || {};
+        if (!state && (u.state || "").trim()) setState(String(u.state || "").trim());
+        if (!district && (u.district || "").trim()) setDistrict(String(u.district || "").trim());
+      } catch {
+        // ignore
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!state) {
+      setDistrictOptions([]);
+      setDistrict("");
+      setAreaOptions([]);
+      setArea("");
+      return;
+    }
+    (async () => {
+      try {
+        const r = await listLocationDistricts(state);
+        setDistrictOptions((r.items || []).map((x) => String(x || "").trim()).filter(Boolean));
+      } catch {
+        setDistrictOptions([]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  useEffect(() => {
+    if (!state || !district) {
+      setAreaOptions([]);
+      setArea("");
+      return;
+    }
+    (async () => {
+      try {
+        const r = await listLocationAreas(state, district);
+        setAreaOptions((r.items || []).map((x) => String(x || "").trim()).filter(Boolean));
+      } catch {
+        setAreaOptions([]);
+      }
+    })();
+  }, [state, district]);
+
+  useEffect(() => {
+    (async () => {
+      try {
         const c = await getCategoryCatalog();
         setCatalog(c);
       } catch {
@@ -103,21 +183,24 @@ export default function HomePage() {
         setGps(p);
       } catch (e: any) {
         // Non-fatal: user can still browse without GPS, but proximity sorting won't be available.
-        setErr(e?.message || "Unable to access GPS.");
+        // Don't hard-fail the page; keep browsing working.
       }
     })();
   }, []);
 
-  const districts = useMemo(() => getDistricts(), []);
-  const states = useMemo(() => (district ? getStatesForDistrict(district) : []), [district]);
-  const areas = useMemo(() => (district && state ? getAreas(district, state) : []), [district, state]);
+  function fmtDistance(dkm: any): string {
+    const n = Number(dkm);
+    if (!Number.isFinite(n)) return "";
+    const pretty = n < 10 ? n.toFixed(1) : Math.round(n).toString();
+    return `${pretty}km from you`;
+  }
 
   return (
     <div className="page-home">
       <div className="panel">
       <div className="row">
         <p className="h1" style={{ margin: 0 }}>
-          Home  🏡✨  <span className="muted">Discover amazing places</span>
+          Home <span className="muted">Discover amazing places</span>
         </p>
         <div className="spacer" />
         <button onClick={load}>Refresh</button>
@@ -125,35 +208,17 @@ export default function HomePage() {
 
       <div className="grid" style={{ marginTop: 12 }}>
         <div className="col-6">
-          <label className="muted">District (optional)</label>
-          <select
-            value={district}
-            onChange={(e) => {
-              setDistrict(e.target.value);
-              setState("");
-              setArea("");
-            }}
-          >
-            <option value="">Select district…</option>
-            {districts.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="col-6">
           <label className="muted">State (optional)</label>
           <select
             value={state}
             onChange={(e) => {
               setState(e.target.value);
+              setDistrict("");
               setArea("");
             }}
-            disabled={!district}
           >
-            <option value="">{district ? "Select state…" : "Select district first"}</option>
-            {states.map((s) => (
+            <option value="">Select state…</option>
+            {stateOptions.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -161,20 +226,34 @@ export default function HomePage() {
           </select>
         </div>
         <div className="col-6">
+          <label className="muted">District (optional)</label>
+          <select
+            value={district}
+            onChange={(e) => {
+              setDistrict(e.target.value);
+              setArea("");
+            }}
+            disabled={!state}
+          >
+            <option value="">{state ? "Select district…" : "Select state first"}</option>
+            {districtOptions.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-6">
           <label className="muted">Area (optional)</label>
-          <select value={area} onChange={(e) => setArea(e.target.value)} disabled={!district || !state}>
-            <option value="">{district && state ? "Select area…" : "Select district + state first"}</option>
-            {areas.map((a) => (
+          <select value={area} onChange={(e) => setArea(e.target.value)} disabled={!state || !district}>
+            <option value="">{state && district ? "Select area…" : "Select state + district first"}</option>
+            {areaOptions.map((a) => (
               <option key={a} value={a}>
                 {a}
               </option>
             ))}
           </select>
-          {area && !isValidAreaSelection(district, state, area) ? (
-            <div className="muted" style={{ marginTop: 6 }}>
-              Invalid area selection.
-            </div>
-          ) : null}
+          {area && areaOptions.length && !areaOptions.includes(area) ? <div className="muted" style={{ marginTop: 6 }}>Invalid area selection.</div> : null}
         </div>
         <div className="col-6">
           <label className="muted">Nearby radius (km)</label>
@@ -223,8 +302,8 @@ export default function HomePage() {
           <label className="muted">Rent/Sale</label>
           <select value={rentSale} onChange={(e) => setRentSale(e.target.value)}>
             <option value="">Any</option>
-            <option value="rent">rent</option>
-            <option value="sale">sale</option>
+            <option value="rent">Rent</option>
+            <option value="sale">Sale</option>
           </select>
         </div>
         <div className="col-12 row">
@@ -248,38 +327,77 @@ export default function HomePage() {
                     {p.title}
                   </div>
                   <div className="muted post-meta">
+                    {p.distance_km != null ? `${fmtDistance(p.distance_km)} • ` : ""}
                     Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} •{" "}
                     {p.location_display}
                     {p.created_at ? ` • ${new Date(p.created_at).toLocaleDateString()}` : ""}
                   </div>
                 </div>
                 <div className="spacer" />
-                <Link to={`/property/${p.id}`}>Open ➜</Link>
               </div>
 
-              {p.images?.length ? (
-                <div className="post-media">
-                  {String(p.images[0]?.content_type || "").toLowerCase().startsWith("video/") ? (
-                    <video controls preload="metadata" src={toApiUrl(p.images[0].url)} />
-                  ) : (
-                    <img src={toApiUrl(p.images[0].url)} alt={`Ad ${p.id} media`} loading="lazy" />
-                  )}
+              <div className="post-body">
+                <div className="h2" style={{ marginTop: 6 }}>
+                  Photos
                 </div>
-              ) : null}
-
-              {p.description ? (
-                <div className="post-body">
-                  <div className="muted post-text">
-                    {String(p.description).length > 220 ? `${String(p.description).slice(0, 220)}…` : p.description}
+                {p.images?.length ? (
+                <div className="post-media">
+                  <div className="grid" style={{ marginTop: 10 }}>
+                    {p.images.slice(0, 6).map((i: any) => (
+                      <div className="col-6" key={i.id ?? i.url}>
+                        {String(i.content_type || "").toLowerCase().startsWith("video/") ? (
+                          <video controls preload="metadata" src={toApiUrl(i.url)} style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
+                        ) : (
+                          <img src={toApiUrl(i.url)} alt={`Ad ${p.id} media`} loading="lazy" style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ) : null}
+                ) : (
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    No photos.
+                  </div>
+                )}
+
+                <div className="h2" style={{ marginTop: 12 }}>
+                  Amenities
+                </div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  {p.amenities?.length ? p.amenities.join(", ") : "—"}
+                </div>
+
+                <div className="row" style={{ marginTop: 12, alignItems: "center" }}>
+                  <button
+                    className="primary"
+                    disabled={!!contacted[Number(p.id)]}
+                    onClick={async () => {
+                      const pid = Number(p.id);
+                      setContactMsg((m) => ({ ...m, [pid]: "" }));
+                      try {
+                        const contact = await getContact(pid);
+                        const phone = String(contact.phone || "").trim();
+                        const email = String(contact.email || "").trim();
+                        const sent = "Contact details sent to your registered email/SMS.";
+                        const detail = phone && email ? `${phone} / ${email}` : phone || email || "N/A";
+                        setContacted((c) => ({ ...c, [pid]: true }));
+                        setContactMsg((m) => ({ ...m, [pid]: `${sent} ${detail}`.trim() }));
+                      } catch (e: any) {
+                        setContactMsg((m) => ({ ...m, [pid]: e.message || "Locked" }));
+                      }
+                    }}
+                  >
+                    {contacted[Number(p.id)] ? "Contacted" : "Contact owner"}
+                  </button>
+                  <span className="muted">{contactMsg[Number(p.id)] || ""}</span>
+                </div>
+              </div>
             </div>
           </div>
         ))}
         {!items.length ? (
           <div className="col-12 muted" style={{ marginTop: 8 }}>
-            No properties yet (demo data will seed on first run).
+            No Upload yet thanks for reaching us.
           </div>
         ) : null}
       </div>

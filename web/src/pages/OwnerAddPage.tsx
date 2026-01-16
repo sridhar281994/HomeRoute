@@ -1,14 +1,24 @@
 import { useEffect, useState } from "react";
-import { getSession, ownerCreateProperty, ownerDeleteProperty, ownerListProperties, uploadPropertyImage } from "../api";
+import {
+  getMe,
+  getSession,
+  listLocationAreas,
+  listLocationDistricts,
+  listLocationStates,
+  ownerCreateProperty,
+  ownerDeleteProperty,
+  ownerListProperties,
+  uploadPropertyImage,
+} from "../api";
 import { Link, useNavigate } from "react-router-dom";
-import { getAreas, getDistricts, getStatesForDistrict, getBrowserGps, isValidAreaSelection } from "../location";
+import { getBrowserGps } from "../location";
 
 export default function OwnerAddPage() {
   const nav = useNavigate();
   const s = getSession();
   const [title, setTitle] = useState("");
-  const [district, setDistrict] = useState<string>(localStorage.getItem("pd_district") || "");
-  const [state, setState] = useState<string>(localStorage.getItem("pd_state") || "");
+  const [state, setState] = useState<string>(((s.user as any)?.state as string) || localStorage.getItem("pd_state") || "");
+  const [district, setDistrict] = useState<string>(((s.user as any)?.district as string) || localStorage.getItem("pd_district") || "");
   const [area, setArea] = useState<string>(localStorage.getItem("pd_area") || "");
   const [price, setPrice] = useState("");
   const [rentSale, setRentSale] = useState("rent");
@@ -43,9 +53,72 @@ export default function OwnerAddPage() {
     localStorage.setItem("pd_area", area || "");
   }, [area]);
 
-  const districts = getDistricts();
-  const states = district ? getStatesForDistrict(district) : [];
-  const areas = district && state ? getAreas(district, state) : [];
+  const [stateOptions, setStateOptions] = useState<string[]>([]);
+  const [districtOptions, setDistrictOptions] = useState<string[]>([]);
+  const [areaOptions, setAreaOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await listLocationStates();
+        setStateOptions((r.items || []).map((x) => String(x || "").trim()).filter(Boolean));
+      } catch {
+        setStateOptions([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    // Ensure we have the latest profile state/district (first time only).
+    (async () => {
+      try {
+        if (!s.token) return;
+        if ((state || "").trim() && (district || "").trim()) return;
+        const me = await getMe();
+        const u: any = me.user || {};
+        if (!state && (u.state || "").trim()) setState(String(u.state || "").trim());
+        if (!district && (u.district || "").trim()) setDistrict(String(u.district || "").trim());
+      } catch {
+        // ignore
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!state) {
+      setDistrictOptions([]);
+      setDistrict("");
+      setAreaOptions([]);
+      setArea("");
+      return;
+    }
+    (async () => {
+      try {
+        const r = await listLocationDistricts(state);
+        setDistrictOptions((r.items || []).map((x) => String(x || "").trim()).filter(Boolean));
+      } catch {
+        setDistrictOptions([]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  useEffect(() => {
+    if (!state || !district) {
+      setAreaOptions([]);
+      setArea("");
+      return;
+    }
+    (async () => {
+      try {
+        const r = await listLocationAreas(state, district);
+        setAreaOptions((r.items || []).map((x) => String(x || "").trim()).filter(Boolean));
+      } catch {
+        setAreaOptions([]);
+      }
+    })();
+  }, [state, district]);
 
   async function loadMyAds() {
     setMyAdsMsg("");
@@ -80,35 +153,17 @@ export default function OwnerAddPage() {
 
       <div className="grid" style={{ marginTop: 12 }}>
         <div className="col-6">
-          <label className="muted">District *</label>
-          <select
-            value={district}
-            onChange={(e) => {
-              setDistrict(e.target.value);
-              setState("");
-              setArea("");
-            }}
-          >
-            <option value="">Select district…</option>
-            {districts.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="col-6">
           <label className="muted">State *</label>
           <select
             value={state}
             onChange={(e) => {
               setState(e.target.value);
+              setDistrict("");
               setArea("");
             }}
-            disabled={!district}
           >
-            <option value="">{district ? "Select state…" : "Select district first"}</option>
-            {states.map((st) => (
+            <option value="">Select state…</option>
+            {stateOptions.map((st) => (
               <option key={st} value={st}>
                 {st}
               </option>
@@ -116,20 +171,34 @@ export default function OwnerAddPage() {
           </select>
         </div>
         <div className="col-6">
+          <label className="muted">District *</label>
+          <select
+            value={district}
+            onChange={(e) => {
+              setDistrict(e.target.value);
+              setArea("");
+            }}
+            disabled={!state}
+          >
+            <option value="">{state ? "Select district…" : "Select state first"}</option>
+            {districtOptions.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-6">
           <label className="muted">Area *</label>
-          <select value={area} onChange={(e) => setArea(e.target.value)} disabled={!district || !state}>
-            <option value="">{district && state ? "Select area…" : "Select district + state first"}</option>
-            {areas.map((a) => (
+          <select value={area} onChange={(e) => setArea(e.target.value)} disabled={!state || !district}>
+            <option value="">{state && district ? "Select area…" : "Select state + district first"}</option>
+            {areaOptions.map((a) => (
               <option key={a} value={a}>
                 {a}
               </option>
             ))}
           </select>
-          {area && !isValidAreaSelection(district, state, area) ? (
-            <div className="muted" style={{ marginTop: 6 }}>
-              Invalid area selection.
-            </div>
-          ) : null}
+          {area && areaOptions.length && !areaOptions.includes(area) ? <div className="muted" style={{ marginTop: 6 }}>Invalid area selection.</div> : null}
         </div>
         <div className="col-6">
           <label className="muted">Title</label>
@@ -163,8 +232,8 @@ export default function OwnerAddPage() {
         <div className="col-6">
           <label className="muted">Rent/Sale</label>
           <select value={rentSale} onChange={(e) => setRentSale(e.target.value)}>
-            <option value="rent">rent</option>
-            <option value="sale">sale</option>
+            <option value="rent">Rent</option>
+            <option value="sale">Sale</option>
           </select>
         </div>
         <div className="col-6">
@@ -215,10 +284,10 @@ export default function OwnerAddPage() {
             onClick={async () => {
               setMsg("");
               try {
-                if (!district) throw new Error("Select district.");
                 if (!state) throw new Error("Select state.");
+                if (!district) throw new Error("Select district.");
                 if (!area) throw new Error("Select area.");
-                if (!isValidAreaSelection(district, state, area)) throw new Error("Invalid area selection.");
+                if (areaOptions.length && !areaOptions.includes(area)) throw new Error("Invalid area selection.");
                 if (!title.trim()) throw new Error("Enter title.");
                 if (useCompanyName && !companyName.trim()) throw new Error("Please enter company name (or select No).");
 

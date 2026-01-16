@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { getCategoryCatalog, getSession, registerUser } from "../api";
-import { INDIA_STATES } from "../indiaStates";
-import { districtsForState } from "../indiaDistricts";
+import { useEffect, useState } from "react";
+import { getCategoryCatalog, getSession, listLocationDistricts, listLocationStates, registerUser } from "../api";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import PasswordField from "../components/PasswordField";
 
@@ -13,7 +11,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [state, setState] = useState(INDIA_STATES[0] || "");
+  const [state, setState] = useState("");
   const [district, setDistrict] = useState("");
   const [role, setRole] = useState<"customer" | "owner">("customer");
   const [ownerCategory, setOwnerCategory] = useState("");
@@ -21,8 +19,42 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string>("");
 
-  const stateOptions = useMemo(() => INDIA_STATES, []);
-  const districtOptions = useMemo(() => districtsForState(state), [state]);
+  const [stateOptions, setStateOptions] = useState<string[]>([]);
+  const [districtOptions, setDistrictOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await listLocationStates();
+        const states = (r.items || []).map((x) => String(x || "").trim()).filter(Boolean);
+        setStateOptions(states);
+        // Choose a sensible default so District dropdown can work immediately.
+        if (!state) {
+          const preferred = states.includes("Tamil Nadu") ? "Tamil Nadu" : states[0] || "";
+          setState(preferred);
+        }
+      } catch {
+        setStateOptions([]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!state) {
+      setDistrictOptions([]);
+      setDistrict("");
+      return;
+    }
+    (async () => {
+      try {
+        const r = await listLocationDistricts(state);
+        setDistrictOptions((r.items || []).map((x) => String(x || "").trim()).filter(Boolean));
+      } catch {
+        setDistrictOptions([]);
+      }
+    })();
+  }, [state]);
 
   useEffect(() => {
     (async () => {
@@ -101,6 +133,7 @@ export default function RegisterPage() {
               setDistrict("");
             }}
           >
+            <option value="">Select state</option>
             {stateOptions.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -127,6 +160,7 @@ export default function RegisterPage() {
             className="primary"
             onClick={async () => {
               try {
+                if (!state) throw new Error("Please select your state.");
                 if (!district) throw new Error("Please select your district.");
                 const digits = (phone || "").replace(/\D/g, "");
                 if (digits.length < 8 || digits.length > 15) throw new Error("Enter a valid phone number.");

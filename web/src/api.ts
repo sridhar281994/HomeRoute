@@ -391,3 +391,20 @@ export function getCategoryCatalog() {
   return api<CategoryCatalog>(`/meta/categories`);
 }
 
+export function listLocationStates() {
+  return api<{ items: string[] }>(`/locations/states`);
+}
+
+export function listLocationDistricts(state: string) {
+  const sp = new URLSearchParams();
+  sp.set("state", state);
+  return api<{ items: string[] }>(`/locations/districts?${sp.toString()}`);
+}
+
+export function listLocationAreas(state: string, district: string) {
+  const sp = new URLSearchParams();
+  sp.set("state", state);
+  sp.set("district", district);
+  return api<{ items: string[] }>(`/locations/areas?${sp.toString()}`);
+}
+

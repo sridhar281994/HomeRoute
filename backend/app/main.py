@@ -35,6 +35,7 @@ from app.mailer import EmailSendError, send_email, send_otp_email
 from app.rate_limit import limiter
 from app.models import (
     ContactUsage,
+    FreeContactUsage,
     ModerationLog,
     OtpCode,
     Property,
@@ -421,6 +422,13 @@ def _admin_otp_email() -> str:
     return (os.environ.get("ADMIN_OTP_EMAIL") or "info@srtech.co.in").strip() or "info@srtech.co.in"
 
 
+def _free_contact_limit() -> int:
+    try:
+        return max(0, int(os.environ.get("FREE_CONTACT_LIMIT") or "5"))
+    except Exception:
+        return 5
+
+
 def _public_image_url(file_path: str) -> str:
     fp = (file_path or "").strip()
     if fp.startswith("http://") or fp.startswith("https://"):
@@ -429,85 +437,63 @@ def _public_image_url(file_path: str) -> str:
     return f"/uploads/{fp}"
 
 
-def _districts_towns_ts_path() -> str:
-    # Default assumes backend/ and web/ are in the same repo.
-    default = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "src", "districtsTowns.ts"))
-    return (os.environ.get("DISTRICTS_TOWNS_TS_PATH") or default).strip() or default
+def _locations_json_path() -> str:
+    # Backend-owned location dataset (single source of truth).
+    default = os.path.abspath(os.path.join(os.path.dirname(__file__), "locations.json"))
+    return (os.environ.get("LOCATIONS_JSON_PATH") or default).strip() or default
 
 
 @lru_cache(maxsize=1)
-def _load_districts_towns() -> dict[str, dict[str, list[str]]]:
+def _load_locations() -> dict[str, dict[str, list[str]]]:
     """
-    Loads the District → State → Area dataset from `districtsTowns.ts`.
-
-    NOTE: For backend validation, the TS file must contain a JSON-compatible object
-    literal (double-quoted keys/strings, no trailing commas).
+    Load State → District → Area dataset.
+    Shape: { "Tamil Nadu": { "Chennai": ["Guindy", ...] } }
     """
-    p = _districts_towns_ts_path()
+    p = _locations_json_path()
     if not os.path.exists(p):
         raise HTTPException(status_code=503, detail=f"Location dataset missing at {p}")
     try:
-        raw = open(p, "r", encoding="utf-8").read()
+        data = json.loads(open(p, "r", encoding="utf-8").read() or "{}")
     except Exception:
         raise HTTPException(status_code=503, detail="Failed to read location dataset")
-
-    # Strip common TS wrappers.
-    s = raw
-    s = re.sub(r"^\s*export\s+default\s+", "", s, flags=re.MULTILINE)
-    s = re.sub(r"^\s*export\s+const\s+\w+\s*=\s*", "", s, flags=re.MULTILINE)
-    s = re.sub(r"\s+as\s+const\s*;?\s*$", "", s, flags=re.MULTILINE)
-    s = s.strip().rstrip(";").strip()
-
-    # Extract the first object literal.
-    i = s.find("{")
-    j = s.rfind("}")
-    if i < 0 or j < 0 or j <= i:
-        raise HTTPException(status_code=503, detail="Invalid location dataset format")
-    obj = s[i : j + 1]
-
-    try:
-        data = json.loads(obj)
-    except Exception:
-        raise HTTPException(status_code=503, detail="Location dataset must be valid JSON in the TS file")
-
     if not isinstance(data, dict) or not data:
         raise HTTPException(status_code=503, detail="Location dataset is empty")
 
-    # Validate shape: {district: {state: [areas...]}}
     out: dict[str, dict[str, list[str]]] = {}
-    for d, states in data.items():
-        if not isinstance(d, str) or not d.strip():
+    for st, districts in data.items():
+        if not isinstance(st, str) or not st.strip():
             continue
-        if not isinstance(states, dict):
+        if not isinstance(districts, dict):
             continue
-        out_states: dict[str, list[str]] = {}
-        for st, areas in states.items():
-            if not isinstance(st, str) or not st.strip():
+        dd: dict[str, list[str]] = {}
+        for d, areas in districts.items():
+            if not isinstance(d, str) or not d.strip():
                 continue
-            if not isinstance(areas, list):
-                continue
-            out_states[st.strip()] = [str(a).strip() for a in areas if str(a).strip()]
-        if out_states:
-            out[d.strip()] = out_states
+            if isinstance(areas, list):
+                dd[d.strip()] = [str(a).strip() for a in areas if str(a).strip()]
+            else:
+                dd[d.strip()] = []
+        if dd:
+            out[st.strip()] = dd
     if not out:
         raise HTTPException(status_code=503, detail="Location dataset has no valid entries")
     return out
 
 
-def _validate_location_selection(*, district: str, state: str, area: str) -> None:
-    data = _load_districts_towns()
-    d = (district or "").strip()
+def _validate_location_selection(*, state: str, district: str, area: str) -> None:
+    data = _load_locations()
     st = (state or "").strip()
+    d = (district or "").strip()
     a = (area or "").strip()
-    if not d or not st or not a:
-        raise HTTPException(status_code=400, detail="District, State, and Area are required")
-    if d not in data:
-        raise HTTPException(status_code=400, detail="Invalid District")
-    if st not in (data.get(d) or {}):
-        raise HTTPException(status_code=400, detail="Invalid State for District")
-    areas = (data.get(d) or {}).get(st) or []
+    if not st or not d or not a:
+        raise HTTPException(status_code=400, detail="State, District, and Area are required")
+    if st not in data:
+        raise HTTPException(status_code=400, detail="Invalid State")
+    if d not in (data.get(st) or {}):
+        raise HTTPException(status_code=400, detail="Invalid District for State")
+    areas = (data.get(st) or {}).get(d) or []
     if a not in areas:
-        raise HTTPException(status_code=400, detail="Invalid Area for District/State")
+        raise HTTPException(status_code=400, detail="Invalid Area for State/District")
 
 
 def _user_out(u: User) -> dict[str, Any]:
@@ -835,6 +821,34 @@ def meta_categories() -> dict[str, Any]:
         "owner_categories": [x.get("label") for x in flat_items if x.get("label")],
         "flat_items": flat_items,
     }
+
+
+# -----------------------
+# Locations (State/District/Area)
+# -----------------------
+@app.get("/locations/states")
+def location_states() -> dict[str, Any]:
+    data = _load_locations()
+    states = sorted([s for s in data.keys() if s], key=lambda x: x.lower())
+    return {"items": states}
+
+
+@app.get("/locations/districts")
+def location_districts(state: str = Query(..., min_length=1)) -> dict[str, Any]:
+    st = (state or "").strip()
+    data = _load_locations()
+    districts = sorted(list((data.get(st) or {}).keys()), key=lambda x: x.lower())
+    return {"items": districts}
+
+
+@app.get("/locations/areas")
+def location_areas(state: str = Query(..., min_length=1), district: str = Query(..., min_length=1)) -> dict[str, Any]:
+    st = (state or "").strip()
+    d = (district or "").strip()
+    data = _load_locations()
+    areas = (data.get(st) or {}).get(d) or []
+    areas = sorted([a for a in areas if a], key=lambda x: x.lower())
+    return {"items": areas}
 
 
 # -----------------------
@@ -1490,7 +1504,7 @@ def _property_out(
         amenities = []
     images = []
     try:
-        for i in (p.images or []):
+        for i in sorted((p.images or []), key=lambda x: (int(getattr(x, "sort_order", 0) or 0), int(getattr(x, "id", 0) or 0))):
             if not include_unapproved_images and (i.status or "") != "approved":
                 continue
             img_out: dict[str, Any] = {
@@ -1855,47 +1869,80 @@ def get_property_contact(
     if not owner or owner.approval_status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
 
+    # If this property was already unlocked via free quota, return immediately.
+    already_free = db.execute(
+        select(FreeContactUsage.id).where((FreeContactUsage.user_id == me.id) & (FreeContactUsage.property_id == int(property_id)))
+    ).first()
+    if already_free:
+        return {
+            "adv_number": (p.ad_number or "").strip() or str(p.id),
+            "owner_name": (owner.name or "").strip() or "Owner",
+            "owner_company_name": (owner.company_name or "").strip(),
+            "phone": p.contact_phone,
+            "email": p.contact_email,
+        }
+
     sub = db.execute(select(Subscription).where(Subscription.user_id == me.id)).scalar_one_or_none()
-    if not sub or (sub.status or "").lower() != "active":
-        raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
+    subscribed = bool(sub and (sub.status or "").lower() == "active")
 
     # Abuse prevention: enforce plan contact_limit per active subscription period.
     _ensure_plans(db)
     now = dt.datetime.now(dt.timezone.utc)
-    usub = (
-        db.execute(
-            select(UserSubscription)
-            .where((UserSubscription.user_id == me.id) & (UserSubscription.active == True))  # noqa: E712
-            .order_by(UserSubscription.id.desc())
-        )
-        .scalars()
-        .first()
-    )
-    if not usub:
-        raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
-    if usub.end_time and usub.end_time <= now:
-        usub.active = False
-        db.add(usub)
-        raise HTTPException(status_code=402, detail="Subscription expired")
-
-    plan = db.get(SubscriptionPlan, usub.plan_id)
-    limit = int(plan.contact_limit or 0) if plan else 0
-    if limit > 0:
-        # Don't double-count repeated unlocks of the same property for the same subscription.
-        existing = db.execute(
-            select(ContactUsage.id).where(
-                (ContactUsage.user_id == me.id)
-                & (ContactUsage.property_id == int(property_id))
-                & (ContactUsage.subscription_id == usub.id)
+    if subscribed:
+        usub = (
+            db.execute(
+                select(UserSubscription)
+                .where((UserSubscription.user_id == me.id) & (UserSubscription.active == True))  # noqa: E712
+                .order_by(UserSubscription.id.desc())
             )
+            .scalars()
+            .first()
+        )
+        if usub:
+            if usub.end_time and usub.end_time <= now:
+                usub.active = False
+                db.add(usub)
+                # fall back to free quota below
+                subscribed = False
+            else:
+                plan = db.get(SubscriptionPlan, usub.plan_id)
+                limit = int(plan.contact_limit or 0) if plan else 0
+                if limit > 0:
+                    # Don't double-count repeated unlocks of the same property for the same subscription.
+                    existing = db.execute(
+                        select(ContactUsage.id).where(
+                            (ContactUsage.user_id == me.id)
+                            & (ContactUsage.property_id == int(property_id))
+                            & (ContactUsage.subscription_id == usub.id)
+                        )
+                    ).first()
+                    if not existing:
+                        used_count = db.execute(
+                            select(ContactUsage.id).where((ContactUsage.user_id == me.id) & (ContactUsage.subscription_id == usub.id))
+                        ).all()
+                        if len(used_count) >= limit:
+                            raise HTTPException(status_code=429, detail="Contact unlock limit reached for your plan")
+                        db.add(ContactUsage(user_id=me.id, property_id=int(property_id), subscription_id=usub.id))
+        else:
+            # Backward-compatibility: if legacy subscription is active but no user_subscriptions row exists,
+            # still allow contact unlock (best-effort).
+            pass
+
+    if not subscribed:
+        free_limit = _free_contact_limit()
+        if free_limit <= 0:
+            raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
+
+        free_count = db.execute(select(func.count(FreeContactUsage.id)).where(FreeContactUsage.user_id == me.id)).scalar() or 0
+        if int(free_count) >= int(free_limit):
+            raise HTTPException(status_code=402, detail="Subscription required to unlock contact")
+
+        # Don't double-count repeated unlocks of the same property.
+        existing_free2 = db.execute(
+            select(FreeContactUsage.id).where((FreeContactUsage.user_id == me.id) & (FreeContactUsage.property_id == int(property_id)))
         ).first()
-        if not existing:
-            used_count = db.execute(
-                select(ContactUsage.id).where((ContactUsage.user_id == me.id) & (ContactUsage.subscription_id == usub.id))
-            ).all()
-            if len(used_count) >= limit:
-                raise HTTPException(status_code=429, detail="Contact unlock limit reached for your plan")
-            db.add(ContactUsage(user_id=me.id, property_id=int(property_id), subscription_id=usub.id))
+        if not existing_free2:
+            db.add(FreeContactUsage(user_id=me.id, property_id=int(property_id)))
 
     # Notify the customer via email + SMS (best-effort).
     adv_no = (p.ad_number or "").strip() or str(p.id)
@@ -1998,7 +2045,7 @@ def owner_create_property(
     district = (data.district or "").strip()
     state = (data.state or "").strip()
     area = (data.area or "").strip()
-    _validate_location_selection(district=district, state=state, area=area)
+    _validate_location_selection(state=state, district=district, area=area)
 
     lat = data.gps_lat
     lng = data.gps_lng
@@ -2553,7 +2600,8 @@ def upload_property_image(
         original_filename=(file.filename or "").strip(),
         content_type=stored_content_type,
         size_bytes=int(len(stored_bytes)),
-        status="pending",
+        # Make uploads visible immediately (AI moderation already ran before storage).
+        status="approved",
         uploaded_by_user_id=me.id,
     )
     db.add(img)
@@ -2653,6 +2701,7 @@ async def spa_fallback_404(request, exc: StarletteHTTPException):
                 (
                     "/auth",
                     "/assets",
+                    "/locations",
                     "/properties",
                     "/owner",
                     "/admin",
