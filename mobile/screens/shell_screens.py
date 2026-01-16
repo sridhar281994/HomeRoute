@@ -295,12 +295,13 @@ class HomeScreen(Screen):
             def work():
                 try:
                     contact = api_get_property_contact(pid)
-                    phone = str(contact.get("phone") or "").strip() or "N/A"
-                    email = str(contact.get("email") or "").strip() or "N/A"
+                    owner_name = str(contact.get("owner_name") or "").strip()
+                    adv_no = str(contact.get("adv_number") or contact.get("advNo") or pid).strip()
 
                     def done(*_dt):
                         btn_contact.text = "Contacted"
-                        lbl_status.text = f"Phone: {phone}\\nEmail: {email}"
+                        who = f" ({owner_name})" if owner_name else ""
+                        lbl_status.text = f"Contact details sent to your registered email/SMS for Ad #{adv_no}{who}."
 
                     Clock.schedule_once(done, 0)
                 except ApiError as e:
@@ -376,8 +377,8 @@ class PropertyDetailScreen(Screen):
     def unlock_contact(self):
         """
         Contact Unlock Flow:
-        - If subscribed: fetch contact
-        - Else: show Subscription page
+        - Call the backend unlock endpoint (it enforces free quota / subscription).
+        - Show a confirmation that details were sent via Email/SMS.
         """
         sess = get_session() or {}
         if not (sess.get("token") or ""):
@@ -388,21 +389,19 @@ class PropertyDetailScreen(Screen):
 
         def work():
             try:
-                sub = api_subscription_status()
-                active = bool((sub.get("status") or "").lower() == "active")
-                if not active:
-                    Clock.schedule_once(lambda *_: self._go_subscription(), 0)
-                    return
                 contact = api_get_property_contact(self.property_id)
-                phone = contact.get("phone") or "N/A"
-                email = contact.get("email") or "N/A"
-                Clock.schedule_once(
-                    lambda *_: _popup("Owner Contact", f"Phone: {phone}\nEmail: {email}"),
-                    0,
-                )
+                owner_name = str(contact.get("owner_name") or "").strip()
+                adv_no = str(contact.get("adv_number") or contact.get("advNo") or self.property_id).strip()
+                who = f" ({owner_name})" if owner_name else ""
+                Clock.schedule_once(lambda *_: _popup("Success", f"Contact details sent to your registered email/SMS for Ad #{adv_no}{who}."), 0)
             except ApiError as e:
                 msg = str(e)
-                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+                def fail(*_dt):
+                    _popup("Error", msg)
+                    if "subscription required" in msg.lower() and self.manager:
+                        self.manager.current = "subscription"
+
+                Clock.schedule_once(fail, 0)
 
         from threading import Thread
 
