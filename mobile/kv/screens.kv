@@ -119,7 +119,7 @@
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         Label:
-            text: "[b]ConstructHub[/b]  🏗️"
+            text: "[i][b]QuickRent[/b][/i]"
             font_size: sp(30)
             pos_hint: {"center_x": 0.5, "center_y": 0.55}
 
@@ -1174,7 +1174,7 @@
 
                 PrettySpinner:
                     text: root.rent_sale
-                    values: ["Any", "rent", "sale"]
+                    values: ["Any", "Rent", "Sale"]
                     on_text: root.rent_sale = self.text
                     size_hint_y: None
                     height: dp(42)
@@ -1504,6 +1504,13 @@
                 values: root.district_values()
                 size_hint_y: None
                 height: dp(44)
+                on_text: root.on_district_changed()
+            PrettySpinner:
+                id: area_spinner
+                text: "Select Area"
+                values: root.area_values()
+                size_hint_y: None
+                height: dp(44)
             TextInput:
                 id: title_input
                 hint_text: "Title"
@@ -1518,8 +1525,8 @@
                 height: dp(44)
             PrettySpinner:
                 id: rent_sale_spinner
-                text: "rent"
-                values: ["rent", "sale"]
+                text: "Rent"
+                values: ["Rent", "Sale"]
                 size_hint_y: None
                 height: dp(44)
             TextInput:

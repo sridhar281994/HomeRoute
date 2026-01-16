@@ -6,9 +6,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
 
-from frontend_app.utils.api import ApiError, api_register
-from frontend_app.utils.countries import COUNTRIES
-from frontend_app.utils.india_locations import districts_for_state
+from frontend_app.utils.api import ApiError, api_location_districts, api_location_states, api_register
 
 # Email regex
 EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
@@ -58,36 +56,41 @@ class RegisterScreen(Screen):
         Ensure spinners have values whenever the screen opens.
         This avoids cases where District dropdown stays empty until state changes.
         """
-        try:
-            if "country_spinner" in self.ids:
-                state_spinner = self.ids["country_spinner"]
-                state_spinner.values = self.country_values()
+        # Populate State/District lists from backend.
+        from threading import Thread
 
-                # Make sure changes always refresh districts (more robust than KV-only bindings).
-                try:
-                    state_spinner.unbind(text=self.on_state_changed)  # type: ignore[arg-type]
-                except Exception:
-                    pass
-                try:
-                    state_spinner.bind(text=self.on_state_changed)  # type: ignore[arg-type]
-                except Exception:
-                    pass
+        def work():
+            try:
+                st = api_location_states().get("items") or []
+                st = [str(x).strip() for x in st if str(x).strip()]
 
-                # If user hasn't selected a state yet, choose a sensible default so
-                # the District dropdown is never empty.
-                if (state_spinner.text or "").strip() in {"Select Country", "Select State", ""}:
-                    default_state = "Tamil Nadu" if "Tamil Nadu" in state_spinner.values else (state_spinner.values[0] if state_spinner.values else "")
-                    if default_state:
-                        state_spinner.text = default_state
+                def apply_states(*_):
+                    self._states_cache = st
+                    if "country_spinner" in self.ids:
+                        sp = self.ids["country_spinner"]
+                        sp.values = self.country_values()
+                        try:
+                            sp.unbind(text=self.on_state_changed)  # type: ignore[arg-type]
+                        except Exception:
+                            pass
+                        try:
+                            sp.bind(text=self.on_state_changed)  # type: ignore[arg-type]
+                        except Exception:
+                            pass
+                        if (sp.text or "").strip() in {"Select Country", "Select State", ""}:
+                            preferred = "Tamil Nadu" if "Tamil Nadu" in sp.values else (sp.values[0] if sp.values else "")
+                            if preferred:
+                                sp.text = preferred
 
-            # Default districts based on current state selection (if any).
-            if "district_spinner" in self.ids:
-                self.ids["district_spinner"].values = self.district_values()
-                if (self.ids["district_spinner"].text or "").strip() in {"", "Select District"}:
-                    self.ids["district_spinner"].text = "Select District"
-        except Exception:
-            # Never crash UI during screen enter.
-            pass
+                    # Trigger districts population based on selected state
+                    self.on_state_changed()
+
+                Clock.schedule_once(apply_states, 0)
+            except Exception:
+                # Non-fatal: keep spinners empty if offline.
+                Clock.schedule_once(lambda *_: setattr(self, "_states_cache", []), 0)
+
+        Thread(target=work, daemon=True).start()
 
     def go_back(self) -> None:
         """Navigate back to login or stage screen."""
@@ -178,25 +181,47 @@ class RegisterScreen(Screen):
         self._popup("Info", f"{provider} login will be added later.")
 
     def country_values(self):
-        return COUNTRIES
+        return list(getattr(self, "_states_cache", []) or [])
 
     def district_values(self):
-        state = (self.ids.get("country_spinner").text or "").strip() if self.ids.get("country_spinner") else ""
-        return districts_for_state(state)
+        return list(getattr(self, "_districts_cache", []) or [])
 
     def on_state_changed(self, *_):
-        # When state changes, reset district and refresh district values.
+        # When state changes, fetch districts from backend.
         if "district_spinner" not in self.ids:
             return
-        try:
-            self.ids["district_spinner"].text = "Select District"
-        except Exception:
-            pass
-        try:
-            self.ids["district_spinner"].values = self.district_values()
-        except Exception:
-            # Do not crash the UI if a dataset entry is missing.
-            self.ids["district_spinner"].values = []
+        state = (self.ids.get("country_spinner").text or "").strip() if self.ids.get("country_spinner") else ""
+        if not state or state in {"Select Country", "Select State"}:
+            self._districts_cache = []
+            try:
+                self.ids["district_spinner"].values = []
+                self.ids["district_spinner"].text = "Select District"
+            except Exception:
+                pass
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                ds = api_location_districts(state=state).get("items") or []
+                ds = [str(x).strip() for x in ds if str(x).strip()]
+
+                def apply(*_):
+                    self._districts_cache = ds
+                    try:
+                        self.ids["district_spinner"].values = self.district_values()
+                        self.ids["district_spinner"].text = "Select District"
+                    except Exception:
+                        pass
+
+                Clock.schedule_once(apply, 0)
+            except ApiError as e:
+                self._popup("Error", str(e))
+            except Exception:
+                Clock.schedule_once(lambda *_: setattr(self, "_districts_cache", []), 0)
+
+        Thread(target=work, daemon=True).start()
 
     def owner_category_values(self):
         return list(self.OWNER_CATEGORIES)

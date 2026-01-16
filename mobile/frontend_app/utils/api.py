@@ -16,6 +16,17 @@ def _base_url() -> str:
     return (os.environ.get("API_BASE_URL") or "http://127.0.0.1:8000").rstrip("/")
 
 
+def to_api_url(url: str) -> str:
+    u = str(url or "").strip()
+    if not u:
+        return ""
+    if u.startswith("http://") or u.startswith("https://") or u.startswith("//"):
+        return u
+    if u.startswith("/"):
+        return f"{_base_url()}{u}"
+    return f"{_base_url()}/{u}"
+
+
 def _headers() -> dict[str, str]:
     h = {"Accept": "application/json"}
     token = get_token()
@@ -40,6 +51,27 @@ def _handle(resp: requests.Response) -> dict[str, Any]:
 def api_meta_categories() -> dict[str, Any]:
     url = f"{_base_url()}/meta/categories"
     resp = requests.get(url, timeout=15)
+    return _handle(resp)
+
+
+# -----------------------
+# Locations
+# -----------------------
+def api_location_states() -> dict[str, Any]:
+    url = f"{_base_url()}/locations/states"
+    resp = requests.get(url, timeout=15)
+    return _handle(resp)
+
+
+def api_location_districts(*, state: str) -> dict[str, Any]:
+    url = f"{_base_url()}/locations/districts"
+    resp = requests.get(url, params={"state": state}, timeout=15)
+    return _handle(resp)
+
+
+def api_location_areas(*, state: str, district: str) -> dict[str, Any]:
+    url = f"{_base_url()}/locations/areas"
+    resp = requests.get(url, params={"state": state, "district": district}, timeout=15)
     return _handle(resp)
 
 
@@ -111,9 +143,11 @@ def api_forgot_password_reset(*, identifier: str, otp: str, new_password: str) -
 # -----------------------
 def api_list_properties(*, q: str = "", rent_sale: str = "", property_type: str = "", max_price: str = "") -> dict[str, Any]:
     url = f"{_base_url()}/properties"
+    rent_sale_norm = (rent_sale or "").strip()
+    rent_sale_norm = rent_sale_norm.lower()
     params = {
         "q": q or None,
-        "rent_sale": (rent_sale if rent_sale and rent_sale.lower() != "any" else None),
+        "rent_sale": (rent_sale_norm if rent_sale_norm and rent_sale_norm != "any" else None),
         "property_type": (property_type if property_type and property_type.lower() != "any" else None),
         "max_price": (max_price or None),
     }

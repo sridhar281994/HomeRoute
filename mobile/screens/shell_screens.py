@@ -8,6 +8,7 @@ from kivy.clock import Clock
 from kivy.properties import BooleanProperty, DictProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
@@ -15,6 +16,9 @@ from kivy.uix.screenmanager import Screen
 from screens.widgets import HoverButton
 from frontend_app.utils.api import (
     ApiError,
+    api_location_areas,
+    api_location_districts,
+    api_location_states,
     api_get_property,
     api_get_property_contact,
     api_list_properties,
@@ -28,6 +32,7 @@ from frontend_app.utils.api import (
     api_me_upload_profile_image,
     api_meta_categories,
     api_subscription_status,
+    to_api_url,
 )
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_session
 from frontend_app.utils.billing import BillingUnavailable, buy_plan
@@ -184,6 +189,7 @@ class HomeScreen(Screen):
                             "location": str(p.get("location_display") or p.get("location") or ""),
                             "kind": str(p.get("property_type") or ""),
                             "rent_sale": str(p.get("rent_sale") or ""),
+                            "raw": p,
                         }
                     )
 
@@ -217,7 +223,8 @@ class HomeScreen(Screen):
                                 )
                                 btn.text_size = (btn.width, None)
                                 pid = int(c.get("id") or 0)
-                                btn.bind(on_release=lambda _b, pid=pid: self.open_property(pid))
+                                raw = c.get("raw") or {}
+                                btn.bind(on_release=lambda _b, raw=raw: self.open_post_popup(raw))
                                 container.add_widget(btn)
                     except Exception:
                         pass
@@ -233,12 +240,85 @@ class HomeScreen(Screen):
 
         Thread(target=work, daemon=True).start()
 
-    def open_property(self, property_id: int):
-        if not self.manager:
-            return
-        detail: PropertyDetailScreen = self.manager.get_screen("property_detail")  # type: ignore[assignment]
-        detail.load_property(property_id)
-        self.manager.current = "property_detail"
+    def open_post_popup(self, p: dict[str, Any]):
+        """
+        Show the post details inline (no redirect screen).
+        Includes Photos, Amenities, and Contact owner.
+        """
+        pid = int(p.get("id") or 0)
+        title = str(p.get("title") or "Post")
+        meta = " • ".join([x for x in [str(p.get("rent_sale") or ""), str(p.get("property_type") or ""), str(p.get("price_display") or ""), str(p.get("location_display") or "")] if x])
+        amenities = p.get("amenities") or []
+        images = p.get("images") or []
+
+        root = BoxLayout(orientation="vertical", spacing=8, padding=10)
+        root.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=34))
+        root.add_widget(Label(text=str(meta), size_hint_y=None, height=22, color=(1, 1, 1, 0.85)))
+
+        root.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
+        if images:
+            first = images[0] or {}
+            ctype = str(first.get("content_type") or "").lower()
+            if ctype.startswith("image/"):
+                img = AsyncImage(source=to_api_url(first.get("url") or ""), allow_stretch=True)
+                img.size_hint_y = None
+                img.height = 220
+                root.add_widget(img)
+            else:
+                root.add_widget(Label(text="(Video attached)", size_hint_y=None, height=22, color=(1, 1, 1, 0.85)))
+        else:
+            root.add_widget(Label(text="No photos.", size_hint_y=None, height=22, color=(1, 1, 1, 0.85)))
+
+        root.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
+        root.add_widget(Label(text=(", ".join([str(x) for x in amenities]) if amenities else "—"), size_hint_y=None, height=44, color=(1, 1, 1, 0.85)))
+
+        btn_contact = HoverButton(text="Contact owner", size_hint_y=None, height=46, background_color=(0.2, 0.6, 0.9, 1))
+        root.add_widget(btn_contact)
+        lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
+        root.add_widget(lbl_status)
+
+        popup = Popup(title="Post", content=root, size_hint=(0.92, 0.90), auto_dismiss=True)
+
+        def do_contact(*_):
+            sess = get_session() or {}
+            if not (sess.get("token") or ""):
+                _popup("Login required", "Please login to view contact details.")
+                if self.manager:
+                    self.manager.current = "login"
+                popup.dismiss()
+                return
+
+            btn_contact.disabled = True
+
+            def work():
+                try:
+                    contact = api_get_property_contact(pid)
+                    phone = str(contact.get("phone") or "").strip() or "N/A"
+                    email = str(contact.get("email") or "").strip() or "N/A"
+
+                    def done(*_dt):
+                        btn_contact.text = "Contacted"
+                        lbl_status.text = f"Phone: {phone}\\nEmail: {email}"
+
+                    Clock.schedule_once(done, 0)
+                except ApiError as e:
+                    msg = str(e)
+
+                    def fail(*_dt):
+                        btn_contact.disabled = False
+                        lbl_status.text = msg
+                        # If locked, guide to subscription screen (no special quota messaging).
+                        if "subscription" in msg.lower() and self.manager:
+                            self.manager.current = "subscription"
+
+                    Clock.schedule_once(fail, 0)
+
+            from threading import Thread
+
+            Thread(target=work, daemon=True).start()
+
+        btn_contact.bind(on_release=do_contact)
+        popup.open()
 
     def go_profile(self):
         if not self.is_logged_in:
@@ -658,29 +738,139 @@ class OwnerDashboardScreen(Screen):
 
 
 class OwnerAddPropertyScreen(Screen):
-    def state_values(self):
-        # India states list (shared with RegisterScreen).
-        from frontend_app.utils.countries import COUNTRIES
+    def on_pre_enter(self, *args):
+        # Load location dropdowns from backend (and default to profile state/district if present).
+        u = get_user() or {}
+        preferred_state = str(u.get("state") or "").strip()
+        preferred_district = str(u.get("district") or "").strip()
 
-        return COUNTRIES
+        from threading import Thread
+
+        def work():
+            try:
+                st = api_location_states().get("items") or []
+                st = [str(x).strip() for x in st if str(x).strip()]
+
+                def apply_states(*_):
+                    self._states_cache = st
+                    if "state_spinner" in self.ids:
+                        sp = self.ids["state_spinner"]
+                        sp.values = self.state_values()
+                        if preferred_state and preferred_state in sp.values:
+                            sp.text = preferred_state
+                        elif (sp.text or "").strip() in {"Select State", ""}:
+                            sp.text = "Tamil Nadu" if "Tamil Nadu" in sp.values else (sp.values[0] if sp.values else "Select State")
+                    self.on_state_changed()
+                    # Try to set preferred district after districts load (best-effort).
+                    if preferred_district:
+                        Clock.schedule_once(lambda *_: self._apply_preferred_district(preferred_district), 0.2)
+
+                Clock.schedule_once(apply_states, 0)
+            except Exception:
+                Clock.schedule_once(lambda *_: setattr(self, "_states_cache", []), 0)
+
+        Thread(target=work, daemon=True).start()
+
+    def _apply_preferred_district(self, preferred_district: str):
+        try:
+            if "district_spinner" not in self.ids:
+                return
+            sp = self.ids["district_spinner"]
+            if preferred_district and preferred_district in (sp.values or []):
+                sp.text = preferred_district
+                self.on_district_changed()
+        except Exception:
+            return
+
+    def state_values(self):
+        return list(getattr(self, "_states_cache", []) or [])
 
     def district_values(self):
-        from frontend_app.utils.india_locations import districts_for_state
+        return list(getattr(self, "_districts_cache", []) or [])
 
-        state = (self.ids.get("state_spinner").text or "").strip() if self.ids.get("state_spinner") else ""
-        return districts_for_state(state)
+    def area_values(self):
+        return list(getattr(self, "_areas_cache", []) or [])
 
     def on_state_changed(self, *_):
         if "district_spinner" not in self.ids:
             return
+        state = (self.ids.get("state_spinner").text or "").strip() if self.ids.get("state_spinner") else ""
+        # Reset dependent spinners
         try:
             self.ids["district_spinner"].text = "Select District"
         except Exception:
             pass
         try:
-            self.ids["district_spinner"].values = self.district_values()
+            if "area_spinner" in self.ids:
+                self.ids["area_spinner"].text = "Select Area"
+                self.ids["area_spinner"].values = []
         except Exception:
-            self.ids["district_spinner"].values = []
+            pass
+
+        if not state or state in {"Select State", "Select Country"}:
+            self._districts_cache = []
+            try:
+                self.ids["district_spinner"].values = []
+            except Exception:
+                pass
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                ds = api_location_districts(state=state).get("items") or []
+                ds = [str(x).strip() for x in ds if str(x).strip()]
+
+                def apply(*_dt):
+                    self._districts_cache = ds
+                    try:
+                        self.ids["district_spinner"].values = self.district_values()
+                    except Exception:
+                        pass
+
+                Clock.schedule_once(apply, 0)
+            except Exception:
+                Clock.schedule_once(lambda *_: setattr(self, "_districts_cache", []), 0)
+
+        Thread(target=work, daemon=True).start()
+
+    def on_district_changed(self, *_):
+        if "area_spinner" not in self.ids:
+            return
+        state = (self.ids.get("state_spinner").text or "").strip() if self.ids.get("state_spinner") else ""
+        district = (self.ids.get("district_spinner").text or "").strip() if self.ids.get("district_spinner") else ""
+        try:
+            self.ids["area_spinner"].text = "Select Area"
+        except Exception:
+            pass
+        if not state or not district or district in {"Select District"}:
+            self._areas_cache = []
+            try:
+                self.ids["area_spinner"].values = []
+            except Exception:
+                pass
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                ar = api_location_areas(state=state, district=district).get("items") or []
+                ar = [str(x).strip() for x in ar if str(x).strip()]
+
+                def apply(*_dt):
+                    self._areas_cache = ar
+                    try:
+                        self.ids["area_spinner"].values = self.area_values()
+                    except Exception:
+                        pass
+
+                Clock.schedule_once(apply, 0)
+            except Exception:
+                Clock.schedule_once(lambda *_: setattr(self, "_areas_cache", []), 0)
+
+        Thread(target=work, daemon=True).start()
 
     def submit_listing(self):
         """
@@ -690,6 +880,7 @@ class OwnerAddPropertyScreen(Screen):
         title = (self.ids.get("title_input").text or "").strip() if self.ids.get("title_input") else ""
         state = (self.ids.get("state_spinner").text or "").strip() if self.ids.get("state_spinner") else ""
         district = (self.ids.get("district_spinner").text or "").strip() if self.ids.get("district_spinner") else ""
+        area = (self.ids.get("area_spinner").text or "").strip() if self.ids.get("area_spinner") else ""
         category = (self.ids.get("category_spinner").text or "").strip().lower() if self.ids.get("category_spinner") else "property"
         price_text = (self.ids.get("price_input").text or "").strip() if self.ids.get("price_input") else ""
         rent_sale = (self.ids.get("rent_sale_spinner").text or "").strip().lower() if self.ids.get("rent_sale_spinner") else "rent"
@@ -700,6 +891,9 @@ class OwnerAddPropertyScreen(Screen):
             return
         if not district or district in {"Select District"}:
             _popup("Error", "Please select district.")
+            return
+        if not area or area in {"Select Area"}:
+            _popup("Error", "Please select area.")
             return
         if not title:
             _popup("Error", "Please enter title.")
@@ -722,9 +916,10 @@ class OwnerAddPropertyScreen(Screen):
                 payload = {
                     "state": state,
                     "district": district,
+                    "area": area,
                     "title": title,
                     # Use district as a simple display location.
-                    "location": district,
+                    "location": area or district,
                     "address": "",
                     "price": price,
                     "rent_sale": rent_sale if rent_sale in {"rent", "sale"} else "rent",
@@ -732,6 +927,9 @@ class OwnerAddPropertyScreen(Screen):
                     "contact_phone": contact_phone,
                     "contact_email": "",
                     "amenities": [],
+                    # Mobile builds may not have GPS access configured; send best-effort defaults.
+                    "gps_lat": 0.0,
+                    "gps_lng": 0.0,
                 }
                 res = api_owner_create_property(payload=payload)
                 pid = res.get("id")
