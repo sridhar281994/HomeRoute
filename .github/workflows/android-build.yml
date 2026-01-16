@@ -17,6 +17,8 @@ jobs:
       - name: Build debug APK (docker)
         run: |
           mkdir -p mobile/.buildozer mobile/.gradle
+          # The container runs as a non-root user; ensure it can write to mounted volumes.
+          chmod -R a+rwx mobile/.buildozer mobile/.gradle
           IMAGE="kivy/buildozer:latest"
           # Docker Hub is occasionally flaky/rate-limited in CI; retry pulls.
           for i in 1 2 3 4; do
@@ -28,6 +30,8 @@ jobs:
           docker image inspect "${IMAGE}" >/dev/null
           docker run --rm \
             --entrypoint bash \
+            --user 1000:1000 \
+            -e HOME=/home/user \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
