@@ -14,23 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Free Disk Space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-
-      - name: Cache Buildozer + Gradle downloads
-        uses: actions/cache@v4
-        with:
-          path: |
-            mobile/.buildozer
-            mobile/.gradle
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('mobile/buildozer.spec') }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-
-
       - name: Build debug APK (docker)
         run: |
           mkdir -p mobile/.buildozer mobile/.gradle
@@ -41,7 +24,7 @@ jobs:
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
             -w /home/user/hostcwd/mobile \
             kivy/buildozer \
-            android debug
+            buildozer android debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
