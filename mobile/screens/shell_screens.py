@@ -31,7 +31,9 @@ from frontend_app.utils.api import (
     api_me_update,
     api_me_upload_profile_image,
     api_meta_categories,
+    api_owner_create_property,
     api_subscription_status,
+    api_upload_property_media,
     to_api_url,
 )
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_session
@@ -872,6 +874,70 @@ class OwnerAddPropertyScreen(Screen):
 
         Thread(target=work, daemon=True).start()
 
+    def open_media_picker(self):
+        """
+        Pick up to 10 images + 1 video to upload with the ad.
+        """
+        chooser = FileChooserListView(
+            path=os.path.expanduser("~"),
+            filters=["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.mp4", "*.mov", "*.m4v", "*.avi", "*.mkv"],
+            multiselect=True,
+        )
+        popup = Popup(title="Choose Media (max 10 images + 1 video)", size_hint=(0.92, 0.92), auto_dismiss=False)
+
+        def _is_image(fp: str) -> bool:
+            ext = os.path.splitext(fp.lower())[1]
+            return ext in {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+        def _is_video(fp: str) -> bool:
+            ext = os.path.splitext(fp.lower())[1]
+            return ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
+
+        def apply_selection(*_):
+            try:
+                selected = list(chooser.selection or [])
+                images = [x for x in selected if _is_image(x)]
+                videos = [x for x in selected if _is_video(x)]
+                others = [x for x in selected if (not _is_image(x)) and (not _is_video(x))]
+                if others:
+                    _popup("Error", "Only image/video files are allowed.")
+                    return
+                if len(images) > 10:
+                    _popup("Error", "Maximum 10 images are allowed.")
+                    return
+                if len(videos) > 1:
+                    _popup("Error", "Maximum 1 video is allowed.")
+                    return
+                self._selected_media = images + videos
+                try:
+                    if "media_summary" in self.ids:
+                        parts: list[str] = []
+                        if images:
+                            parts.append(f"{len(images)} image(s)")
+                        if videos:
+                            parts.append("1 video")
+                        self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
+                except Exception:
+                    pass
+                popup.dismiss()
+            except Exception:
+                popup.dismiss()
+
+        buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+        btn_cancel = HoverButton(text="Cancel", background_color=(0.7, 0.2, 0.2, 1))
+        btn_ok = HoverButton(text="Use Selected", background_color=(0.2, 0.6, 0.9, 1))
+        buttons.add_widget(btn_cancel)
+        buttons.add_widget(btn_ok)
+
+        root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+        root.add_widget(Label(text="Select up to 10 images and optionally 1 video."))
+        root.add_widget(chooser)
+        root.add_widget(buttons)
+        popup.content = root
+        btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+        btn_ok.bind(on_release=apply_selection)
+        popup.open()
+
     def submit_listing(self):
         """
         Create the ad (goes to admin review).
@@ -909,7 +975,7 @@ class OwnerAddPropertyScreen(Screen):
             return
 
         from threading import Thread
-        from frontend_app.utils.api import ApiError, api_owner_create_property
+        # api_owner_create_property imported at module level
 
         def work():
             try:
@@ -927,15 +993,29 @@ class OwnerAddPropertyScreen(Screen):
                     "contact_phone": contact_phone,
                     "contact_email": "",
                     "amenities": [],
-                    # Mobile builds may not have GPS access configured; send best-effort defaults.
-                    "gps_lat": 0.0,
-                    "gps_lng": 0.0,
+                    # GPS is optional; omit by sending nulls.
+                    "gps_lat": None,
+                    "gps_lng": None,
                 }
                 res = api_owner_create_property(payload=payload)
                 pid = res.get("id")
                 status = res.get("status") or "pending"
-                Clock.schedule_once(lambda *_: _popup("Submitted", f"Ad created (#{pid}) • status: {status}"), 0)
-                Clock.schedule_once(lambda *_: setattr(self.manager, "current", "owner_dashboard") if self.manager else None, 0)
+
+                # Upload selected media (best-effort).
+                selected = list(getattr(self, "_selected_media", []) or [])
+                if pid and selected:
+                    for i, fp in enumerate(selected):
+                        api_upload_property_media(property_id=int(pid), file_path=str(fp), sort_order=i)
+
+                def done(*_):
+                    msg = f"Ad created (#{pid}) • status: {status}"
+                    if selected:
+                        msg += f"\nUploaded {len(selected)} file(s)."
+                    _popup("Submitted", msg)
+                    if self.manager:
+                        self.manager.current = "owner_dashboard"
+
+                Clock.schedule_once(done, 0)
             except ApiError as e:
                 msg = str(e)
                 Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
