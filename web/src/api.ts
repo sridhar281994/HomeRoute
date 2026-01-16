@@ -156,6 +156,7 @@ export function listProperties(params: {
   max_price?: string;
   state?: string;
   district?: string;
+  area?: string;
   sort_budget?: string;
   posted_within_days?: string;
 }) {
@@ -167,10 +168,42 @@ export function listProperties(params: {
   // Location is mandatory for guest browsing; backend enforces this too.
   if (params.state) sp.set("state", params.state);
   if (params.district) sp.set("district", params.district);
+  if (params.area) sp.set("area", params.area);
   if (params.sort_budget) sp.set("sort_budget", params.sort_budget);
   if (params.posted_within_days) sp.set("posted_within_days", params.posted_within_days);
   const qs = sp.toString() ? `?${sp.toString()}` : "";
   return api<{ items: any[] }>(`/properties${qs}`);
+}
+
+export function listNearbyProperties(params: {
+  lat: number;
+  lon: number;
+  radius_km?: number;
+  district?: string;
+  state?: string;
+  area?: string;
+  q?: string;
+  rent_sale?: string;
+  property_type?: string;
+  max_price?: string;
+  posted_within_days?: string;
+  limit?: number;
+}) {
+  const sp = new URLSearchParams();
+  sp.set("lat", String(params.lat));
+  sp.set("lon", String(params.lon));
+  if (params.radius_km != null) sp.set("radius_km", String(params.radius_km));
+  if (params.district) sp.set("district", params.district);
+  if (params.state) sp.set("state", params.state);
+  if (params.area) sp.set("area", params.area);
+  if (params.q) sp.set("q", params.q);
+  if (params.rent_sale) sp.set("rent_sale", params.rent_sale);
+  if (params.property_type) sp.set("property_type", params.property_type);
+  if (params.max_price) sp.set("max_price", params.max_price);
+  if (params.posted_within_days) sp.set("posted_within_days", params.posted_within_days);
+  if (params.limit != null) sp.set("limit", String(params.limit));
+  const qs = sp.toString() ? `?${sp.toString()}` : "";
+  return api<{ items: any[] }>(`/properties/nearby${qs}`);
 }
 
 export function getProperty(id: number) {
