@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   getCategoryCatalog,
-  getMe,
   getSession,
   listLocationAreas,
   listLocationDistricts,
@@ -17,17 +16,9 @@ export default function HomePage() {
   const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
-  const [state, setState] = useState<string>(() => {
-    const s = getSession();
-    const fromProfile = String((s.user as any)?.state || "").trim();
-    return fromProfile || localStorage.getItem("pd_state") || "";
-  });
-  const [district, setDistrict] = useState<string>(() => {
-    const s = getSession();
-    const fromProfile = String((s.user as any)?.district || "").trim();
-    return fromProfile || localStorage.getItem("pd_district") || "";
-  });
-  const [area, setArea] = useState<string>(() => localStorage.getItem("pd_area") || "");
+  const [state, setState] = useState<string>("");
+  const [district, setDistrict] = useState<string>("");
+  const [area, setArea] = useState<string>("");
   const [radiusKm, setRadiusKm] = useState<string>(() => localStorage.getItem("pd_radius_km") || "20");
   const [sortBudget, setSortBudget] = useState<string>("");
   const [postedWithinDays, setPostedWithinDays] = useState<string>("");
@@ -88,13 +79,12 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    // Auto-load once when default state+district are known.
+    // Auto-load once with "Any" defaults (no location filter).
     if (didAutoLoad) return;
-    if (!(state || "").trim() || !(district || "").trim()) return;
     setDidAutoLoad(true);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [didAutoLoad, state, district]);
+  }, [didAutoLoad]);
 
   useEffect(() => {
     // If GPS becomes available after the first load, reload once to show nearby + distance info.
@@ -117,7 +107,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    // Default state/district from user profile (if logged-in). Also avoid leaking location filters across users.
+    // Avoid leaking location filters across users; keep "Any" as default.
     (async () => {
       try {
         const s = getSession();
@@ -134,14 +124,6 @@ export default function HomePage() {
           setDistrict("");
           setArea("");
         }
-
-        // Prefer live profile (server is source of truth).
-        const me = await getMe();
-        const u: any = me.user || {};
-        const st = String(u.state || "").trim();
-        const dist = String(u.district || "").trim();
-        if (st && !(state || "").trim()) setState(st);
-        if (dist && !(district || "").trim()) setDistrict(dist);
       } catch {
         // ignore
       }
@@ -393,7 +375,7 @@ export default function HomePage() {
                 </div>
                 ) : (
                   <div className="muted" style={{ marginTop: 6 }}>
-                    No photos.
+                    Photos will appear once uploaded.
                   </div>
                 )}
 

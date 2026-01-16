@@ -5,6 +5,7 @@ import base64
 import hashlib
 import io
 import json
+import mimetypes
 import os
 import re
 import secrets
@@ -22,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -1552,13 +1553,6 @@ def list_properties(
     state_in = (state or "").strip()
     district_in = (district or "").strip()
     area_in = (area or "").strip()
-    if me:
-        # If a logged-in user didn't pass filters, fall back to their profile.
-        if not state_in and (me.state or "").strip():
-            state_in = (me.state or "").strip()
-        if not district_in and (me.district or "").strip():
-            district_in = (me.district or "").strip()
-
     state_norm = _norm_key(state_in)
     district_norm = _norm_key(district_in)
     area_norm = _norm_key(area_in)
@@ -1566,6 +1560,7 @@ def list_properties(
     # Only approved listings from approved (non-suspended) owners are visible.
     stmt = (
         select(Property, User)
+        .options(selectinload(Property.images))
         .join(User, Property.owner_id == User.id)
         .where((Property.status == "approved") & (User.approval_status == "approved"))
     )
@@ -1693,7 +1688,7 @@ def list_properties(
 
 @app.get("/properties/{property_id}")
 def get_property(property_id: int, db: Annotated[Session, Depends(get_db)]):
-    p = db.get(Property, int(property_id))
+    p = db.execute(select(Property).options(selectinload(Property.images)).where(Property.id == int(property_id))).scalar_one_or_none()
     if not p or p.status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
     owner = db.get(User, int(p.owner_id))
@@ -1750,6 +1745,7 @@ def list_nearby_properties(
 
     stmt = (
         select(Property, User)
+        .options(selectinload(Property.images))
         .join(User, Property.owner_id == User.id)
         .where((Property.status == "approved") & (User.approval_status == "approved"))
         .where(Property.gps_lat.is_not(None))
@@ -1956,7 +1952,7 @@ def owner_list_properties(
 ):
     if me.role not in {"user", "owner", "admin"}:
         raise HTTPException(status_code=403, detail="Login required")
-    stmt = select(Property).where(Property.owner_id == me.id).order_by(Property.created_at.desc(), Property.id.desc())
+    stmt = select(Property).options(selectinload(Property.images)).where(Property.owner_id == me.id).order_by(Property.created_at.desc(), Property.id.desc())
     items = [_property_out(p, owner=me, include_unapproved_images=True, include_internal=True) for p in db.execute(stmt).scalars().all()]
     return {"items": items}
 
@@ -2110,7 +2106,9 @@ def admin_pending_properties(
         raise HTTPException(status_code=403, detail="Admin only")
     items = [
         _property_out(p, include_unapproved_images=True, include_internal=True)
-        for p in db.execute(select(Property).where(Property.status == "pending").order_by(Property.id.desc())).scalars().all()
+        for p in db.execute(select(Property).options(selectinload(Property.images)).where(Property.status == "pending").order_by(Property.id.desc()))
+        .scalars()
+        .all()
     ]
     return {"items": items}
 
@@ -2501,9 +2499,22 @@ def upload_property_image(
     if me.role == "owner" and (me.approval_status or "") != "approved":
         raise HTTPException(status_code=403, detail="Owner account is pending admin approval")
 
-    content_type = (file.content_type or "").lower()
+    content_type = (file.content_type or "").lower().strip()
+    guessed_type = (mimetypes.guess_type(file.filename or "")[0] or "").lower().strip()
+    if not content_type or content_type == "application/octet-stream":
+        content_type = guessed_type or content_type
     is_image = content_type.startswith("image/")
     is_video = content_type.startswith("video/")
+    if not is_image and not is_video:
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        image_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+        video_exts = {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
+        if ext in image_exts:
+            is_image = True
+            content_type = guessed_type or "image/*"
+        elif ext in video_exts:
+            is_video = True
+            content_type = guessed_type or "video/*"
     if not is_image and not is_video:
         raise HTTPException(status_code=400, detail="Only image/video uploads are allowed")
 
