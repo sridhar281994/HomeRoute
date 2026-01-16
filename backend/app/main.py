@@ -429,85 +429,63 @@ def _public_image_url(file_path: str) -> str:
     return f"/uploads/{fp}"
 
 
-def _districts_towns_ts_path() -> str:
-    # Default assumes backend/ and web/ are in the same repo.
-    default = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "src", "districtsTowns.ts"))
-    return (os.environ.get("DISTRICTS_TOWNS_TS_PATH") or default).strip() or default
+def _locations_json_path() -> str:
+    # Backend-owned location dataset (single source of truth).
+    default = os.path.abspath(os.path.join(os.path.dirname(__file__), "locations.json"))
+    return (os.environ.get("LOCATIONS_JSON_PATH") or default).strip() or default
 
 
 @lru_cache(maxsize=1)
-def _load_districts_towns() -> dict[str, dict[str, list[str]]]:
+def _load_locations() -> dict[str, dict[str, list[str]]]:
     """
-    Loads the District → State → Area dataset from `districtsTowns.ts`.
-
-    NOTE: For backend validation, the TS file must contain a JSON-compatible object
-    literal (double-quoted keys/strings, no trailing commas).
+    Load State → District → Area dataset.
+    Shape: { "Tamil Nadu": { "Chennai": ["Guindy", ...] } }
     """
-    p = _districts_towns_ts_path()
+    p = _locations_json_path()
     if not os.path.exists(p):
         raise HTTPException(status_code=503, detail=f"Location dataset missing at {p}")
     try:
-        raw = open(p, "r", encoding="utf-8").read()
+        data = json.loads(open(p, "r", encoding="utf-8").read() or "{}")
     except Exception:
         raise HTTPException(status_code=503, detail="Failed to read location dataset")
-
-    # Strip common TS wrappers.
-    s = raw
-    s = re.sub(r"^\s*export\s+default\s+", "", s, flags=re.MULTILINE)
-    s = re.sub(r"^\s*export\s+const\s+\w+\s*=\s*", "", s, flags=re.MULTILINE)
-    s = re.sub(r"\s+as\s+const\s*;?\s*$", "", s, flags=re.MULTILINE)
-    s = s.strip().rstrip(";").strip()
-
-    # Extract the first object literal.
-    i = s.find("{")
-    j = s.rfind("}")
-    if i < 0 or j < 0 or j <= i:
-        raise HTTPException(status_code=503, detail="Invalid location dataset format")
-    obj = s[i : j + 1]
-
-    try:
-        data = json.loads(obj)
-    except Exception:
-        raise HTTPException(status_code=503, detail="Location dataset must be valid JSON in the TS file")
-
     if not isinstance(data, dict) or not data:
         raise HTTPException(status_code=503, detail="Location dataset is empty")
 
-    # Validate shape: {district: {state: [areas...]}}
     out: dict[str, dict[str, list[str]]] = {}
-    for d, states in data.items():
-        if not isinstance(d, str) or not d.strip():
+    for st, districts in data.items():
+        if not isinstance(st, str) or not st.strip():
             continue
-        if not isinstance(states, dict):
+        if not isinstance(districts, dict):
             continue
-        out_states: dict[str, list[str]] = {}
-        for st, areas in states.items():
-            if not isinstance(st, str) or not st.strip():
+        dd: dict[str, list[str]] = {}
+        for d, areas in districts.items():
+            if not isinstance(d, str) or not d.strip():
                 continue
-            if not isinstance(areas, list):
-                continue
-            out_states[st.strip()] = [str(a).strip() for a in areas if str(a).strip()]
-        if out_states:
-            out[d.strip()] = out_states
+            if isinstance(areas, list):
+                dd[d.strip()] = [str(a).strip() for a in areas if str(a).strip()]
+            else:
+                dd[d.strip()] = []
+        if dd:
+            out[st.strip()] = dd
     if not out:
         raise HTTPException(status_code=503, detail="Location dataset has no valid entries")
     return out
 
 
-def _validate_location_selection(*, district: str, state: str, area: str) -> None:
-    data = _load_districts_towns()
-    d = (district or "").strip()
+def _validate_location_selection(*, state: str, district: str, area: str) -> None:
+    data = _load_locations()
     st = (state or "").strip()
+    d = (district or "").strip()
     a = (area or "").strip()
-    if not d or not st or not a:
-        raise HTTPException(status_code=400, detail="District, State, and Area are required")
-    if d not in data:
-        raise HTTPException(status_code=400, detail="Invalid District")
-    if st not in (data.get(d) or {}):
-        raise HTTPException(status_code=400, detail="Invalid State for District")
-    areas = (data.get(d) or {}).get(st) or []
+    if not st or not d or not a:
+        raise HTTPException(status_code=400, detail="State, District, and Area are required")
+    if st not in data:
+        raise HTTPException(status_code=400, detail="Invalid State")
+    if d not in (data.get(st) or {}):
+        raise HTTPException(status_code=400, detail="Invalid District for State")
+    areas = (data.get(st) or {}).get(d) or []
     if a not in areas:
-        raise HTTPException(status_code=400, detail="Invalid Area for District/State")
+        raise HTTPException(status_code=400, detail="Invalid Area for State/District")
 
 
 def _user_out(u: User) -> dict[str, Any]:
@@ -835,6 +813,34 @@ def meta_categories() -> dict[str, Any]:
         "owner_categories": [x.get("label") for x in flat_items if x.get("label")],
         "flat_items": flat_items,
     }
+
+
+# -----------------------
+# Locations (State/District/Area)
+# -----------------------
+@app.get("/locations/states")
+def location_states() -> dict[str, Any]:
+    data = _load_locations()
+    states = sorted([s for s in data.keys() if s], key=lambda x: x.lower())
+    return {"items": states}
+
+
+@app.get("/locations/districts")
+def location_districts(state: str = Query(..., min_length=1)) -> dict[str, Any]:
+    st = (state or "").strip()
+    data = _load_locations()
+    districts = sorted(list((data.get(st) or {}).keys()), key=lambda x: x.lower())
+    return {"items": districts}
+
+
+@app.get("/locations/areas")
+def location_areas(state: str = Query(..., min_length=1), district: str = Query(..., min_length=1)) -> dict[str, Any]:
+    st = (state or "").strip()
+    d = (district or "").strip()
+    data = _load_locations()
+    areas = (data.get(st) or {}).get(d) or []
+    areas = sorted([a for a in areas if a], key=lambda x: x.lower())
+    return {"items": areas}
 
 
 # -----------------------
@@ -1998,7 +2004,7 @@ def owner_create_property(
     district = (data.district or "").strip()
     state = (data.state or "").strip()
     area = (data.area or "").strip()
-    _validate_location_selection(district=district, state=state, area=area)
+    _validate_location_selection(state=state, district=district, area=area)
 
     lat = data.gps_lat
     lng = data.gps_lng
@@ -2653,6 +2659,7 @@ async def spa_fallback_404(request, exc: StarletteHTTPException):
                 (
                     "/auth",
                     "/assets",
+                    "/locations",
                     "/properties",
                     "/owner",
                     "/admin",
