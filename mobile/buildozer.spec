@@ -43,6 +43,9 @@ android.archs = arm64-v8a,armeabi-v7a
 # AndroidX is required by modern dependencies/toolchains.
 android.enable_androidx = True
 
+# Google Sign-In (used by "Login via Gmail").
+android.gradle_dependencies = com.google.android.gms:play-services-auth:21.0.0
+
 # Automatically accept Android SDK licenses in CI/non-interactive builds.
 android.accept_sdk_license = True
 

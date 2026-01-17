@@ -134,6 +134,16 @@ def api_login_verify_otp(*, identifier: str, password: str, otp: str) -> dict[st
     return _handle(resp)
 
 
+def api_login_google(*, id_token: str) -> dict[str, Any]:
+    """
+    Login/register via Google Sign-In ID token.
+    Backend endpoint: POST /auth/google
+    """
+    url = f"{_base_url()}/auth/google"
+    resp = requests.post(url, json={"id_token": id_token}, timeout=20, verify=_verify_ca_bundle())
+    return _handle(resp)
+
+
 def api_guest() -> dict[str, Any]:
     url = f"{_base_url()}/auth/guest"
     resp = requests.post(url, json={}, timeout=15, verify=_verify_ca_bundle())
