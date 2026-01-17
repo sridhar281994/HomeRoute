@@ -48,6 +48,21 @@
     # Use the existing `background_color` set by screens as the base color.
     # Hover/pressed is computed automatically (desktop hover; press everywhere).
     canvas.before:
+        PushMatrix:
+        Scale:
+            x: self.ux_scale
+            y: self.ux_scale
+            z: 1
+            origin: self.center
+
+        # Soft shadow (skip for transparent buttons / disabled).
+        Color:
+            rgba: (0, 0, 0, 0) if (self.disabled or self.background_color[3] < 0.05) else (0, 0, 0, self.shadow_alpha)
+        RoundedRectangle:
+            pos: self.x, self.y - dp(self.shadow_offset_y)
+            size: self.size
+            radius: [14]
+
         Color:
             rgba:
                 (0, 0, 0, 0) if self.background_color[3] == 0 else (
@@ -67,11 +82,99 @@
             pos: self.pos
             size: self.size
             radius: [14]
+
+        # Ripple (clipped to rounded rectangle).
+        StencilPush:
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14]
+        StencilUse:
+        Color:
+            rgba: (1, 1, 1, 0) if self.disabled else (1, 1, 1, self.ripple_alpha)
+        Ellipse:
+            size: (self.ripple_radius * 2.0), (self.ripple_radius * 2.0)
+            pos: (self.ripple_pos[0] - self.ripple_radius), (self.ripple_pos[1] - self.ripple_radius)
+        StencilUnUse:
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14]
+        StencilPop:
+
         Color:
             rgba: (1, 1, 1, 0) if self.background_color[3] == 0 else (1, 1, 1, 0.85)
         Line:
             width: 1.1
             rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
+    canvas.after:
+        PopMatrix:
+
+<AppToggle@HoverToggleButton>:
+    markup: True
+    font_size: sp(16)
+    bold: True
+    font_name: "AppFont"
+    background_normal: ""
+    background_down: ""
+    background_disabled_normal: ""
+    background_color: BTN_BG
+    color: (1, 1, 1, 1) if self.state == "down" else ACCENT_PURPLE
+    canvas.before:
+        PushMatrix:
+        Scale:
+            x: self.ux_scale
+            y: self.ux_scale
+            z: 1
+            origin: self.center
+
+        Color:
+            rgba: (0, 0, 0, 0) if (self.disabled or self.background_color[3] < 0.05) else (0, 0, 0, self.shadow_alpha)
+        RoundedRectangle:
+            pos: self.x, self.y - dp(self.shadow_offset_y)
+            size: self.size
+            radius: [14]
+
+        Color:
+            rgba:
+                (0, 0, 0, 0) if self.background_color[3] == 0 else (
+                ACCENT_PURPLE if self.state == "down" else (
+                min(1.0, self.background_color[0] + 0.08),
+                min(1.0, self.background_color[1] + 0.08),
+                min(1.0, self.background_color[2] + 0.08),
+                self.background_color[3]
+                ) if self.hovered else self.background_color
+                )
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14]
+
+        StencilPush:
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14]
+        StencilUse:
+        Color:
+            rgba: (1, 1, 1, 0) if self.disabled else (1, 1, 1, self.ripple_alpha)
+        Ellipse:
+            size: (self.ripple_radius * 2.0), (self.ripple_radius * 2.0)
+            pos: (self.ripple_pos[0] - self.ripple_radius), (self.ripple_pos[1] - self.ripple_radius)
+        StencilUnUse:
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14]
+        StencilPop:
+
+        Color:
+            rgba: (1, 1, 1, 0) if self.background_color[3] == 0 else (1, 1, 1, 0.85)
+        Line:
+            width: 1.1
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
+    canvas.after:
+        PopMatrix:
 
 <PrettySpinnerOption@SpinnerOption>:
     background_normal: ""
@@ -1062,12 +1165,12 @@
                     size_hint_y: None
                     height: dp(48)
                     spacing: dp(10)
-                    ToggleButton:
+                    AppToggle:
                         text: "[b]Owner[/b]  [font=EmojiFont]🏢[/font]"
                         group: "role_group"
                         on_state:
                             if self.state == "down": root.set_role("owner")
-                    ToggleButton:
+                    AppToggle:
                         text: "[b]Customer[/b]  [font=EmojiFont]🧍[/font]"
                         group: "role_group"
                         state: "down"
