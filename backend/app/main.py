@@ -29,7 +29,10 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 import requests
 
-from app.config import allowed_hosts, enforce_secure_secrets, otp_exp_minutes
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_auth_requests
+
+from app.config import allowed_hosts, enforce_secure_secrets, google_oauth_client_ids, otp_exp_minutes, app_env
 from app.db import session_scope
 from app.mailer import EmailSendError, send_email, send_otp_email
 from app.rate_limit import limiter
@@ -686,6 +689,10 @@ class LoginVerifyOtpIn(BaseModel):
     otp: str
 
 
+class GoogleLoginIn(BaseModel):
+    id_token: str = Field(..., min_length=1)
+
+
 class ForgotRequestOtpIn(BaseModel):
     identifier: str
 
@@ -964,6 +971,90 @@ def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_
         "access_token": token,
         "user": _user_out(user),
     }
+
+
+@app.post("/auth/google")
+def auth_google(data: GoogleLoginIn, db: Annotated[Session, Depends(get_db)]):
+    """
+    Google Sign-In:
+    - Verify Google ID token signature/issuer
+    - Enforce audience when GOOGLE_OAUTH_CLIENT_ID(S) is configured
+    - Create (or reuse) a user by verified email
+    - Issue a standard JWT access token
+    """
+    token_raw = (data.id_token or "").strip()
+    if not token_raw:
+        raise HTTPException(status_code=400, detail="Missing id_token")
+
+    allowed_aud = google_oauth_client_ids()
+    if app_env() in {"prod", "production"} and not allowed_aud:
+        raise HTTPException(status_code=500, detail="Google Sign-In is not configured (missing GOOGLE_OAUTH_CLIENT_ID)")
+
+    try:
+        info = google_id_token.verify_oauth2_token(token_raw, google_auth_requests.Request())
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+    aud = str(info.get("aud") or "")
+    if allowed_aud and aud not in set(allowed_aud):
+        raise HTTPException(status_code=401, detail="Google token audience mismatch")
+
+    email = str(info.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=401, detail="Google token missing email")
+    if info.get("email_verified") is False:
+        raise HTTPException(status_code=401, detail="Google email is not verified")
+
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if not user:
+        # Create a new "user" role account for Google Sign-In.
+        base = re.sub(r"[^a-zA-Z0-9_]+", "_", (email.split("@", 1)[0] or "user")).strip("_")
+        base = base or "user"
+        username = base
+        # Ensure unique username.
+        for _ in range(20):
+            exists = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+            if not exists:
+                break
+            username = f"{base}_{secrets.randbelow(10_000)}"
+        else:
+            username = f"user_{secrets.token_hex(4)}"
+
+        display_name = str(info.get("name") or info.get("given_name") or "").strip()
+        user = User(
+            email=email,
+            username=username,
+            phone="",
+            phone_normalized="",
+            name=display_name,
+            state="",
+            district="",
+            gender="",
+            role="user",
+            owner_category="",
+            company_name="",
+            company_name_normalized="",
+            company_description="",
+            company_address="",
+            company_address_normalized="",
+            approval_status="approved",
+            password_hash=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="User already exists")
+        db.add(Subscription(user_id=user.id, status="inactive", provider="google_play"))
+    else:
+        # Ensure a subscription row exists (older rows may be missing).
+        sub = db.execute(select(Subscription).where(Subscription.user_id == user.id)).scalar_one_or_none()
+        if not sub:
+            db.add(Subscription(user_id=user.id, status="inactive", provider="google_play"))
+
+    token = create_access_token(user_id=user.id, role=user.role)
+    return {"access_token": token, "user": _user_out(user)}
 
 
 @app.post("/auth/guest")
