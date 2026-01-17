@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 import certifi
@@ -8,16 +9,29 @@ import requests
 
 from frontend_app.utils.storage import get_token
 
-# Production API base URL (hardcoded as requested).
-API_BASE_URL = "https://homeroute-pt0c.onrender.com"
+# Production API base URL (override with HOME_ROUTE_API_BASE_URL).
+API_BASE_URL = os.environ.get("HOME_ROUTE_API_BASE_URL") or "https://homeroute-pt0c.onrender.com"
+DEFAULT_TIMEOUT = (10, 35)
+CONNECT_RETRIES = 2
+RETRY_BACKOFF_SECONDS = 0.6
+_SESSION = requests.Session()
 
 
 class ApiError(Exception):
     pass
 
 
+def _normalize_base_url(value: str) -> str:
+    url = (value or "").strip().rstrip("/")
+    if not url:
+        return ""
+    if url.startswith(("http://", "https://")):
+        return url
+    return f"https://{url}"
+
+
 def _base_url() -> str:
-    return API_BASE_URL.rstrip("/")
+    return _normalize_base_url(API_BASE_URL)
 
 
 def to_api_url(url: str) -> str:
@@ -56,12 +70,29 @@ def _verify_ca_bundle() -> str:
     return certifi.where()
 
 
+def _request(method: str, url: str, **kwargs) -> requests.Response:
+    timeout = kwargs.pop("timeout", DEFAULT_TIMEOUT)
+    verify = kwargs.pop("verify", _verify_ca_bundle())
+    last_exc: Exception | None = None
+    for attempt in range(CONNECT_RETRIES + 1):
+        try:
+            return _SESSION.request(method, url, timeout=timeout, verify=verify, **kwargs)
+        except requests.exceptions.ConnectionError as exc:
+            last_exc = exc
+            if attempt >= CONNECT_RETRIES:
+                raise
+            time.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
+    if last_exc:
+        raise last_exc
+    raise requests.exceptions.ConnectionError("Request failed")
+
+
 # -----------------------
 # Metadata
 # -----------------------
 def api_meta_categories() -> dict[str, Any]:
     url = f"{_base_url()}/meta/categories"
-    resp = requests.get(url, timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
@@ -70,19 +101,19 @@ def api_meta_categories() -> dict[str, Any]:
 # -----------------------
 def api_location_states() -> dict[str, Any]:
     url = f"{_base_url()}/locations/states"
-    resp = requests.get(url, timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
 def api_location_districts(*, state: str) -> dict[str, Any]:
     url = f"{_base_url()}/locations/districts"
-    resp = requests.get(url, params={"state": state}, timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, params={"state": state}, timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
 def api_location_areas(*, state: str, district: str) -> dict[str, Any]:
     url = f"{_base_url()}/locations/areas"
-    resp = requests.get(url, params={"state": state, "district": district}, timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, params={"state": state, "district": district}, timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
@@ -101,7 +132,8 @@ def api_register(
     owner_category: str = "",
 ) -> dict[str, Any]:
     url = f"{_base_url()}/auth/register"
-    resp = requests.post(
+    resp = _request(
+        "POST",
         url,
         json={
             "email": email,
@@ -122,14 +154,16 @@ def api_register(
 
 def api_login_request_otp(*, identifier: str, password: str) -> dict[str, Any]:
     url = f"{_base_url()}/auth/login/request-otp"
-    resp = requests.post(url, json={"identifier": identifier, "password": password}, timeout=15, verify=_verify_ca_bundle())
+    resp = _request(
+        "POST", url, json={"identifier": identifier, "password": password}, timeout=DEFAULT_TIMEOUT, verify=_verify_ca_bundle()
+    )
     return _handle(resp)
 
 
 def api_login_verify_otp(*, identifier: str, password: str, otp: str) -> dict[str, Any]:
     url = f"{_base_url()}/auth/login/verify-otp"
-    resp = requests.post(
-        url, json={"identifier": identifier, "password": password, "otp": otp}, timeout=15, verify=_verify_ca_bundle()
+    resp = _request(
+        "POST", url, json={"identifier": identifier, "password": password, "otp": otp}, timeout=DEFAULT_TIMEOUT, verify=_verify_ca_bundle()
     )
     return _handle(resp)
 
@@ -140,28 +174,29 @@ def api_login_google(*, id_token: str) -> dict[str, Any]:
     Backend endpoint: POST /auth/google
     """
     url = f"{_base_url()}/auth/google"
-    resp = requests.post(url, json={"id_token": id_token}, timeout=20, verify=_verify_ca_bundle())
+    resp = _request("POST", url, json={"id_token": id_token}, timeout=20, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
 def api_guest() -> dict[str, Any]:
     url = f"{_base_url()}/auth/guest"
-    resp = requests.post(url, json={}, timeout=15, verify=_verify_ca_bundle())
+    resp = _request("POST", url, json={}, timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
 def api_forgot_password_request_otp(*, identifier: str) -> dict[str, Any]:
     url = f"{_base_url()}/auth/forgot/request-otp"
-    resp = requests.post(url, json={"identifier": identifier}, timeout=15, verify=_verify_ca_bundle())
+    resp = _request("POST", url, json={"identifier": identifier}, timeout=DEFAULT_TIMEOUT, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
 def api_forgot_password_reset(*, identifier: str, otp: str, new_password: str) -> dict[str, Any]:
     url = f"{_base_url()}/auth/forgot/reset"
-    resp = requests.post(
+    resp = _request(
+        "POST",
         url,
         json={"identifier": identifier, "otp": otp, "new_password": new_password},
-        timeout=15,
+        timeout=DEFAULT_TIMEOUT,
         verify=_verify_ca_bundle(),
     )
     return _handle(resp)
@@ -197,7 +232,7 @@ def api_list_properties(
         "sort_budget": (sort_budget_norm or None),
         "posted_within_days": ((posted_within_days or "").strip() or None),
     }
-    resp = requests.get(url, params=params, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, params=params, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
@@ -236,7 +271,7 @@ def api_list_nearby_properties(
         "posted_within_days": ((posted_within_days or "").strip() or None),
         "limit": int(limit) if limit is not None else None,
     }
-    resp = requests.get(url, params=params, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, params=params, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
@@ -246,19 +281,19 @@ def api_owner_list_properties() -> dict[str, Any]:
     Backend endpoint: GET /owner/properties
     """
     url = f"{_base_url()}/owner/properties"
-    resp = requests.get(url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
 def api_get_property(property_id: int) -> dict[str, Any]:
     url = f"{_base_url()}/properties/{int(property_id)}"
-    resp = requests.get(url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
 def api_get_property_contact(property_id: int) -> dict[str, Any]:
     url = f"{_base_url()}/properties/{int(property_id)}/contact"
-    resp = requests.get(url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
@@ -268,7 +303,7 @@ def api_owner_create_property(*, payload: dict[str, Any]) -> dict[str, Any]:
     Backend endpoint: POST /owner/properties
     """
     url = f"{_base_url()}/owner/properties"
-    resp = requests.post(url, json=payload, headers=_headers(), timeout=20, verify=_verify_ca_bundle())
+    resp = _request("POST", url, json=payload, headers=_headers(), timeout=20, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
@@ -280,7 +315,8 @@ def api_upload_property_media(*, property_id: int, file_path: str, sort_order: i
     url = f"{_base_url()}/properties/{int(property_id)}/images"
     with open(file_path, "rb") as f:
         files = {"file": (os.path.basename(file_path), f)}
-        resp = requests.post(
+        resp = _request(
+            "POST",
             url,
             params={"sort_order": int(sort_order)},
             files=files,
@@ -295,7 +331,7 @@ def api_upload_property_media(*, property_id: int, file_path: str, sort_order: i
 # -----------------------
 def api_subscription_status() -> dict[str, Any]:
     url = f"{_base_url()}/me/subscription"
-    resp = requests.get(url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
@@ -304,13 +340,13 @@ def api_subscription_status() -> dict[str, Any]:
 # -----------------------
 def api_me() -> dict[str, Any]:
     url = f"{_base_url()}/me"
-    resp = requests.get(url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request("GET", url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
 def api_me_update(*, name: str) -> dict[str, Any]:
     url = f"{_base_url()}/me"
-    resp = requests.patch(url, json={"name": name}, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request("PATCH", url, json={"name": name}, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
@@ -318,40 +354,54 @@ def api_me_upload_profile_image(*, file_path: str) -> dict[str, Any]:
     url = f"{_base_url()}/me/profile-image"
     with open(file_path, "rb") as f:
         files = {"file": (os.path.basename(file_path), f)}
-        resp = requests.post(url, files=files, headers=_headers(), timeout=30, verify=_verify_ca_bundle())
+        resp = _request("POST", url, files=files, headers=_headers(), timeout=30, verify=_verify_ca_bundle())
     return _handle(resp)
 
 
 def api_me_change_email_request_otp(*, new_email: str) -> dict[str, Any]:
     url = f"{_base_url()}/me/change-email/request-otp"
-    resp = requests.post(url, json={"new_email": new_email}, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request(
+        "POST", url, json={"new_email": new_email}, headers=_headers(), timeout=DEFAULT_TIMEOUT, verify=_verify_ca_bundle()
+    )
     return _handle(resp)
 
 
 def api_me_change_email_verify(*, new_email: str, otp: str) -> dict[str, Any]:
     url = f"{_base_url()}/me/change-email/verify"
-    resp = requests.post(
-        url, json={"new_email": new_email, "otp": otp}, headers=_headers(), timeout=15, verify=_verify_ca_bundle()
+    resp = _request(
+        "POST",
+        url,
+        json={"new_email": new_email, "otp": otp},
+        headers=_headers(),
+        timeout=DEFAULT_TIMEOUT,
+        verify=_verify_ca_bundle(),
     )
     return _handle(resp)
 
 
 def api_me_change_phone_request_otp(*, new_phone: str) -> dict[str, Any]:
     url = f"{_base_url()}/me/change-phone/request-otp"
-    resp = requests.post(url, json={"new_phone": new_phone}, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request(
+        "POST", url, json={"new_phone": new_phone}, headers=_headers(), timeout=DEFAULT_TIMEOUT, verify=_verify_ca_bundle()
+    )
     return _handle(resp)
 
 
 def api_me_change_phone_verify(*, new_phone: str, otp: str) -> dict[str, Any]:
     url = f"{_base_url()}/me/change-phone/verify"
-    resp = requests.post(
-        url, json={"new_phone": new_phone, "otp": otp}, headers=_headers(), timeout=15, verify=_verify_ca_bundle()
+    resp = _request(
+        "POST",
+        url,
+        json={"new_phone": new_phone, "otp": otp},
+        headers=_headers(),
+        timeout=DEFAULT_TIMEOUT,
+        verify=_verify_ca_bundle(),
     )
     return _handle(resp)
 
 
 def api_me_delete() -> dict[str, Any]:
     url = f"{_base_url()}/me"
-    resp = requests.delete(url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    resp = _request("DELETE", url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
