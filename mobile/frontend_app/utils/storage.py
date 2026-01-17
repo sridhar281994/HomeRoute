@@ -6,9 +6,24 @@ from typing import Any
 
 
 def _store_path() -> str:
-    # Keep it simple + portable: store next to project root when running locally.
-    # On mobile, you can swap this to App.get_running_app().user_data_dir later.
-    return os.environ.get("APP_SESSION_PATH", os.path.join(os.getcwd(), ".session.json"))
+    """
+    Return a writable path for small app state (session/config).
+
+    - Desktop/dev: allow overriding via APP_SESSION_PATH, else use CWD.
+    - Android/iOS: use Kivy's user_data_dir (writable sandbox).
+    """
+    override = (os.environ.get("APP_SESSION_PATH") or "").strip()
+    if override:
+        return override
+    try:
+        from kivy.app import App
+
+        app = App.get_running_app()
+        if app and getattr(app, "user_data_dir", None):
+            return os.path.join(str(app.user_data_dir), ".session.json")
+    except Exception:
+        pass
+    return os.path.join(os.getcwd(), ".session.json")
 
 
 def _read() -> dict[str, Any]:
@@ -80,4 +95,22 @@ def get_token() -> str:
 
 def get_user() -> dict[str, Any]:
     return dict(get_session().get("user") or {})
+
+
+# -----------------------
+# App config (API base URL, etc.)
+# -----------------------
+def get_api_base_url() -> str:
+    """
+    Mobile needs an explicit API base URL (e.g. https://api.example.com).
+    Stored locally so OTP/login works on real devices.
+    """
+    return str(_read().get("api_base_url") or "").strip().rstrip("/")
+
+
+def set_api_base_url(url: str) -> None:
+    u = str(url or "").strip().rstrip("/")
+    d = _read()
+    d["api_base_url"] = u
+    _write(d)
 

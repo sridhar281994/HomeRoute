@@ -39,6 +39,8 @@ from frontend_app.utils.api import (
 )
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_session
 from frontend_app.utils.billing import BillingUnavailable, buy_plan
+from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
+from frontend_app.utils.android_location import get_last_known_location
 
 
 def _popup(title: str, msg: str) -> None:
@@ -577,39 +579,48 @@ class SettingsScreen(Screen):
         Thread(target=work, daemon=True).start()
 
     def open_image_picker(self):
-        chooser = FileChooserListView(path=os.path.expanduser("~"), filters=["*.png", "*.jpg", "*.jpeg", "*.webp"])
+        def _open_picker() -> None:
+            chooser = FileChooserListView(path=os.path.expanduser("~"), filters=["*.png", "*.jpg", "*.jpeg", "*.webp"])
 
-        # Auto-upload on selection (no separate Save/Upload button).
-        popup = Popup(title="Choose Profile Image", size_hint=(0.9, 0.9), auto_dismiss=False)
+            # Auto-upload on selection (no separate Save/Upload button).
+            popup = Popup(title="Choose Profile Image", size_hint=(0.9, 0.9), auto_dismiss=False)
 
-        def on_selection(*_args):
+            def on_selection(*_args):
+                try:
+                    if not chooser.selection:
+                        return
+                    fp = chooser.selection[0]
+                    popup.dismiss()
+                    self.upload_profile_image(fp)
+                except Exception:
+                    # Never crash UI due to picker errors.
+                    popup.dismiss()
+
             try:
-                if not chooser.selection:
-                    return
-                fp = chooser.selection[0]
-                popup.dismiss()
-                self.upload_profile_image(fp)
+                chooser.bind(selection=lambda *_: on_selection())
             except Exception:
-                # Never crash UI due to picker errors.
-                popup.dismiss()
+                pass
 
-        try:
-            chooser.bind(selection=lambda *_: on_selection())
-        except Exception:
-            pass
+            buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+            btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
+            buttons.add_widget(btn_cancel)
 
-        buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
-        btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
-        buttons.add_widget(btn_cancel)
+            root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+            root.add_widget(Label(text="Tap an image to upload immediately."))
+            root.add_widget(chooser)
+            root.add_widget(buttons)
 
-        root = BoxLayout(orientation="vertical", spacing=8, padding=8)
-        root.add_widget(Label(text="Tap an image to upload immediately."))
-        root.add_widget(chooser)
-        root.add_widget(buttons)
+            popup.content = root
+            btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+            popup.open()
 
-        popup.content = root
-        btn_cancel.bind(on_release=lambda *_: popup.dismiss())
-        popup.open()
+        def _after(ok: bool) -> None:
+            if not ok:
+                _popup("Permission required", "Please allow Photos/Media permission to upload images.")
+                return
+            _open_picker()
+
+        ensure_permissions(required_media_permissions(), on_result=_after)
 
     def upload_profile_image(self, file_path: str):
         from threading import Thread
@@ -923,65 +934,74 @@ class OwnerAddPropertyScreen(Screen):
         """
         Pick up to 10 images + 1 video to upload with the ad.
         """
-        chooser = FileChooserListView(
-            path=os.path.expanduser("~"),
-            filters=["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.mp4", "*.mov", "*.m4v", "*.avi", "*.mkv"],
-            multiselect=True,
-        )
-        popup = Popup(title="Choose Media (max 10 images + 1 video)", size_hint=(0.92, 0.92), auto_dismiss=False)
+        def _open_picker() -> None:
+            chooser = FileChooserListView(
+                path=os.path.expanduser("~"),
+                filters=["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.mp4", "*.mov", "*.m4v", "*.avi", "*.mkv"],
+                multiselect=True,
+            )
+            popup = Popup(title="Choose Media (max 10 images + 1 video)", size_hint=(0.92, 0.92), auto_dismiss=False)
 
-        def _is_image(fp: str) -> bool:
-            ext = os.path.splitext(fp.lower())[1]
-            return ext in {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+            def _is_image(fp: str) -> bool:
+                ext = os.path.splitext(fp.lower())[1]
+                return ext in {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
-        def _is_video(fp: str) -> bool:
-            ext = os.path.splitext(fp.lower())[1]
-            return ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
+            def _is_video(fp: str) -> bool:
+                ext = os.path.splitext(fp.lower())[1]
+                return ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 
-        def apply_selection(*_):
-            try:
-                selected = list(chooser.selection or [])
-                images = [x for x in selected if _is_image(x)]
-                videos = [x for x in selected if _is_video(x)]
-                others = [x for x in selected if (not _is_image(x)) and (not _is_video(x))]
-                if others:
-                    _popup("Error", "Only image/video files are allowed.")
-                    return
-                if len(images) > 10:
-                    _popup("Error", "Maximum 10 images are allowed.")
-                    return
-                if len(videos) > 1:
-                    _popup("Error", "Maximum 1 video is allowed.")
-                    return
-                self._selected_media = images + videos
+            def apply_selection(*_):
                 try:
-                    if "media_summary" in self.ids:
-                        parts: list[str] = []
-                        if images:
-                            parts.append(f"{len(images)} image(s)")
-                        if videos:
-                            parts.append("1 video")
-                        self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
+                    selected = list(chooser.selection or [])
+                    images = [x for x in selected if _is_image(x)]
+                    videos = [x for x in selected if _is_video(x)]
+                    others = [x for x in selected if (not _is_image(x)) and (not _is_video(x))]
+                    if others:
+                        _popup("Error", "Only image/video files are allowed.")
+                        return
+                    if len(images) > 10:
+                        _popup("Error", "Maximum 10 images are allowed.")
+                        return
+                    if len(videos) > 1:
+                        _popup("Error", "Maximum 1 video is allowed.")
+                        return
+                    self._selected_media = images + videos
+                    try:
+                        if "media_summary" in self.ids:
+                            parts: list[str] = []
+                            if images:
+                                parts.append(f"{len(images)} image(s)")
+                            if videos:
+                                parts.append("1 video")
+                            self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
+                    except Exception:
+                        pass
+                    popup.dismiss()
                 except Exception:
-                    pass
-                popup.dismiss()
-            except Exception:
-                popup.dismiss()
+                    popup.dismiss()
 
-        buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
-        btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
-        btn_ok = Factory.AppButton(text="Use Selected")
-        buttons.add_widget(btn_cancel)
-        buttons.add_widget(btn_ok)
+            buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+            btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
+            btn_ok = Factory.AppButton(text="Use Selected")
+            buttons.add_widget(btn_cancel)
+            buttons.add_widget(btn_ok)
 
-        root = BoxLayout(orientation="vertical", spacing=8, padding=8)
-        root.add_widget(Label(text="Select up to 10 images and optionally 1 video."))
-        root.add_widget(chooser)
-        root.add_widget(buttons)
-        popup.content = root
-        btn_cancel.bind(on_release=lambda *_: popup.dismiss())
-        btn_ok.bind(on_release=apply_selection)
-        popup.open()
+            root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+            root.add_widget(Label(text="Select up to 10 images and optionally 1 video."))
+            root.add_widget(chooser)
+            root.add_widget(buttons)
+            popup.content = root
+            btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+            btn_ok.bind(on_release=apply_selection)
+            popup.open()
+
+        def _after(ok: bool) -> None:
+            if not ok:
+                _popup("Permission required", "Please allow Photos/Media permission to pick files for upload.")
+                return
+            _open_picker()
+
+        ensure_permissions(required_media_permissions(), on_result=_after)
 
     def submit_listing(self):
         """
@@ -1022,7 +1042,7 @@ class OwnerAddPropertyScreen(Screen):
         from threading import Thread
         # api_owner_create_property imported at module level
 
-        def work():
+        def _start_submit(gps_lat: float | None, gps_lng: float | None) -> None:
             try:
                 payload = {
                     "state": state,
@@ -1039,8 +1059,8 @@ class OwnerAddPropertyScreen(Screen):
                     "contact_email": "",
                     "amenities": [],
                     # GPS is optional; omit by sending nulls.
-                    "gps_lat": None,
-                    "gps_lng": None,
+                    "gps_lat": gps_lat,
+                    "gps_lng": gps_lng,
                 }
                 res = api_owner_create_property(payload=payload)
                 pid = res.get("id")
@@ -1065,7 +1085,17 @@ class OwnerAddPropertyScreen(Screen):
                 msg = str(e)
                 Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
 
-        Thread(target=work, daemon=True).start()
+        def _maybe_with_location(ok: bool) -> None:
+            loc = get_last_known_location() if ok else None
+            gps_lat, gps_lng = (loc[0], loc[1]) if loc else (None, None)
+
+            def work():
+                _start_submit(gps_lat, gps_lng)
+
+            Thread(target=work, daemon=True).start()
+
+        # Request location permission at runtime (best-effort). Submission continues even if denied.
+        ensure_permissions(required_location_permissions(), on_result=_maybe_with_location)
 
     def go_back(self):
         if self.manager:

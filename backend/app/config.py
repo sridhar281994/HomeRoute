@@ -165,3 +165,20 @@ def google_play_package_name() -> str:
     """
     return (os.environ.get("GOOGLE_PLAY_PACKAGE_NAME") or "").strip()
 
+
+# -----------------------
+# Google Sign-In (OAuth)
+# -----------------------
+def google_oauth_client_ids() -> list[str]:
+    """
+    Allowed Google OAuth client IDs for verifying Google ID tokens.
+
+    Set one of:
+    - GOOGLE_OAUTH_CLIENT_IDS=comma,separated,client,ids
+    - GOOGLE_OAUTH_CLIENT_ID=single-client-id
+    """
+    raw = (os.environ.get("GOOGLE_OAUTH_CLIENT_IDS") or os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
+    if not raw:
+        return []
+    return [x.strip() for x in raw.split(",") if x.strip()]
+

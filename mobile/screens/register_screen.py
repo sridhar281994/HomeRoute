@@ -1,12 +1,15 @@
 from threading import Thread
 import re
+import os
 
 from kivy.clock import Clock
 from kivy.uix.popup import Popup
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
 
-from frontend_app.utils.api import ApiError, api_location_districts, api_location_states, api_register
+from frontend_app.utils.api import ApiError, api_location_districts, api_location_states, api_register, api_login_google
+from frontend_app.utils.storage import set_session, get_session
+from frontend_app.utils.google_signin import google_sign_in
 
 # Email regex
 EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
@@ -178,7 +181,51 @@ class RegisterScreen(Screen):
         Thread(target=work, daemon=True).start()
 
     def social_login(self, provider: str) -> None:
-        self._popup("Info", f"{provider} login will be added later.")
+        # Backward compatible entrypoint (older KV files called this).
+        if (provider or "").strip().lower() in {"gmail", "google"}:
+            self.google_login()
+            return
+        self._popup("Info", f"{provider} login is not available.")
+
+    def google_login(self) -> None:
+        """
+        Google Sign-In (Android):
+        - Launch Google account picker
+        - Send ID token to backend (/auth/google)
+        - Store session and navigate to home
+        """
+        server_client_id = (os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or os.environ.get("GOOGLE_WEB_CLIENT_ID") or "").strip()
+
+        def on_error(msg: str) -> None:
+            self._popup("Google Login", msg or "Google login failed.")
+
+        def on_success(id_token: str, profile: dict[str, str]) -> None:
+            # Exchange token with backend (network call off the UI thread).
+            def work():
+                try:
+                    data = api_login_google(id_token=id_token)
+                    token = data.get("access_token")
+                    user = data.get("user") or {}
+                    if not token:
+                        raise ApiError("Google login failed.")
+
+                    sess = get_session() or {}
+                    set_session(token=str(token), user=dict(user), remember=bool(sess.get("remember_me") or False))
+
+                    def after(*_):
+                        self._popup("Success", f"Logged in as {user.get('name') or profile.get('email') or 'Google user'}.")
+                        if self.manager:
+                            self.manager.current = "home"
+
+                    Clock.schedule_once(after, 0)
+                except ApiError as e:
+                    self._popup("Google Login", str(e))
+                except Exception as e:
+                    self._popup("Google Login", str(e) or "Network error. Please try again.")
+
+            Thread(target=work, daemon=True).start()
+
+        google_sign_in(server_client_id=server_client_id, on_success=on_success, on_error=on_error)
 
     def country_values(self):
         return list(getattr(self, "_states_cache", []) or [])
