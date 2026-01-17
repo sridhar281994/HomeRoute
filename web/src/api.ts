@@ -46,8 +46,10 @@ export function clearSession() {
 }
 
 const _envBase: string | undefined = (import.meta as any).env?.VITE_API_BASE_URL;
-const _defaultBase: string = (import.meta as any).env?.DEV ? "http://127.0.0.1:8000" : "";
-export const API_BASE = String(_envBase ?? _defaultBase).replace(/\/+$/, "");
+const _prodDefaultBase = "https://homeroute-pt0c.onrender.com";
+const _defaultBase: string = (import.meta as any).env?.DEV ? "http://127.0.0.1:8000" : _prodDefaultBase;
+const _rawBase = String(_envBase ?? "").trim();
+export const API_BASE = String(_rawBase || _defaultBase).replace(/\/+$/, "");
 
 export function toApiUrl(url: string): string {
   const u = String(url || "").trim();

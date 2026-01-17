@@ -12,6 +12,7 @@ import {
 } from "../api";
 import { Link, useNavigate } from "react-router-dom";
 import { getBrowserGps } from "../location";
+import { requestBrowserMediaAccess } from "../permissions";
 
 export default function OwnerAddPage() {
   const nav = useNavigate();
@@ -31,6 +32,7 @@ export default function OwnerAddPage() {
   const [msg, setMsg] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
   const [selectedMediaSummary, setSelectedMediaSummary] = useState<string>("");
+  const [mediaMsg, setMediaMsg] = useState<string>("");
   const [myAds, setMyAds] = useState<any[]>([]);
   const [myAdsMsg, setMyAdsMsg] = useState<string>("");
 
@@ -43,6 +45,16 @@ export default function OwnerAddPage() {
     if (images.length > 10) return { ok: false, message: "Maximum 10 images are allowed.", images: [], videos: [] };
     if (videos.length > 1) return { ok: false, message: "Maximum 1 video is allowed.", images: [], videos: [] };
     return { ok: true, message: "", images, videos };
+  }
+
+  async function requestMediaAccess() {
+    setMediaMsg("");
+    try {
+      await requestBrowserMediaAccess({ video: true, audio: false });
+      setMediaMsg("Media access granted.");
+    } catch (e: any) {
+      setMediaMsg(e?.message || "Media access denied.");
+    }
   }
 
   useEffect(() => {
@@ -277,6 +289,12 @@ export default function OwnerAddPage() {
               }}
             />
             {selectedMediaSummary ? <div className="muted" style={{ marginTop: 8 }}>{selectedMediaSummary}</div> : null}
+            <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
+              <button type="button" onClick={requestMediaAccess}>
+                Enable camera/media
+              </button>
+              <span className="muted">{mediaMsg}</span>
+            </div>
             <div className="row" style={{ marginTop: 10 }}>
               <button
                 onClick={async () => {

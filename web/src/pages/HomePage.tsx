@@ -25,6 +25,7 @@ export default function HomePage() {
   const [items, setItems] = useState<any[]>([]);
   const [err, setErr] = useState<string>("");
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
+  const [gpsMsg, setGpsMsg] = useState<string>("");
   const [catalog, setCatalog] = useState<any>(null);
   const [stateOptions, setStateOptions] = useState<string[]>([]);
   const [districtOptions, setDistrictOptions] = useState<string[]>([]);
@@ -75,6 +76,16 @@ export default function HomePage() {
       setItems(res.items || []);
     } catch (e: any) {
       setErr(e.message || "Failed");
+    }
+  }
+
+  async function requestGps() {
+    try {
+      const p = await getBrowserGps({ timeoutMs: 8000 });
+      setGps(p);
+      setGpsMsg("");
+    } catch (e: any) {
+      setGpsMsg(e?.message || "GPS permission denied.");
     }
   }
 
@@ -195,15 +206,8 @@ export default function HomePage() {
 
   useEffect(() => {
     // Capture GPS once so we can auto-show nearby ads.
-    (async () => {
-      try {
-        const p = await getBrowserGps({ timeoutMs: 8000 });
-        setGps(p);
-      } catch (e: any) {
-        // Non-fatal: user can still browse without GPS, but proximity sorting won't be available.
-        // Don't hard-fail the page; keep browsing working.
-      }
-    })();
+    requestGps();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function fmtDistance(dkm: any): string {
@@ -278,6 +282,10 @@ export default function HomePage() {
           <input value={radiusKm} onChange={(e) => setRadiusKm(e.target.value)} inputMode="numeric" />
           <div className="muted" style={{ marginTop: 6 }}>
             {gps ? `Using GPS (${gps.lat.toFixed(4)}, ${gps.lon.toFixed(4)})` : "GPS not available (showing non-nearby results)."}
+          </div>
+          <div className="row" style={{ marginTop: 6, alignItems: "center" }}>
+            <button onClick={requestGps}>Enable GPS</button>
+            <span className="muted">{gpsMsg}</span>
           </div>
         </div>
         <div className="col-6">
