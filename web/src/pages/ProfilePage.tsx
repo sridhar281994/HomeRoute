@@ -14,6 +14,7 @@ import {
   verifyChangePhoneOtp,
 } from "../api";
 import { Link, useNavigate } from "react-router-dom";
+import { requestBrowserMediaAccess } from "../permissions";
 
 export default function ProfilePage() {
   const nav = useNavigate();
@@ -27,6 +28,7 @@ export default function ProfilePage() {
   const [newPhotoPreview, setNewPhotoPreview] = useState<string>("");
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [msg, setMsg] = useState("");
+  const [mediaMsg, setMediaMsg] = useState("");
 
   const [newEmail, setNewEmail] = useState("");
   const [emailOtp, setEmailOtp] = useState("");
@@ -68,6 +70,16 @@ export default function ProfilePage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newPhoto]);
+
+  async function requestMediaAccess() {
+    setMediaMsg("");
+    try {
+      await requestBrowserMediaAccess({ video: true, audio: false });
+      setMediaMsg("Media access granted.");
+    } catch (e: any) {
+      setMediaMsg(e?.message || "Media access denied.");
+    }
+  }
 
   return (
     <div className="panel">
@@ -139,6 +151,12 @@ export default function ProfilePage() {
                   Upload a new image (JPG/PNG/WebP). {isUploadingPhoto ? "Uploading…" : ""}
                 </div>
               </div>
+            </div>
+            <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
+              <button type="button" onClick={requestMediaAccess}>
+                Enable camera/media
+              </button>
+              <span className="muted">{mediaMsg}</span>
             </div>
           </div>
         </div>

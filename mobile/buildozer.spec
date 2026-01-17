@@ -34,9 +34,11 @@ android.minapi = 21
 android.ndk = 25b
 # Core + feature permissions:
 # - INTERNET/ACCESS_NETWORK_STATE: network (OTP/login/API)
+# - ACCESS_COARSE/FINE_LOCATION: GPS/nearby filters
+# - READ_MEDIA_IMAGES/READ_MEDIA_VIDEO/READ_EXTERNAL_STORAGE: media picking/upload
 # - CAMERA: optional capture
 # - RECORD_AUDIO/MODIFY_AUDIO_SETTINGS: audio capture + routing
-android.permissions = INTERNET,CAMERA,RECORD_AUDIO,MODIFY_AUDIO_SETTINGS,ACCESS_NETWORK_STATE
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_COARSE_LOCATION,ACCESS_FINE_LOCATION,READ_MEDIA_IMAGES,READ_MEDIA_VIDEO,READ_EXTERNAL_STORAGE,CAMERA,RECORD_AUDIO,MODIFY_AUDIO_SETTINGS
 android.archs = arm64-v8a,armeabi-v7a
 
 # AndroidX is required by modern dependencies/toolchains.
