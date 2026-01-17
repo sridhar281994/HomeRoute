@@ -105,6 +105,23 @@ class LoginScreen(Screen):
             _popup("Error", "Enter your password.")
             return
 
+        btn = self.ids.get("request_otp_btn") if hasattr(self, "ids") else None
+        btn_prev_text = getattr(btn, "text", None)
+
+        def _set_btn_state(sending: bool) -> None:
+            if not btn:
+                return
+            try:
+                btn.disabled = bool(sending)
+                if sending:
+                    btn.text = "Sending OTP..."
+                else:
+                    btn.text = (btn_prev_text or "Request OTP")
+            except Exception:
+                return
+
+        Clock.schedule_once(lambda *_: _set_btn_state(True), 0)
+
         def work():
             try:
                 data = api_login_request_otp(identifier=identifier, password=password)
@@ -117,6 +134,12 @@ class LoginScreen(Screen):
                 # exception variables after the except block, causing NameError later.
                 msg = str(exc)
                 Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+            except Exception as exc:
+                # requests can throw connection/timeout errors that aren't ApiError.
+                msg = str(exc) or "Failed to send OTP. Please check your network and try again."
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+            finally:
+                Clock.schedule_once(lambda *_: _set_btn_state(False), 0)
 
         Thread(target=work, daemon=True).start()
 
