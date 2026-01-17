@@ -5,10 +5,11 @@ from typing import Any
 
 import certifi
 import requests
-from kivy.utils import platform
 
 from frontend_app.utils.storage import get_token
-from frontend_app.utils.storage import get_api_base_url
+
+# Production API base URL (hardcoded as requested).
+API_BASE_URL = "https://homeroute-pt0c.onrender.com"
 
 
 class ApiError(Exception):
@@ -16,25 +17,7 @@ class ApiError(Exception):
 
 
 def _base_url() -> str:
-    # 1) Build-time/runtime override via env (useful for local dev/CI).
-    env = (os.environ.get("API_BASE_URL") or "").strip()
-    if env:
-        return env.rstrip("/")
-
-    # 2) Persisted app config (needed on Android devices).
-    saved = (get_api_base_url() or "").strip()
-    if saved:
-        return saved.rstrip("/")
-
-    # 3) Dev fallback.
-    default = "http://127.0.0.1:8000"
-    # On real devices localhost points to the device itself; fail with a clear message.
-    if platform == "android":
-        raise ApiError(
-            "API is not configured.\n\n"
-            "Open Login → API Settings and set your backend URL (HTTPS), e.g. https://api.yourdomain.com"
-        )
-    return default.rstrip("/")
+    return API_BASE_URL.rstrip("/")
 
 
 def to_api_url(url: str) -> str:
@@ -187,17 +170,83 @@ def api_forgot_password_reset(*, identifier: str, otp: str, new_password: str) -
 # -----------------------
 # Properties
 # -----------------------
-def api_list_properties(*, q: str = "", rent_sale: str = "", property_type: str = "", max_price: str = "") -> dict[str, Any]:
+def api_list_properties(
+    *,
+    q: str = "",
+    rent_sale: str = "",
+    property_type: str = "",
+    max_price: str = "",
+    state: str = "",
+    district: str = "",
+    area: str = "",
+    sort_budget: str = "",
+    posted_within_days: str = "",
+) -> dict[str, Any]:
     url = f"{_base_url()}/properties"
     rent_sale_norm = (rent_sale or "").strip()
     rent_sale_norm = rent_sale_norm.lower()
+    sort_budget_norm = (sort_budget or "").strip().lower()
     params = {
         "q": q or None,
         "rent_sale": (rent_sale_norm if rent_sale_norm and rent_sale_norm != "any" else None),
         "property_type": (property_type if property_type and property_type.lower() != "any" else None),
         "max_price": (max_price or None),
+        "state": ((state or "").strip() or None),
+        "district": ((district or "").strip() or None),
+        "area": ((area or "").strip() or None),
+        "sort_budget": (sort_budget_norm or None),
+        "posted_within_days": ((posted_within_days or "").strip() or None),
     }
     resp = requests.get(url, params=params, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    return _handle(resp)
+
+
+def api_list_nearby_properties(
+    *,
+    lat: float,
+    lon: float,
+    radius_km: int | None = None,
+    q: str = "",
+    rent_sale: str = "",
+    property_type: str = "",
+    max_price: str = "",
+    state: str = "",
+    district: str = "",
+    area: str = "",
+    posted_within_days: str = "",
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """
+    Nearby listing based on GPS.
+    Backend endpoint: GET /properties/nearby
+    """
+    url = f"{_base_url()}/properties/nearby"
+    rent_sale_norm = (rent_sale or "").strip().lower()
+    params = {
+        "lat": float(lat),
+        "lon": float(lon),
+        "radius_km": int(radius_km) if radius_km is not None else None,
+        "q": (q or "").strip() or None,
+        "rent_sale": (rent_sale_norm or None),
+        "property_type": (property_type if property_type and property_type.lower() != "any" else None),
+        "max_price": (max_price or None),
+        "state": ((state or "").strip() or None),
+        "district": ((district or "").strip() or None),
+        "area": ((area or "").strip() or None),
+        "posted_within_days": ((posted_within_days or "").strip() or None),
+        "limit": int(limit) if limit is not None else None,
+    }
+    resp = requests.get(url, params=params, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    return _handle(resp)
+
+
+def api_owner_list_properties() -> dict[str, Any]:
+    """
+    Owner's own listings.
+    Backend endpoint: GET /owner/properties
+    """
+    url = f"{_base_url()}/owner/properties"
+    resp = requests.get(url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
     return _handle(resp)
 
 

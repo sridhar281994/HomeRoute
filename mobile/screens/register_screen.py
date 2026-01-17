@@ -8,8 +8,8 @@ from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
 
 from frontend_app.utils.api import ApiError, api_location_districts, api_location_states, api_register, api_login_google
-from frontend_app.utils.storage import set_session, get_session
 from frontend_app.utils.google_signin import google_sign_in
+from frontend_app.utils.storage import get_session, set_session
 
 # Email regex
 EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
@@ -179,13 +179,6 @@ class RegisterScreen(Screen):
                 self._popup("Error", str(e))
 
         Thread(target=work, daemon=True).start()
-
-    def social_login(self, provider: str) -> None:
-        # Backward compatible entrypoint (older KV files called this).
-        if (provider or "").strip().lower() in {"gmail", "google"}:
-            self.google_login()
-            return
-        self._popup("Info", f"{provider} login is not available.")
 
     def google_login(self) -> None:
         """

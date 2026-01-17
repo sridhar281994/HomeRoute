@@ -17,6 +17,7 @@ from screens.register_screen import RegisterScreen
 from screens.reset_password_screen import ForgotPasswordScreen, ResetPasswordScreen
 from screens.shell_screens import (
     HomeScreen,
+    MyPostsScreen,
     OwnerAddPropertyScreen,
     OwnerDashboardScreen,
     PropertyDetailScreen,
@@ -43,6 +44,7 @@ class QuickRentApp(App):
         sm.add_widget(ResetPasswordScreen(name="reset_password"))
 
         sm.add_widget(HomeScreen(name="home"))
+        sm.add_widget(MyPostsScreen(name="my_posts"))
         sm.add_widget(PropertyDetailScreen(name="property_detail"))
         sm.add_widget(SubscriptionScreen(name="subscription"))
         sm.add_widget(SettingsScreen(name="profile"))
