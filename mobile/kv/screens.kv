@@ -530,13 +530,6 @@
                         height: dp(44)
                         on_press: root.send_otp_to_user()
 
-                AppButton:
-                    text: "API Settings"
-                    size_hint_y: None
-                    height: dp(40)
-                    background_color: (0, 0, 0, 0)
-                    on_release: root.open_api_settings()
-
                 # OTP Box
                 BoxLayout:
                     orientation: "vertical"
@@ -1272,14 +1265,6 @@
                     on_release: root.save_profile()
 
                 AppButton:
-                    text: "Continue with Google"
-                    size_hint_y: None
-                    height: dp(44)
-                    background_color: (1, 1, 1, 0.96)
-                    color: (0.12, 0.12, 0.12, 1)
-                    on_release: root.google_login()
-
-                AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
@@ -1331,78 +1316,258 @@
                 height: dp(44)
                 spacing: dp(8)
                 Label:
-                    text: "[b]Home[/b]  [font=EmojiFont]🏡✨[/font]  [color=cccccc]Discover amazing places[/color]"
+                    text: "[b]Uncover the best, Good Luck[/b]"
                     halign: "left"
                     valign: "middle"
                     text_size: self.size
+                    color: TEXT_MAIN
+                Widget:
                 AppButton:
-                    text: "Profile  [font=EmojiFont]👤[/font]"
+                    text: "Back"
+                    size_hint_x: None
+                    width: dp(80)
+                    on_release: root.go_back_guest()
+                    opacity: 1 if not root.is_logged_in else 0
+                    disabled: root.is_logged_in
+                AppButton:
+                    text: "Refresh"
                     size_hint_x: None
                     width: dp(90)
-                    on_release: root.go_profile()
-                    disabled: not root.is_logged_in
-                    opacity: 1 if root.is_logged_in else 0
-                    width: dp(90) if root.is_logged_in else 0
+                    on_release: root.refresh()
+
+            ScrollView:
+                size_hint_y: None
+                height: dp(48)
+                do_scroll_y: False
+                do_scroll_x: True
+                bar_width: 0
+                GridLayout:
+                    cols: 7
+                    size_hint_x: None
+                    width: self.minimum_width
+                    size_hint_y: None
+                    height: self.minimum_height
+                    spacing: dp(8)
+                    AppButton:
+                        text: "Home"
+                        size_hint_x: None
+                        width: dp(90)
+                        on_release: root.refresh()
+                    AppButton:
+                        text: "Subscription"
+                        size_hint_x: None
+                        width: dp(130)
+                        on_release: root.go_subscription()
+                    AppButton:
+                        text: "My Posts"
+                        size_hint_x: None
+                        width: dp(110)
+                        on_release: root.go_my_posts()
+                    AppButton:
+                        text: "Settings"
+                        size_hint_x: None
+                        width: dp(110)
+                        on_release: root.go_settings()
+                    AppButton:
+                        text: "Publish Ad"
+                        size_hint_x: None
+                        width: dp(120)
+                        on_release: root.go_publish_ad()
+                    AppButton:
+                        text: "Logout"
+                        size_hint_x: None
+                        width: dp(100)
+                        color: (0.94, 0.27, 0.27, 1)
+                        on_release: root.do_logout()
+                    AppButton:
+                        text: "Refresh"
+                        size_hint_x: None
+                        width: dp(100)
+                        on_release: root.refresh()
 
             GridLayout:
                 cols: 2
                 size_hint_y: None
                 height: self.minimum_height
-                spacing: dp(8)
+                spacing: dp(10)
 
-                TextInput:
-                    hint_text: "Search (location, keyword)"
-                    text: root.query
-                    multiline: False
-                    on_text: root.query = self.text
+                BoxLayout:
+                    orientation: "vertical"
                     size_hint_y: None
-                    height: dp(42)
-                TextInput:
-                    hint_text: "Max budget"
-                    text: root.max_price
-                    multiline: False
-                    input_filter: "int"
-                    on_text: root.max_price = self.text
-                    size_hint_y: None
-                    height: dp(42)
+                    height: dp(82)
+                    spacing: dp(4)
+                    Label:
+                        text: "State (optional)"
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(22)
+                    PrettySpinner:
+                        text: root.state_value
+                        values: root.state_options
+                        on_text:
+                            root.state_value = self.text
+                            root.on_state_selected()
+                        size_hint_y: None
+                        height: dp(48)
 
-                PrettySpinner:
-                    text: root.rent_sale
-                    values: ["Any", "Rent", "Sale"]
-                    on_text: root.rent_sale = self.text
+                BoxLayout:
+                    orientation: "vertical"
                     size_hint_y: None
-                    height: dp(42)
-                PrettySpinner:
-                    text: root.need_category
-                    values: root.need_values
-                    on_text: root.need_category = self.text
-                    size_hint_y: None
-                    height: dp(42)
-                PrettySpinner:
-                    text: root.property_type
-                    values: ["Any", "apartment", "villa", "plot", "pg", "marriage_hall", "party_hall", "retailer", "steel_supplier", "brick_supplier", "sand_supplier", "msand_supplier", "cement_supplier", "interior_designer", "carpenter", "labor_contractor", "electrician", "plumber", "painter", "gardener", "cleaning_services"]
-                    on_text: root.property_type = self.text
-                    size_hint_y: None
-                    height: dp(42)
+                    height: dp(82)
+                    spacing: dp(4)
+                    Label:
+                        text: "District (optional)"
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(22)
+                    PrettySpinner:
+                        text: root.district_value
+                        values: root.district_options
+                        disabled: root.state_value == "Any"
+                        on_text:
+                            root.district_value = self.text
+                            root.on_district_selected()
+                        size_hint_y: None
+                        height: dp(48)
 
-            GridLayout:
-                cols: 1 if root.width < dp(420) else 2
-                size_hint_y: None
-                height: self.minimum_height
-                spacing: dp(8)
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: dp(82)
+                    spacing: dp(4)
+                    Label:
+                        text: "Area (optional)"
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(22)
+                    PrettySpinner:
+                        text: root.area_value
+                        values: root.area_options
+                        disabled: (root.state_value == "Any") or (root.district_value == "Any")
+                        on_text: root.area_value = self.text
+                        size_hint_y: None
+                        height: dp(48)
+
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: dp(82)
+                    spacing: dp(4)
+                    Label:
+                        text: "Nearby radius (km)"
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(22)
+                    TextInput:
+                        text: root.radius_km
+                        multiline: False
+                        input_filter: "int"
+                        on_text: root.radius_km = self.text
+                        size_hint_y: None
+                        height: dp(48)
+
+                Label:
+                    text: root.gps_status
+                    color: TEXT_MUTED
+                    size_hint_y: None
+                    height: dp(22)
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.size
+                Widget:
+
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: dp(82)
+                    spacing: dp(4)
+                    Label:
+                        text: "Need category (materials / services / property)"
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(22)
+                    PrettySpinner:
+                        text: root.need_category
+                        values: root.need_values
+                        on_text: root.need_category = self.text
+                        size_hint_y: None
+                        height: dp(48)
+
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: dp(82)
+                    spacing: dp(4)
+                    Label:
+                        text: "Post date"
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(22)
+                    PrettySpinner:
+                        text: root.posted_within_days
+                        values: ["Any", "Today", "Last 7 days", "Last 30 days", "Last 90 days"]
+                        on_text: root.posted_within_days = self.text
+                        size_hint_y: None
+                        height: dp(48)
+
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: dp(82)
+                    spacing: dp(4)
+                    Label:
+                        text: "Sort (by budget)"
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(22)
+                    PrettySpinner:
+                        text: root.sort_budget
+                        values: ["Any (Newest)", "Top (high to low)", "Bottom (low to high)"]
+                        on_text: root.sort_budget = self.text
+                        size_hint_y: None
+                        height: dp(48)
+
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: dp(82)
+                    spacing: dp(4)
+                    Label:
+                        text: "Max budget"
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(22)
+                    TextInput:
+                        text: root.max_price
+                        multiline: False
+                        input_filter: "int"
+                        on_text: root.max_price = self.text
+                        size_hint_y: None
+                        height: dp(48)
+
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: dp(82)
+                    spacing: dp(4)
+                    Label:
+                        text: "Rent/Sale"
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(22)
+                    PrettySpinner:
+                        text: root.rent_sale
+                        values: ["Any", "Rent", "Sale"]
+                        on_text: root.rent_sale = self.text
+                        size_hint_y: None
+                        height: dp(48)
+
                 AppButton:
-                    text: "Apply Filters"
+                    text: "Apply filters"
                     size_hint_y: None
-                    height: dp(44)
-                    on_release: root.refresh()
-                AppButton:
-                    text: "Publish Ad  [font=EmojiFont]🏢[/font]"
-                    size_hint_y: None
-                    height: dp(44)
-                    on_release: root.go_owner()
-                    disabled: not root.is_logged_in
-                    opacity: 1 if root.is_logged_in else 0
-                    height: dp(44) if root.is_logged_in else 0
+                    height: dp(48)
+                    on_release: root.apply_filters()
+                Widget:
 
             Label:
                 text: "Loading..." if root.is_loading else "Listings"
@@ -1415,6 +1580,83 @@
                 bar_width: dp(6)
                 GridLayout:
                     id: list_container
+                    cols: 1
+                    size_hint_y: None
+                    height: self.minimum_height
+                    spacing: dp(8)
+
+<MyPostsScreen>:
+    name: "my_posts"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: BG_PURPLE
+            Rectangle:
+                pos: self.pos
+                size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
+
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.95, 0.95
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(10)
+            padding: dp(12)
+            canvas.before:
+                Color:
+                    rgba: PANEL_BG
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [16]
+                Color:
+                    rgba: (1, 1, 1, 0.12)
+                Line:
+                    width: 1.0
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
+
+            BoxLayout:
+                size_hint_y: None
+                height: dp(44)
+                spacing: dp(8)
+                Label:
+                    text: "[b]My Posts[/b]"
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.size
+                Widget:
+                AppButton:
+                    text: "Refresh"
+                    size_hint_x: None
+                    width: dp(100)
+                    on_release: root.refresh()
+                AppButton:
+                    text: "Back"
+                    size_hint_x: None
+                    width: dp(90)
+                    color: (0.94, 0.27, 0.27, 1)
+                    on_release: root.back()
+
+            Label:
+                text: "Loading..." if root.is_loading else ""
+                size_hint_y: None
+                height: dp(22)
+                color: TEXT_MUTED
+
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+                GridLayout:
+                    id: my_posts_container
                     cols: 1
                     size_hint_y: None
                     height: self.minimum_height

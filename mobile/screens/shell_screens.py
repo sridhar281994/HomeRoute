@@ -22,6 +22,7 @@ from frontend_app.utils.api import (
     api_location_states,
     api_get_property,
     api_get_property_contact,
+    api_list_nearby_properties,
     api_list_properties,
     api_me,
     api_me_change_email_request_otp,
@@ -33,6 +34,7 @@ from frontend_app.utils.api import (
     api_me_upload_profile_image,
     api_meta_categories,
     api_owner_create_property,
+    api_owner_list_properties,
     api_subscription_status,
     api_upload_property_media,
     to_api_url,
@@ -103,12 +105,24 @@ class HomeScreen(Screen):
     """
 
     items = ListProperty([])
-    query = StringProperty("")
     need_category = StringProperty("Any")
     need_values = ListProperty(["Any"])
+
+    # Filters matching the web Home page
+    state_value = StringProperty("Any")
+    district_value = StringProperty("Any")
+    area_value = StringProperty("Any")
+    radius_km = StringProperty("20")
+    gps_status = StringProperty("GPS not available (showing non-nearby results).")
     rent_sale = StringProperty("Any")
-    property_type = StringProperty("Any")
     max_price = StringProperty("")
+    sort_budget = StringProperty("Any (Newest)")
+    posted_within_days = StringProperty("Any")
+
+    state_options = ListProperty(["Any"])
+    district_options = ListProperty(["Any"])
+    area_options = ListProperty(["Any"])
+
     bg_image = StringProperty("")
 
     is_loading = BooleanProperty(False)
@@ -129,7 +143,157 @@ class HomeScreen(Screen):
         # Load customer "need" categories (non-fatal if offline).
         self._load_need_categories()
 
+        # Load state list (non-fatal if offline).
+        self._load_states()
+
+        # Best-effort GPS capture (non-fatal); refresh once it becomes available.
+        self._ensure_gps_best_effort()
+
         Clock.schedule_once(lambda _dt: self.refresh(), 0)
+
+    # -----------------------
+    # Top nav actions (Home header)
+    # -----------------------
+    def go_back_guest(self):
+        # Guest "Back" goes to Welcome screen.
+        if self.is_logged_in:
+            return
+        if self.manager:
+            self.manager.current = "welcome"
+
+    def go_subscription(self):
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to open Subscription.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        if self.manager:
+            self.manager.current = "subscription"
+
+    def go_my_posts(self):
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to view My Posts.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        if self.manager:
+            self.manager.current = "my_posts"
+
+    def go_settings(self):
+        # Settings screen already handles login gating, but keep UX consistent here.
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to open Settings.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        if self.manager:
+            self.manager.current = "profile"
+
+    def go_publish_ad(self):
+        self.go_owner()
+
+    def do_logout(self):
+        if not self.is_logged_in:
+            # Guest "logout" just returns to Welcome.
+            if self.manager:
+                self.manager.current = "welcome"
+            return
+        clear_session()
+        self.is_logged_in = False
+        if self.manager:
+            self.manager.current = "welcome"
+
+    def apply_filters(self):
+        self.refresh()
+
+    # -----------------------
+    # Filter option loaders (State/District/Area)
+    # -----------------------
+    def _norm_any(self, v: str) -> str:
+        v = str(v or "").strip()
+        return "" if v.lower() in {"any", ""} else v
+
+    def _load_states(self):
+        from threading import Thread
+
+        def work():
+            try:
+                st = api_location_states().get("items") or []
+                st = [str(x).strip() for x in st if str(x).strip()]
+                opts = ["Any"] + st
+
+                def apply(*_):
+                    self.state_options = opts
+                    # Keep selection stable; default to Any.
+                    if (self.state_value or "").strip() not in self.state_options:
+                        self.state_value = "Any"
+                    self.on_state_selected()
+
+                Clock.schedule_once(apply, 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
+    def on_state_selected(self, *_):
+        # Reset dependent selections
+        self.district_value = "Any"
+        self.area_value = "Any"
+        self.district_options = ["Any"]
+        self.area_options = ["Any"]
+
+        state = self._norm_any(self.state_value)
+        if not state:
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                ds = api_location_districts(state=state).get("items") or []
+                ds = [str(x).strip() for x in ds if str(x).strip()]
+                opts = ["Any"] + ds
+                Clock.schedule_once(lambda *_: setattr(self, "district_options", opts), 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
+    def on_district_selected(self, *_):
+        self.area_value = "Any"
+        self.area_options = ["Any"]
+        state = self._norm_any(self.state_value)
+        district = self._norm_any(self.district_value)
+        if not state or not district:
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                ar = api_location_areas(state=state, district=district).get("items") or []
+                ar = [str(x).strip() for x in ar if str(x).strip()]
+                opts = ["Any"] + ar
+                Clock.schedule_once(lambda *_: setattr(self, "area_options", opts), 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
+    # -----------------------
+    # GPS (Nearby)
+    # -----------------------
+    def _ensure_gps_best_effort(self) -> None:
+        def after(ok: bool) -> None:
+            loc = get_last_known_location() if ok else None
+            if loc:
+                self._gps = (float(loc[0]), float(loc[1]))
+                self.gps_status = f"Using GPS ({self._gps[0]:.4f}, {self._gps[1]:.4f})"
+            else:
+                self._gps = None
+                self.gps_status = "GPS not available (showing non-nearby results)."
+
+        ensure_permissions(required_location_permissions(), on_result=after)
 
     def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
         """
@@ -200,14 +364,11 @@ class HomeScreen(Screen):
                 cats = data.get("categories") or []
                 values: list[str] = ["Any"]
                 for g in cats:
-                    group = str((g or {}).get("group") or "").strip()
                     items = (g or {}).get("items") or []
                     for it in items:
                         label = str(it or "").strip()
-                        if not label:
-                            continue
-                        # Keep labels unique + understandable without optgroup support.
-                        values.append(f"{group} — {label}" if group else label)
+                        if label:
+                            values.append(label)
 
                 # De-dup while keeping order
                 seen: set[str] = set()
@@ -235,23 +396,63 @@ class HomeScreen(Screen):
         def work():
             try:
                 need = (self.need_category or "").strip()
-                # If values are "Group — Label", use only the label for matching.
-                if "—" in need:
-                    need = need.split("—", 1)[1].strip()
-                q = (self.query or "").strip()
-                combined_q = " ".join([x for x in [need if need and need.lower() != "any" else "", q] if x]).strip()
-                rent_sale = (self.rent_sale or "").strip()
-                if rent_sale.lower() == "any":
-                    rent_sale = ""
-                property_type = (self.property_type or "").strip()
-                if property_type.lower() == "any":
-                    property_type = ""
-                data = api_list_properties(
-                    q=combined_q,
-                    rent_sale=rent_sale,
-                    property_type=property_type,
-                    max_price=(self.max_price or "").strip(),
-                )
+                q = need if need and need.lower() != "any" else ""
+                rent_sale = self._norm_any(self.rent_sale)
+                max_price = (self.max_price or "").strip()
+                state = self._norm_any(self.state_value)
+                district = self._norm_any(self.district_value)
+                area = self._norm_any(self.area_value)
+
+                sort_budget = (self.sort_budget or "").strip()
+                sort_budget_param = ""
+                if sort_budget.lower().startswith("top"):
+                    sort_budget_param = "top"
+                elif sort_budget.lower().startswith("bottom"):
+                    sort_budget_param = "bottom"
+
+                posted = (self.posted_within_days or "").strip()
+                posted_param = ""
+                if posted.lower() == "today":
+                    posted_param = "1"
+                elif posted.lower().startswith("last 7"):
+                    posted_param = "7"
+                elif posted.lower().startswith("last 30"):
+                    posted_param = "30"
+                elif posted.lower().startswith("last 90"):
+                    posted_param = "90"
+
+                # Nearby endpoint if GPS is available; otherwise fall back to non-GPS listing.
+                loc = getattr(self, "_gps", None)
+                try:
+                    radius = int(str(self.radius_km or "").strip() or "20")
+                except Exception:
+                    radius = 20
+
+                if loc:
+                    data = api_list_nearby_properties(
+                        lat=float(loc[0]),
+                        lon=float(loc[1]),
+                        radius_km=radius,
+                        q=q,
+                        rent_sale=rent_sale,
+                        max_price=max_price,
+                        state=state,
+                        district=district,
+                        area=area,
+                        posted_within_days=posted_param,
+                        limit=60,
+                    )
+                else:
+                    data = api_list_properties(
+                        q=q,
+                        rent_sale=rent_sale,
+                        max_price=max_price,
+                        state=state,
+                        district=district,
+                        area=area,
+                        sort_budget=sort_budget_param,
+                        posted_within_days=posted_param,
+                    )
                 cards: list[dict[str, Any]] = []
                 for p in (data.get("items") or []):
                     cards.append(
@@ -495,6 +696,67 @@ class SubscriptionScreen(Screen):
     def back(self):
         if self.manager:
             self.manager.current = "property_detail"
+
+
+class MyPostsScreen(Screen):
+    """
+    Owner/User posts list (server-backed).
+    """
+
+    is_loading = BooleanProperty(False)
+
+    def on_pre_enter(self, *args):
+        self.refresh()
+
+    def refresh(self):
+        if self.is_loading:
+            return
+        self.is_loading = True
+
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_owner_list_properties()
+                items = data.get("items") or []
+
+                def done(*_):
+                    try:
+                        container = self.ids.get("my_posts_container")
+                        if container is not None:
+                            container.clear_widgets()
+                            if not items:
+                                container.add_widget(
+                                    Label(text="No posts yet.", size_hint_y=None, height=32, color=(1, 1, 1, 0.75))
+                                )
+                            else:
+                                # Reuse HomeScreen card layout when possible.
+                                home = self.manager.get_screen("home") if self.manager else None
+                                for p in items:
+                                    if home and hasattr(home, "_feed_card"):
+                                        container.add_widget(home._feed_card(p))  # type: ignore[attr-defined]
+                                    else:
+                                        title = str((p or {}).get("title") or "Post")
+                                        container.add_widget(Label(text=title, size_hint_y=None, height=32))
+                    except Exception:
+                        pass
+                    self.is_loading = False
+
+                Clock.schedule_once(done, 0)
+            except ApiError as e:
+                msg = str(e)
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+                Clock.schedule_once(lambda *_: setattr(self, "is_loading", False), 0)
+            except Exception as e:
+                msg = str(e) or "Failed to load posts."
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+                Clock.schedule_once(lambda *_: setattr(self, "is_loading", False), 0)
+
+        Thread(target=work, daemon=True).start()
+
+    def back(self):
+        if self.manager:
+            self.manager.current = "home"
 
 
 class SettingsScreen(Screen):
