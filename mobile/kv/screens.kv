@@ -1272,16 +1272,12 @@
                     on_release: root.save_profile()
 
                 AppButton:
-                    text: "Login via Gmail"
+                    text: "Continue with Google"
                     size_hint_y: None
                     height: dp(44)
+                    background_color: (1, 1, 1, 0.96)
+                    color: (0.12, 0.12, 0.12, 1)
                     on_release: root.social_login("gmail")
-
-                AppButton:
-                    text: "Login via FB / Insta"
-                    size_hint_y: None
-                    height: dp(44)
-                    on_release: root.social_login("fb/insta")
 
                 AppButton:
                     text: "Back"
