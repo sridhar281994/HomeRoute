@@ -530,6 +530,13 @@
                         height: dp(44)
                         on_press: root.send_otp_to_user()
 
+                AppButton:
+                    text: "API Settings"
+                    size_hint_y: None
+                    height: dp(40)
+                    background_color: (0, 0, 0, 0)
+                    on_release: root.open_api_settings()
+
                 # OTP Box
                 BoxLayout:
                     orientation: "vertical"

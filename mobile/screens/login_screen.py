@@ -8,7 +8,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 
 from frontend_app.utils.api import ApiError, api_login_request_otp, api_login_verify_otp
-from frontend_app.utils.storage import get_remember_me, set_remember_me, set_session
+from frontend_app.utils.storage import get_api_base_url, get_remember_me, set_api_base_url, set_remember_me, set_session
 
 
 def _safe_text(screen: Screen, wid: str, default: str = "") -> str:
@@ -71,6 +71,54 @@ class LoginScreen(Screen):
         if hasattr(fp, "open_from"):
             fp.open_from(source_screen="login", title="Forgot Password")
         self.manager.current = "forgot_password"
+
+    def open_api_settings(self) -> None:
+        """
+        Allow configuring the backend API base URL on-device.
+        This is required for Android builds (localhost won't work).
+        """
+        from kivy.uix.textinput import TextInput
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.factory import Factory
+
+        initial = get_api_base_url() or ""
+
+        inp = TextInput(
+            text=initial,
+            hint_text="https://api.yourdomain.com",
+            multiline=False,
+            size_hint_y=None,
+            height=48,
+        )
+
+        def save_and_close(*_):
+            set_api_base_url(inp.text or "")
+            popup.dismiss()
+            _popup("Saved", "API URL updated.")
+
+        def clear_and_close(*_):
+            set_api_base_url("")
+            popup.dismiss()
+            _popup("Cleared", "API URL cleared. (Dev builds may use localhost.)")
+
+        btns = BoxLayout(size_hint_y=None, height=48, spacing=8)
+        btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
+        btn_clear = Factory.AppButton(text="Clear")
+        btn_save = Factory.AppButton(text="Save")
+        btns.add_widget(btn_cancel)
+        btns.add_widget(btn_clear)
+        btns.add_widget(btn_save)
+
+        root = BoxLayout(orientation="vertical", spacing=10, padding=10)
+        root.add_widget(Label(text="Set backend API URL (HTTPS recommended)."))
+        root.add_widget(inp)
+        root.add_widget(btns)
+
+        popup = Popup(title="API Settings", content=root, size_hint=(0.88, 0.42), auto_dismiss=False)
+        btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+        btn_clear.bind(on_release=clear_and_close)
+        btn_save.bind(on_release=save_and_close)
+        popup.open()
 
     # -----------------------
     # Helpers
