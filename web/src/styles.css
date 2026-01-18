@@ -39,6 +39,10 @@ a{color:inherit}
 }
 .topbar-brand{
   min-width: 160px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .topbar-links{
   display:flex;
@@ -54,6 +58,16 @@ a{color:inherit}
   border: 1px solid rgba(255,255,255,.70);
   background: rgba(255,255,255,.16);
   transition: transform .10s ease, background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.guest-pill{
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  border: 1px solid rgba(96,165,250,.55);
+  background: rgba(96,165,250,.22);
+  letter-spacing: .2px;
 }
 .topbar-links a:hover{
   background: rgba(255,255,255,.22);

@@ -39,7 +39,7 @@ from frontend_app.utils.api import (
     api_upload_property_media,
     to_api_url,
 )
-from frontend_app.utils.storage import clear_session, get_session, get_user, set_session
+from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 from frontend_app.utils.billing import BillingUnavailable, buy_plan
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
@@ -80,7 +80,8 @@ class SplashScreen(Screen):
         try:
             sess = get_session() or {}
             token = str(sess.get("token") or "")
-            self.manager.current = "home" if token else "welcome"
+            is_guest = bool(sess.get("guest"))
+            self.manager.current = "home" if (token or is_guest) else "welcome"
         except Exception:
             self.manager.current = "welcome"
 
@@ -93,10 +94,19 @@ class WelcomeScreen(Screen):
         try:
             sess = get_session() or {}
             token = str(sess.get("token") or "")
-            if token:
+            is_guest = bool(sess.get("guest"))
+            if token or is_guest:
                 self.manager.current = "home"
         except Exception:
             return
+
+    def continue_as_guest(self):
+        """
+        Start a guest session and continue to Home.
+        """
+        set_guest_session()
+        if self.manager:
+            self.manager.current = "home"
 
 
 class HomeScreen(Screen):
@@ -127,6 +137,7 @@ class HomeScreen(Screen):
 
     is_loading = BooleanProperty(False)
     is_logged_in = BooleanProperty(False)
+    is_guest = BooleanProperty(False)
 
     def on_pre_enter(self, *args):
         # Gate buttons until user logs in.
@@ -134,8 +145,10 @@ class HomeScreen(Screen):
             sess = get_session() or {}
             token = str(sess.get("token") or "")
             self.is_logged_in = bool(token)
+            self.is_guest = bool(sess.get("guest")) and not self.is_logged_in
         except Exception:
             self.is_logged_in = False
+            self.is_guest = False
 
         # Revert to the glossy purple/orange background (no image).
         self.bg_image = ""
@@ -154,6 +167,14 @@ class HomeScreen(Screen):
     # -----------------------
     # Top nav actions (Home header)
     # -----------------------
+    def go_login(self):
+        if self.manager:
+            self.manager.current = "login"
+
+    def go_register(self):
+        if self.manager:
+            self.manager.current = "register"
+
     def go_back_guest(self):
         # Guest "Back" goes to Welcome screen.
         if self.is_logged_in:
@@ -194,12 +215,18 @@ class HomeScreen(Screen):
 
     def do_logout(self):
         if not self.is_logged_in:
-            # Guest "logout" just returns to Welcome.
+            # Guest "logout" clears guest flag and returns to Welcome.
+            try:
+                if (get_session() or {}).get("guest"):
+                    clear_session()
+            except Exception:
+                pass
             if self.manager:
                 self.manager.current = "welcome"
             return
         clear_session()
         self.is_logged_in = False
+        self.is_guest = False
         if self.manager:
             self.manager.current = "welcome"
 

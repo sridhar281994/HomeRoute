@@ -19,6 +19,7 @@ export default function App() {
   const s = getSession();
   const role = (s.user?.role || "").toLowerCase();
   const isLoggedIn = !!s.token;
+  const isGuest = !!s.guest && !isLoggedIn;
 
   return (
     <div className="shell">
@@ -26,23 +27,31 @@ export default function App() {
       <div className="panel topbar" style={{ marginBottom: 14 }}>
         <div className="topbar-brand">
           <div className="h2">QuickRent</div>
+          {isGuest ? <div className="guest-pill">Guest mode</div> : null}
         </div>
         <div className="spacer" />
         <div className="topbar-links">
           <Link to="/home">Home</Link>
-          {isLoggedIn ? (
-            <>
-              {role === "admin" ? <Link to="/admin/review">Admin Review</Link> : null}
-              <Link to="/subscription">Subscription</Link>
-              <Link to="/myposts">My Posts</Link>
-              <Link to="/profile">Settings</Link>
-              <Link to="/owner/add">Publish Ad</Link>
-            </>
-          ) : null}
+          {role === "admin" ? <Link to="/admin/review">Admin Review</Link> : null}
+          <Link to="/subscription">Subscription</Link>
+          <Link to="/myposts">My Posts</Link>
+          <Link to="/profile">Settings</Link>
+          <Link to="/owner/add">Publish Ad</Link>
           {!isLoggedIn ? (
             <>
               <Link to="/login">Login</Link>
               <Link to="/register">Register</Link>
+              {isGuest ? (
+                <button
+                  className="danger"
+                  onClick={() => {
+                    clearSession();
+                    nav("/welcome");
+                  }}
+                >
+                  Exit Guest
+                </button>
+              ) : null}
             </>
           ) : (
             <button

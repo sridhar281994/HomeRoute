@@ -15,10 +15,12 @@ import {
 } from "../api";
 import { Link, useNavigate } from "react-router-dom";
 import { requestBrowserMediaAccess } from "../permissions";
+import GuestGate from "../components/GuestGate";
 
 export default function ProfilePage() {
   const nav = useNavigate();
   const s = getSession();
+  const isLocked = !s.token;
   const [name, setName] = useState(s.user?.name || "");
   const [role] = useState((s.user?.role || "").toLowerCase() || "user");
   const [phone, setPhone] = useState((s.user as any)?.phone || "");
@@ -34,10 +36,6 @@ export default function ProfilePage() {
   const [emailOtp, setEmailOtp] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [phoneOtp, setPhoneOtp] = useState("");
-
-  useEffect(() => {
-    if (!s.token) nav("/login");
-  }, [nav, s.token]);
 
   useEffect(() => {
     if (!s.token) return;
@@ -79,6 +77,15 @@ export default function ProfilePage() {
     } catch (e: any) {
       setMediaMsg(e?.message || "Media access denied.");
     }
+  }
+
+  if (isLocked) {
+    return (
+      <GuestGate
+        title="Settings"
+        message="Login or register to edit your profile and manage your account."
+      />
+    );
   }
 
   return (

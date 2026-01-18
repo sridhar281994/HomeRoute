@@ -7,7 +7,7 @@ export default function SplashPage() {
   useEffect(() => {
     const t = setTimeout(() => {
       const s = getSession();
-      nav(s.token ? "/home" : "/welcome");
+        nav(s.token || s.guest ? "/home" : "/welcome");
     }, 900);
     return () => clearTimeout(t);
   }, [nav]);

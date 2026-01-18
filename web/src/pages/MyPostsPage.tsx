@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSession, ownerDeleteProperty, ownerListProperties, toApiUrl } from "../api";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import GuestGate from "../components/GuestGate";
 
 function groupByStatus(items: any[]) {
   const out: Record<string, any[]> = {};
@@ -12,8 +13,8 @@ function groupByStatus(items: any[]) {
 }
 
 export default function MyPostsPage() {
-  const nav = useNavigate();
   const s = getSession();
+  const isLocked = !s.token;
   const [items, setItems] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
 
@@ -28,17 +29,22 @@ export default function MyPostsPage() {
   }
 
   useEffect(() => {
-    if (!s.token) nav("/login");
+    if (!s.token) return;
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.token]);
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const grouped = useMemo(() => groupByStatus(items), [items]);
   const order = ["pending", "approved", "rejected", "suspended", "unknown"];
+
+  if (isLocked) {
+    return (
+      <GuestGate
+        title="My Posts"
+        message="Login or register to view and manage your posts."
+      />
+    );
+  }
 
   return (
     <div className="panel">

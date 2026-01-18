@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getCategoryCatalog,
   getSession,
@@ -13,6 +14,7 @@ import {
 import { getBrowserGps } from "../location";
 
 export default function HomePage() {
+  const nav = useNavigate();
   const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
@@ -398,8 +400,14 @@ export default function HomePage() {
                   <button
                     className="primary"
                     disabled={!!contacted[Number(p.id)]}
-                    onClick={async () => {
+                  onClick={async () => {
                       const pid = Number(p.id);
+                      const s = getSession();
+                      if (!s.token) {
+                        setContactMsg((m) => ({ ...m, [pid]: "Login required to contact owner." }));
+                        nav("/login");
+                        return;
+                      }
                       setContactMsg((m) => ({ ...m, [pid]: "" }));
                       try {
                         const contact = await getContact(pid);

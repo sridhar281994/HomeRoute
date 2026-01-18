@@ -17,6 +17,7 @@ export type User = {
 export type Session = {
   token: string;
   user?: User;
+  guest?: boolean;
 };
 
 export type CategoryCatalog = {
@@ -31,9 +32,11 @@ const KEY = "pd_session_v1";
 
 export function getSession(): Session {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "{}");
+    const raw = JSON.parse(localStorage.getItem(KEY) || "{}");
+    const token = String(raw?.token || "");
+    return { token, user: raw?.user, guest: Boolean(raw?.guest) && !token };
   } catch {
-    return { token: "" };
+    return { token: "", guest: false };
   }
 }
 
@@ -43,6 +46,14 @@ export function setSession(s: Session) {
 
 export function clearSession() {
   localStorage.removeItem(KEY);
+}
+
+export function setGuestSession() {
+  setSession({
+    token: "",
+    user: { id: 0, email: "guest@local", name: "Guest", role: "guest" },
+    guest: true,
+  });
 }
 
 const _envBase: string | undefined = (import.meta as any).env?.VITE_API_BASE_URL;
