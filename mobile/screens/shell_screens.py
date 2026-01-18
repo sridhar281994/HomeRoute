@@ -37,6 +37,7 @@ from frontend_app.utils.api import (
     api_meta_categories,
     api_owner_create_property,
     api_owner_list_properties,
+    api_subscription_status,
     api_upload_property_media,
     to_api_url,
 )
@@ -140,8 +141,28 @@ class HomeScreen(Screen):
     is_guest = BooleanProperty(False)
     filters_open = BooleanProperty(True)
 
+    def on_filters_open(self, *_):
+        Clock.schedule_once(lambda _dt: self._sync_filter_panel(), 0)
+
     def toggle_filters(self):
         self.filters_open = not self.filters_open
+        Clock.schedule_once(lambda _dt: self._sync_filter_panel(), 0)
+
+    def _sync_filter_panel(self) -> None:
+        try:
+            panel = self.ids.get("filter_panel")
+            if not panel:
+                return
+            if self.filters_open:
+                panel.disabled = False
+                panel.opacity = 1
+                panel.height = panel.minimum_height
+            else:
+                panel.disabled = True
+                panel.opacity = 0
+                panel.height = 0
+        except Exception:
+            return
 
     def on_pre_enter(self, *args):
         # Gate buttons until user logs in.
@@ -180,10 +201,16 @@ class HomeScreen(Screen):
         self._ensure_gps_best_effort()
 
         Clock.schedule_once(lambda _dt: self.refresh(), 0)
+        Clock.schedule_once(lambda _dt: self._sync_filter_panel(), 0)
 
     # -----------------------
     # Top nav actions (Home header)
     # -----------------------
+    def go_home(self):
+        if self.manager and self.manager.current != "home":
+            self.manager.current = "home"
+        self.refresh()
+
     def go_login(self):
         if self.manager:
             self.manager.current = "login"
@@ -217,6 +244,15 @@ class HomeScreen(Screen):
             return
         if self.manager:
             self.manager.current = "profile"
+
+    def go_subscription(self):
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to view Subscription.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        if self.manager:
+            self.manager.current = "subscription"
 
     def go_publish_ad(self):
         self.go_owner()
@@ -433,6 +469,7 @@ class HomeScreen(Screen):
             ]
         )
         images = p.get("images") or []
+        already_contacted = bool(p.get("contacted"))
 
         card = BoxLayout(orientation="vertical", padding=(12, 10), spacing=8, size_hint_y=None)
         card.bind(minimum_height=card.setter("height"))
@@ -480,11 +517,11 @@ class HomeScreen(Screen):
         card.add_widget(header)
 
         card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
+        thumb_h = dp(140)
         if images:
             # Show up to 6 items as a 2-column grid (roughly like the web HomePage).
             media = list(images)[:6]
             grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
-            thumb_h = dp(140)
             rows = (len(media) + 1) // 2
             grid.height = rows * thumb_h + max(0, rows - 1) * dp(8)
 
@@ -501,7 +538,28 @@ class HomeScreen(Screen):
 
             card.add_widget(grid)
         else:
-            card.add_widget(Label(text="Photos will appear once uploaded.", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+            grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
+            grid.height = thumb_h
+
+            def _placeholder_tile() -> BoxLayout:
+                tile = BoxLayout(size_hint_y=None, height=thumb_h)
+                with tile.canvas.before:
+                    Color(0, 0, 0, 0.22)
+                    rect = RoundedRectangle(pos=tile.pos, size=tile.size, radius=[dp(12)])
+                    Color(1, 1, 1, 0.12)
+                    border = Line(rounded_rectangle=[tile.x, tile.y, tile.width, tile.height, dp(12)], width=1.0)
+
+                def _sync_tile(*_):
+                    rect.pos = tile.pos
+                    rect.size = tile.size
+                    border.rounded_rectangle = [tile.x, tile.y, tile.width, tile.height, dp(12)]
+
+                tile.bind(pos=_sync_tile, size=_sync_tile)
+                return tile
+
+            grid.add_widget(_placeholder_tile())
+            grid.add_widget(_placeholder_tile())
+            card.add_widget(grid)
 
         amenities = p.get("amenities") or []
         card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
@@ -515,8 +573,15 @@ class HomeScreen(Screen):
         )
 
         btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
-        btn_contact = Factory.AppButton(text="Contact owner", size_hint_y=None, height=44)
+        btn_contact = Factory.AppButton(
+            text="Contacted" if already_contacted else "Contact owner",
+            size_hint_y=None,
+            height=44,
+        )
+        btn_contact.disabled = already_contacted
         lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
+        if already_contacted:
+            lbl_status.text = "Contact details already sent."
 
         def do_contact(*_):
             sess = get_session() or {}
@@ -546,6 +611,7 @@ class HomeScreen(Screen):
                     who = f" ({owner_name})" if owner_name else ""
 
                     def done(*_dt):
+                        p["contacted"] = True
                         btn_contact.text = "Contacted"
                         lbl_status.text = f"Contact details sent to your registered email/SMS for Ad #{adv_no}{who}."
 
@@ -1119,6 +1185,61 @@ class SettingsScreen(Screen):
         clear_session()
         if self.manager:
             self.manager.current = "welcome"
+
+    def go_back(self):
+        if self.manager:
+            self.manager.current = "home"
+
+
+class SubscriptionScreen(Screen):
+    status_text = StringProperty("Status: loading…")
+    provider_text = StringProperty("")
+    expires_text = StringProperty("")
+    is_loading = BooleanProperty(False)
+
+    def on_pre_enter(self, *args):
+        self.refresh_status()
+
+    def refresh_status(self):
+        if self.is_loading:
+            return
+        sess = get_session() or {}
+        if not (sess.get("token") or ""):
+            _popup("Login required", "Please login to view Subscription.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        self.is_loading = True
+
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_subscription_status()
+                status = str(data.get("status") or "inactive").strip() or "inactive"
+                provider = str(data.get("provider") or "").strip()
+                expires_at = str(data.get("expires_at") or "").strip()
+
+                def done(*_):
+                    self.status_text = f"Status: {status}"
+                    self.provider_text = f"Provider: {provider}" if provider else "Provider: —"
+                    self.expires_text = f"Expires: {expires_at}" if expires_at else "Expires: —"
+                    self.is_loading = False
+
+                Clock.schedule_once(done, 0)
+            except ApiError as e:
+                msg = str(e) or "Failed to load subscription."
+
+                def fail(*_):
+                    self.status_text = "Status: unavailable"
+                    self.provider_text = ""
+                    self.expires_text = ""
+                    self.is_loading = False
+                    _popup("Error", msg)
+
+                Clock.schedule_once(fail, 0)
+
+        Thread(target=work, daemon=True).start()
 
     def go_back(self):
         if self.manager:

@@ -120,7 +120,12 @@ export default function MyPostsPage() {
                               <img src={toApiUrl(p.images[0].url)} alt={`Ad ${p.id} media`} loading="lazy" />
                             )}
                           </div>
-                        ) : null}
+                        ) : (
+                          <div className="post-media placeholder" aria-hidden="true">
+                            <div className="media-placeholder" />
+                            <div className="media-placeholder" />
+                          </div>
+                        )}
 
                         {p.description ? (
                           <div className="post-body">

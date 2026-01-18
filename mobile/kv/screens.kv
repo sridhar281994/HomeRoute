@@ -1066,6 +1066,82 @@
                     color: (0.94, 0.27, 0.27, 1)
                     on_release: root.go_back()
 
+<SubscriptionScreen>:
+    name: "subscription"
+    FloatLayout:
+        canvas.before:
+            Color:
+                rgba: BG_PURPLE
+            Rectangle:
+                pos: self.pos
+                size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
+
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.9, 0.7
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(12)
+            padding: dp(16)
+            canvas.before:
+                Color:
+                    rgba: PANEL_BG
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [16]
+                Color:
+                    rgba: (1, 1, 1, 0.12)
+                Line:
+                    width: 1.0
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
+
+            Label:
+                text: "[b]Subscription[/b]  [font=EmojiFont]💳[/font]"
+                font_size: sp(24)
+                size_hint_y: None
+                height: dp(40)
+
+            Label:
+                text: root.status_text
+                size_hint_y: None
+                height: dp(28)
+                color: 1, 1, 1, 0.9
+
+            Label:
+                text: root.provider_text
+                size_hint_y: None
+                height: dp(24)
+                color: TEXT_MUTED
+
+            Label:
+                text: root.expires_text
+                size_hint_y: None
+                height: dp(24)
+                color: TEXT_MUTED
+
+            AppButton:
+                text: "Refresh"
+                size_hint_y: None
+                height: dp(44)
+                on_release: root.refresh_status()
+
+            AppButton:
+                text: "Back"
+                size_hint_y: None
+                height: dp(44)
+                color: (0.94, 0.27, 0.27, 1)
+                on_release: root.go_back()
+
 <RegisterScreen>:
     name: "register"
     FloatLayout:
@@ -1303,7 +1379,7 @@
                     text: "Home"
                     size_hint_x: None
                     width: dp(90)
-                    on_release: root.refresh()
+                    on_release: root.go_home()
                 AppButton:
                     text: "Publish Ad"
                     size_hint_x: None
@@ -1364,19 +1440,23 @@
                     text: "Settings"
                     on_release: root.go_settings()
                 AppButton:
+                    text: "Subscription"
+                    on_release: root.go_subscription()
+                AppButton:
                     text: "Refresh"
                     on_release: root.refresh()
                 AppButton:
                     text: "Hide Filters" if root.filters_open else "Show Filters"
                     on_release: root.toggle_filters()
+                Widget:
 
             BoxLayout:
                 id: filter_panel
                 orientation: "vertical"
                 size_hint_y: None
-                height: self.minimum_height if root.filters_open else 0
-                opacity: 1 if root.filters_open else 0
-                disabled: not root.filters_open
+                height: 0
+                opacity: 0
+                disabled: True
                 spacing: dp(10)
 
                 GridLayout:

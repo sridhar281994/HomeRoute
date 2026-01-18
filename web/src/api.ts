@@ -233,6 +233,10 @@ export function getMe() {
   return api<{ user: User }>(`/me`);
 }
 
+export function getSubscriptionStatus() {
+  return api<{ status: string; provider?: string; expires_at?: string }>(`/me/subscription`);
+}
+
 export function updateMe(input: { name: string }) {
   return api<{ ok: boolean; user: User }>(`/me`, {
     method: "PATCH",
