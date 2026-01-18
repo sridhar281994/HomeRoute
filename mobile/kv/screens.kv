@@ -327,7 +327,7 @@
                 height: self.texture_size[1] + dp(20)
 
             Label:
-                text: "Browse properties for free. Unlock contact with a subscription."
+                text: "Browse properties for free. Login to contact owners."
                 font_size: min(root.width * 0.045, sp(16))
                 color: TEXT_MUTED
                 size_hint_y: None
@@ -1023,55 +1023,11 @@
                     height: dp(44)
                     on_release: root.verify_phone_otp()
 
-                AppButton:
-                    text: "Refresh Subscription Status"
-                    size_hint_y: None
-                    height: dp(48)
-                    on_release: root.refresh_subscription()
-
-                # Subscription quick actions
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(8)
-                    padding: dp(10)
-                    canvas.before:
-                        Color:
-                            rgba: CARD_BG
-                        RoundedRectangle:
-                            pos: self.pos
-                            size: self.size
-                            radius: [10]
-                        Color:
-                            rgba: (1, 1, 1, 0.12)
-                        Line:
-                            width: 1.0
-                            rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
-
-                    Label:
-                        text: "Subscription"
-                        size_hint_y: None
-                        height: dp(20)
-                        color: 1, 1, 1, 0.9
-
-                    AppButton:
-                        text: "Manage Subscription (Google Play)"
-                        size_hint_y: None
-                        height: dp(44)
-                        on_release: root.manage_subscription()
-
                 Label:
                     text: "Options"
                     size_hint_y: None
                     height: dp(30)
                     color: 1, 1, 1, 0.7
-
-                AppButton:
-                    text: "Subscription Status: " + root.subscription_status
-                    size_hint_y: None
-                    height: dp(44)
-                    on_release: root.manage_subscription()
 
                 AppButton:
                     text: "Change Password"
@@ -1394,9 +1350,6 @@
                 NavButton:
                     text: "Home"
                     on_release: root.refresh()
-                NavButton:
-                    text: "Subscription"
-                    on_release: root.go_subscription()
                 NavButton:
                     text: "My Posts"
                     on_release: root.go_my_posts()
@@ -1782,91 +1735,6 @@
                 text: "Save / Share (demo)"
                 size_hint_y: None
                 height: dp(44)
-
-<SubscriptionScreen>:
-    name: "subscription"
-    FloatLayout:
-        canvas.before:
-            Color:
-                rgba: BG_PURPLE
-            Rectangle:
-                pos: self.pos
-                size: self.size
-            Color:
-                rgba: SHINE_PURPLE
-            Ellipse:
-                size: self.width * 1.25, self.height *  0.9
-                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
-            Color:
-                rgba: SHINE_WHITE
-            Ellipse:
-                size: self.width * 0.75, self.height * 0.5
-                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
-
-        BoxLayout:
-            orientation: "vertical"
-            size_hint: 0.9, 0.8
-            pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            spacing: dp(12)
-            padding: dp(16)
-            canvas.before:
-                Color:
-                    rgba: PANEL_BG
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [16]
-                Color:
-                    rgba: (1, 1, 1, 0.12)
-                Line:
-                    width: 1.0
-                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
-
-            Label:
-                text: "Subscription"
-                font_size: sp(24)
-                size_hint_y: None
-                height: dp(40)
-                color: 1, 1, 1, 1
-
-            Label:
-                text: "Status: " + root.status_text
-                color: 1, 1, 1, 0.9
-
-            Label:
-                text: "Payments are handled by Google Play Billing. This app only unlocks digital contact access after Google confirms an active subscription."
-                color: 1, 1, 1, 0.8
-
-            AppButton:
-                text: "Aggressive — ₹10"
-                size_hint_y: None
-                height: dp(48)
-                on_release: root.simulate_google_play_success("aggressive_10")
-
-            AppButton:
-                text: "Instant — ₹79"
-                size_hint_y: None
-                height: dp(48)
-                on_release: root.simulate_google_play_success("instant_79")
-
-            AppButton:
-                text: "Smart — ₹199 / month"
-                size_hint_y: None
-                height: dp(48)
-                on_release: root.simulate_google_play_success("smart_monthly_199")
-
-            AppButton:
-                text: "Business — ₹499 / 3 months"
-                size_hint_y: None
-                height: dp(48)
-                on_release: root.simulate_google_play_success("business_quarterly_499")
-
-            AppButton:
-                text: "Back"
-                size_hint_y: None
-                height: dp(44)
-                color: (0.94, 0.27, 0.27, 1)
-                on_release: root.back()
 
 <OwnerDashboardScreen>:
     name: "owner_dashboard"

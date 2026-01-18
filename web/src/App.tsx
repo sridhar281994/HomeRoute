@@ -6,7 +6,6 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
 import PropertyPage from "./pages/PropertyPage";
-import SubscriptionPage from "./pages/SubscriptionPage";
 import ProfilePage from "./pages/ProfilePage";
 import OwnerAddPage from "./pages/OwnerAddPage";
 import AdminReviewPage from "./pages/AdminReviewPage";
@@ -32,11 +31,10 @@ export default function App() {
         <div className="spacer" />
         <div className="topbar-links">
           <Link to="/home">Home</Link>
-          {role === "admin" ? <Link to="/admin/review">Admin Review</Link> : null}
-          <Link to="/subscription">Subscription</Link>
           <Link to="/myposts">My Posts</Link>
           <Link to="/profile">Settings</Link>
           <Link to="/owner/add">Publish Ad</Link>
+          {role === "admin" ? <Link to="/admin/review">Admin Review</Link> : null}
           {!isLoggedIn ? (
             <>
               <Link to="/login">Login</Link>
@@ -72,7 +70,6 @@ export default function App() {
         <Route path="/welcome" element={<WelcomePage />} />
         <Route path="/home" element={<HomePage />} />
         <Route path="/property/:id" element={<PropertyPage />} />
-        <Route path="/subscription" element={<SubscriptionPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/owner/add" element={<OwnerAddPage />} />
         <Route path="/myposts" element={<MyPostsPage />} />

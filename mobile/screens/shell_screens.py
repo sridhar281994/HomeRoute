@@ -35,12 +35,10 @@ from frontend_app.utils.api import (
     api_meta_categories,
     api_owner_create_property,
     api_owner_list_properties,
-    api_subscription_status,
     api_upload_property_media,
     to_api_url,
 )
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
-from frontend_app.utils.billing import BillingUnavailable, buy_plan
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
 
@@ -194,15 +192,6 @@ class HomeScreen(Screen):
             return
         if self.manager:
             self.manager.current = "welcome"
-
-    def go_subscription(self):
-        if not self.is_logged_in:
-            _popup("Login required", "Please login to open Subscription.")
-            if self.manager:
-                self.manager.current = "login"
-            return
-        if self.manager:
-            self.manager.current = "subscription"
 
     def go_my_posts(self):
         if not self.is_logged_in:
@@ -393,8 +382,28 @@ class HomeScreen(Screen):
         p = raw or {}
         title = str(p.get("title") or "Property").strip()
         adv_no = str(p.get("adv_number") or p.get("ad_number") or p.get("id") or "").strip()
+        distance_txt = ""
+        try:
+            dist_raw = p.get("distance_km")
+            if dist_raw is not None:
+                dist = float(dist_raw)
+                if dist >= 0:
+                    distance_txt = f"{dist:.1f}km from you" if dist < 10 else f"{round(dist)}km from you"
+        except Exception:
+            distance_txt = ""
         meta = " • ".join(
-            [x for x in [f"Ad #{adv_no}" if adv_no else "", str(p.get("rent_sale") or ""), str(p.get("property_type") or ""), str(p.get("price_display") or ""), str(p.get("location_display") or "")] if x]
+            [
+                x
+                for x in [
+                    distance_txt,
+                    f"Ad #{adv_no}" if adv_no else "",
+                    str(p.get("rent_sale") or ""),
+                    str(p.get("property_type") or ""),
+                    str(p.get("price_display") or ""),
+                    str(p.get("location_display") or ""),
+                ]
+                if x
+            ]
         )
         images = p.get("images") or []
 
@@ -426,6 +435,7 @@ class HomeScreen(Screen):
         header.add_widget(hb)
         card.add_widget(header)
 
+        card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
         if images:
             first = images[0] or {}
             ctype = str(first.get("content_type") or "").lower()
@@ -439,11 +449,59 @@ class HomeScreen(Screen):
         else:
             card.add_widget(Label(text="Photos will appear once uploaded.", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
 
+        amenities = p.get("amenities") or []
+        card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
+        card.add_widget(
+            Label(
+                text=(", ".join([str(x) for x in amenities]) if amenities else "—"),
+                size_hint_y=None,
+                height=36,
+                color=(1, 1, 1, 0.85),
+            )
+        )
+
         btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
-        btn_open = Factory.AppButton(text="Open", size_hint_y=None, height=44)
-        btn_open.bind(on_release=lambda *_: self.open_post_popup(p))
-        btn_row.add_widget(btn_open)
+        btn_contact = Factory.AppButton(text="Contact owner", size_hint_y=None, height=44)
+        lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
+
+        def do_contact(*_):
+            sess = get_session() or {}
+            if not (sess.get("token") or ""):
+                lbl_status.text = "Login required to contact owner."
+                if self.manager:
+                    self.manager.current = "login"
+                return
+            btn_contact.disabled = True
+
+            from threading import Thread
+
+            def work():
+                try:
+                    contact = api_get_property_contact(int(p.get("id") or 0))
+                    owner_name = str(contact.get("owner_name") or "").strip()
+                    adv_no = str(contact.get("adv_number") or contact.get("advNo") or p.get("id") or "").strip()
+                    who = f" ({owner_name})" if owner_name else ""
+
+                    def done(*_dt):
+                        btn_contact.text = "Contacted"
+                        lbl_status.text = f"Contact details sent to your registered email/SMS for Ad #{adv_no}{who}."
+
+                    Clock.schedule_once(done, 0)
+                except ApiError as e:
+                    msg = str(e) or "Locked"
+
+                    def fail(*_dt):
+                        btn_contact.disabled = False
+                        lbl_status.text = msg
+
+                    Clock.schedule_once(fail, 0)
+
+            Thread(target=work, daemon=True).start()
+
+        btn_contact.bind(on_release=do_contact)
+        btn_row.add_widget(btn_contact)
         card.add_widget(btn_row)
+        card.add_widget(lbl_status)
 
         return card
 
@@ -599,87 +657,6 @@ class HomeScreen(Screen):
 
         Thread(target=work, daemon=True).start()
 
-    def open_post_popup(self, p: dict[str, Any]):
-        """
-        Show the post details inline (no redirect screen).
-        Includes Photos, Amenities, and Contact owner.
-        """
-        pid = int(p.get("id") or 0)
-        title = str(p.get("title") or "Post")
-        meta = " • ".join([x for x in [str(p.get("rent_sale") or ""), str(p.get("property_type") or ""), str(p.get("price_display") or ""), str(p.get("location_display") or "")] if x])
-        amenities = p.get("amenities") or []
-        images = p.get("images") or []
-
-        root = BoxLayout(orientation="vertical", spacing=8, padding=10)
-        root.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=34))
-        root.add_widget(Label(text=str(meta), size_hint_y=None, height=22, color=(1, 1, 1, 0.85)))
-
-        root.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
-        if images:
-            first = images[0] or {}
-            ctype = str(first.get("content_type") or "").lower()
-            if ctype.startswith("image/"):
-                img = AsyncImage(source=to_api_url(first.get("url") or ""), allow_stretch=True)
-                img.size_hint_y = None
-                img.height = 220
-                root.add_widget(img)
-            else:
-                root.add_widget(Label(text="(Video attached)", size_hint_y=None, height=22, color=(1, 1, 1, 0.85)))
-        else:
-            root.add_widget(Label(text="Photos will appear once uploaded.", size_hint_y=None, height=22, color=(1, 1, 1, 0.85)))
-
-        root.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
-        root.add_widget(Label(text=(", ".join([str(x) for x in amenities]) if amenities else "—"), size_hint_y=None, height=44, color=(1, 1, 1, 0.85)))
-
-        btn_contact = Factory.AppButton(text="Contact owner", size_hint_y=None, height=46)
-        root.add_widget(btn_contact)
-        lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
-        root.add_widget(lbl_status)
-
-        popup = Popup(title="Post", content=root, size_hint=(0.92, 0.90), auto_dismiss=True)
-
-        def do_contact(*_):
-            sess = get_session() or {}
-            if not (sess.get("token") or ""):
-                _popup("Login required", "Please login to view contact details.")
-                if self.manager:
-                    self.manager.current = "login"
-                popup.dismiss()
-                return
-
-            btn_contact.disabled = True
-
-            def work():
-                try:
-                    contact = api_get_property_contact(pid)
-                    owner_name = str(contact.get("owner_name") or "").strip()
-                    adv_no = str(contact.get("adv_number") or contact.get("advNo") or pid).strip()
-
-                    def done(*_dt):
-                        btn_contact.text = "Contacted"
-                        who = f" ({owner_name})" if owner_name else ""
-                        lbl_status.text = f"Contact details sent to your registered email/SMS for Ad #{adv_no}{who}."
-
-                    Clock.schedule_once(done, 0)
-                except ApiError as e:
-                    msg = str(e)
-
-                    def fail(*_dt):
-                        btn_contact.disabled = False
-                        lbl_status.text = msg
-                        # If locked, guide to subscription screen (no special quota messaging).
-                        if "subscription" in msg.lower() and self.manager:
-                            self.manager.current = "subscription"
-
-                    Clock.schedule_once(fail, 0)
-
-            from threading import Thread
-
-            Thread(target=work, daemon=True).start()
-
-        btn_contact.bind(on_release=do_contact)
-        popup.open()
-
     def go_profile(self):
         if not self.is_logged_in:
             _popup("Login required", "Please login to open Profile/Settings.")
@@ -734,7 +711,7 @@ class PropertyDetailScreen(Screen):
     def unlock_contact(self):
         """
         Contact Unlock Flow:
-        - Call the backend unlock endpoint (it enforces free quota / subscription).
+        - Call the backend unlock endpoint (server enforces access rules).
         - Show a confirmation that details were sent via Email/SMS.
         """
         sess = get_session() or {}
@@ -755,56 +732,12 @@ class PropertyDetailScreen(Screen):
                 msg = str(e)
                 def fail(*_dt):
                     _popup("Error", msg)
-                    if "subscription required" in msg.lower() and self.manager:
-                        self.manager.current = "subscription"
 
                 Clock.schedule_once(fail, 0)
 
         from threading import Thread
 
         Thread(target=work, daemon=True).start()
-
-    def _go_subscription(self):
-        if self.manager:
-            self.manager.current = "subscription"
-
-
-class SubscriptionScreen(Screen):
-    status_text = StringProperty("Unknown")
-
-    def on_pre_enter(self, *args):
-        self.refresh_status()
-
-    def refresh_status(self):
-        def work():
-            try:
-                sub = api_subscription_status()
-                status = str(sub.get("status") or "inactive").capitalize()
-                Clock.schedule_once(lambda *_: setattr(self, "status_text", status), 0)
-            except ApiError as e:
-                msg = str(e)
-                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
-
-        from threading import Thread
-
-        Thread(target=work, daemon=True).start()
-
-    def simulate_google_play_success(self, product_id: str = ""):
-        pid = str(product_id or "").strip()
-        if not pid:
-            _popup("Billing", "Missing product id.")
-            return
-        try:
-            buy_plan(pid)
-            _popup("Billing", f"Launching Google Play purchase for:\n{pid}")
-        except BillingUnavailable:
-            # Desktop/dev fallback.
-            _popup("Google Play Billing (demo)", f"Product: {pid}\n\nAndroid billing bridge not available in this build.")
-
-    def back(self):
-        if self.manager:
-            self.manager.current = "property_detail"
-
 
 class MyPostsScreen(Screen):
     """
@@ -874,7 +807,6 @@ class SettingsScreen(Screen):
     email_value = StringProperty("")
     role_value = StringProperty("")
     profile_image_url = StringProperty("")
-    subscription_status = StringProperty("Unknown")
 
     def on_pre_enter(self, *args):
         sess = get_session() or {}
@@ -888,7 +820,6 @@ class SettingsScreen(Screen):
         u_local = get_user() or {}
         self._apply_user(u_local)
         self._refresh_profile_from_server()
-        self.refresh_subscription()
 
     def _apply_user(self, u: dict[str, Any]) -> None:
         self.user_summary = f"{u.get('name') or 'User'}"
@@ -1120,24 +1051,6 @@ class SettingsScreen(Screen):
         btn_no.bind(on_release=lambda *_: popup.dismiss())
         btn_yes.bind(on_release=do_delete)
         popup.open()
-
-    def refresh_subscription(self):
-        def work():
-            try:
-                sub = api_subscription_status()
-                status = str(sub.get("status") or "inactive").capitalize()
-                Clock.schedule_once(lambda *_: setattr(self, "subscription_status", status), 0)
-            except ApiError as e:
-                msg = str(e)
-                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
-
-        from threading import Thread
-
-        Thread(target=work, daemon=True).start()
-
-    def manage_subscription(self):
-        if self.manager:
-            self.manager.current = "subscription"
 
     def logout(self):
         clear_session()
