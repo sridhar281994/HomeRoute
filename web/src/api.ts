@@ -229,10 +229,6 @@ export function getContact(id: number) {
   return api<any>(`/properties/${id}/contact`);
 }
 
-export function subscriptionStatus() {
-  return api<{ status: string }>(`/me/subscription`);
-}
-
 export function getMe() {
   return api<{ user: User }>(`/me`);
 }

@@ -12,7 +12,7 @@ export default function WelcomePage() {
         Find your perfect place  🏠✨
       </p>
       <p className="muted" style={{ marginTop: 10 }}>
-        Browse properties for free. Unlock contact with a subscription. <span className="sparkle" aria-hidden="true" />
+        Browse properties for free. Login to contact owners. <span className="sparkle" aria-hidden="true" />
       </p>
       <div className="row" style={{ justifyContent: "center", marginTop: 14 }}>
         <Link to="/login">
