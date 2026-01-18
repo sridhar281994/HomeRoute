@@ -138,6 +138,10 @@ class HomeScreen(Screen):
     is_loading = BooleanProperty(False)
     is_logged_in = BooleanProperty(False)
     is_guest = BooleanProperty(False)
+    filters_open = BooleanProperty(True)
+
+    def toggle_filters(self):
+        self.filters_open = not self.filters_open
 
     def on_pre_enter(self, *args):
         # Gate buttons until user logs in.
@@ -521,15 +525,24 @@ class HomeScreen(Screen):
                 if self.manager:
                     self.manager.current = "login"
                 return
+            pid_raw = p.get("id")
+            try:
+                pid = int(str(pid_raw).strip())
+            except (TypeError, ValueError):
+                lbl_status.text = "Invalid ad id."
+                return
+            if pid <= 0:
+                lbl_status.text = "Invalid ad id."
+                return
             btn_contact.disabled = True
 
             from threading import Thread
 
             def work():
                 try:
-                    contact = api_get_property_contact(int(p.get("id") or 0))
+                    contact = api_get_property_contact(pid)
                     owner_name = str(contact.get("owner_name") or "").strip()
-                    adv_no = str(contact.get("adv_number") or contact.get("advNo") or p.get("id") or "").strip()
+                    adv_no = str(contact.get("adv_number") or contact.get("advNo") or pid).strip()
                     who = f" ({owner_name})" if owner_name else ""
 
                     def done(*_dt):
