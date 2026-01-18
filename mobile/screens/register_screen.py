@@ -13,6 +13,7 @@ from frontend_app.utils.storage import get_session, set_session
 
 # Email regex
 EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
+DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "634110997767-juj3od861h6po1udb0huea59hog0931l.apps.googleusercontent.com"
 
 
 class RegisterScreen(Screen):
@@ -187,7 +188,11 @@ class RegisterScreen(Screen):
         - Send ID token to backend (/auth/google)
         - Store session and navigate to home
         """
-        server_client_id = (os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or os.environ.get("GOOGLE_WEB_CLIENT_ID") or "").strip()
+        server_client_id = (
+            os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+            or os.environ.get("GOOGLE_WEB_CLIENT_ID")
+            or DEFAULT_GOOGLE_OAUTH_CLIENT_ID
+        ).strip()
 
         def on_error(msg: str) -> None:
             self._popup("Google Login", msg or "Google login failed.")
