@@ -1426,205 +1426,205 @@
                     disabled: root.is_logged_in
                     on_release: root.go_register()
 
-            GridLayout:
-                cols: 2
+        GridLayout:
+            cols: 2
+            size_hint_y: None
+            height: self.minimum_height
+            spacing: dp(10)
+
+            BoxLayout:
+                orientation: "vertical"
                 size_hint_y: None
-                height: self.minimum_height
-                spacing: dp(10)
-
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: dp(82)
-                    spacing: dp(4)
-                    Label:
-                        text: "State (optional)"
-                        color: TEXT_MUTED
-                        size_hint_y: None
-                        height: dp(22)
-                    PrettySpinner:
-                        text: root.state_value
-                        values: root.state_options
-                        on_text:
-                            root.state_value = self.text
-                            root.on_state_selected()
-                        size_hint_y: None
-                        height: dp(48)
-
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: dp(82)
-                    spacing: dp(4)
-                    Label:
-                        text: "District (optional)"
-                        color: TEXT_MUTED
-                        size_hint_y: None
-                        height: dp(22)
-                    PrettySpinner:
-                        text: root.district_value
-                        values: root.district_options
-                        disabled: root.state_value == "Any"
-                        on_text:
-                            root.district_value = self.text
-                            root.on_district_selected()
-                        size_hint_y: None
-                        height: dp(48)
-
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: dp(82)
-                    spacing: dp(4)
-                    Label:
-                        text: "Area (optional)"
-                        color: TEXT_MUTED
-                        size_hint_y: None
-                        height: dp(22)
-                    PrettySpinner:
-                        text: root.area_value
-                        values: root.area_options
-                        disabled: (root.state_value == "Any") or (root.district_value == "Any")
-                        on_text: root.area_value = self.text
-                        size_hint_y: None
-                        height: dp(48)
-
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: dp(82)
-                    spacing: dp(4)
-                    Label:
-                        text: "Nearby radius (km)"
-                        color: TEXT_MUTED
-                        size_hint_y: None
-                        height: dp(22)
-                    TextInput:
-                        text: root.radius_km
-                        multiline: False
-                        input_filter: "int"
-                        on_text: root.radius_km = self.text
-                        size_hint_y: None
-                        height: dp(48)
-
+                height: dp(82)
+                spacing: dp(4)
                 Label:
-                    text: root.gps_status
+                    text: "State (optional)"
                     color: TEXT_MUTED
                     size_hint_y: None
                     height: dp(22)
-                    halign: "left"
-                    valign: "middle"
-                    text_size: self.size
-                Widget:
-
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: dp(82)
-                    spacing: dp(4)
-                    Label:
-                        text: "Need category (materials / services / property)"
-                        color: TEXT_MUTED
-                        size_hint_y: None
-                        height: dp(22)
-                    PrettySpinner:
-                        text: root.need_category
-                        values: root.need_values
-                        on_text: root.need_category = self.text
-                        size_hint_y: None
-                        height: dp(48)
-
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: dp(82)
-                    spacing: dp(4)
-                    Label:
-                        text: "Post date"
-                        color: TEXT_MUTED
-                        size_hint_y: None
-                        height: dp(22)
-                    PrettySpinner:
-                        text: root.posted_within_days
-                        values: ["Any", "Today", "Last 7 days", "Last 30 days", "Last 90 days"]
-                        on_text: root.posted_within_days = self.text
-                        size_hint_y: None
-                        height: dp(48)
-
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: dp(82)
-                    spacing: dp(4)
-                    Label:
-                        text: "Sort (by budget)"
-                        color: TEXT_MUTED
-                        size_hint_y: None
-                        height: dp(22)
-                    PrettySpinner:
-                        text: root.sort_budget
-                        values: ["Any (Newest)", "Top (high to low)", "Bottom (low to high)"]
-                        on_text: root.sort_budget = self.text
-                        size_hint_y: None
-                        height: dp(48)
-
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: dp(82)
-                    spacing: dp(4)
-                    Label:
-                        text: "Max budget"
-                        color: TEXT_MUTED
-                        size_hint_y: None
-                        height: dp(22)
-                    TextInput:
-                        text: root.max_price
-                        multiline: False
-                        input_filter: "int"
-                        on_text: root.max_price = self.text
-                        size_hint_y: None
-                        height: dp(48)
-
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: dp(82)
-                    spacing: dp(4)
-                    Label:
-                        text: "Rent/Sale"
-                        color: TEXT_MUTED
-                        size_hint_y: None
-                        height: dp(22)
-                    PrettySpinner:
-                        text: root.rent_sale
-                        values: ["Any", "Rent", "Sale"]
-                        on_text: root.rent_sale = self.text
-                        size_hint_y: None
-                        height: dp(48)
-
-                AppButton:
-                    text: "Apply filters"
+                PrettySpinner:
+                    text: root.state_value
+                    values: root.state_options
+                    on_text:
+                        root.state_value = self.text
+                        root.on_state_selected()
                     size_hint_y: None
                     height: dp(48)
-                    on_release: root.apply_filters()
-                Widget:
+
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: dp(82)
+                spacing: dp(4)
+                Label:
+                    text: "District (optional)"
+                    color: TEXT_MUTED
+                    size_hint_y: None
+                    height: dp(22)
+                PrettySpinner:
+                    text: root.district_value
+                    values: root.district_options
+                    disabled: root.state_value == "Any"
+                    on_text:
+                        root.district_value = self.text
+                        root.on_district_selected()
+                    size_hint_y: None
+                    height: dp(48)
+
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: dp(82)
+                spacing: dp(4)
+                Label:
+                    text: "Area (optional)"
+                    color: TEXT_MUTED
+                    size_hint_y: None
+                    height: dp(22)
+                PrettySpinner:
+                    text: root.area_value
+                    values: root.area_options
+                    disabled: (root.state_value == "Any") or (root.district_value == "Any")
+                    on_text: root.area_value = self.text
+                    size_hint_y: None
+                    height: dp(48)
+
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: dp(82)
+                spacing: dp(4)
+                Label:
+                    text: "Nearby radius (km)"
+                    color: TEXT_MUTED
+                    size_hint_y: None
+                    height: dp(22)
+                TextInput:
+                    text: root.radius_km
+                    multiline: False
+                    input_filter: "int"
+                    on_text: root.radius_km = self.text
+                    size_hint_y: None
+                    height: dp(48)
 
             Label:
-                text: "Loading..." if root.is_loading else "Listings"
-                size_hint_y: None
-                height: dp(24)
+                text: root.gps_status
                 color: TEXT_MUTED
+                size_hint_y: None
+                height: dp(22)
+                halign: "left"
+                valign: "middle"
+                text_size: self.size
+            Widget:
 
-            ScrollView:
-                do_scroll_x: False
-                bar_width: dp(6)
-                GridLayout:
-                    id: list_container
-                    cols: 1
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: dp(82)
+                spacing: dp(4)
+                Label:
+                    text: "Need category (materials / services / property)"
+                    color: TEXT_MUTED
                     size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(8)
+                    height: dp(22)
+                PrettySpinner:
+                    text: root.need_category
+                    values: root.need_values
+                    on_text: root.need_category = self.text
+                    size_hint_y: None
+                    height: dp(48)
+
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: dp(82)
+                spacing: dp(4)
+                Label:
+                    text: "Post date"
+                    color: TEXT_MUTED
+                    size_hint_y: None
+                    height: dp(22)
+                PrettySpinner:
+                    text: root.posted_within_days
+                    values: ["Any", "Today", "Last 7 days", "Last 30 days", "Last 90 days"]
+                    on_text: root.posted_within_days = self.text
+                    size_hint_y: None
+                    height: dp(48)
+
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: dp(82)
+                spacing: dp(4)
+                Label:
+                    text: "Sort (by budget)"
+                    color: TEXT_MUTED
+                    size_hint_y: None
+                    height: dp(22)
+                PrettySpinner:
+                    text: root.sort_budget
+                    values: ["Any (Newest)", "Top (high to low)", "Bottom (low to high)"]
+                    on_text: root.sort_budget = self.text
+                    size_hint_y: None
+                    height: dp(48)
+
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: dp(82)
+                spacing: dp(4)
+                Label:
+                    text: "Max budget"
+                    color: TEXT_MUTED
+                    size_hint_y: None
+                    height: dp(22)
+                TextInput:
+                    text: root.max_price
+                    multiline: False
+                    input_filter: "int"
+                    on_text: root.max_price = self.text
+                    size_hint_y: None
+                    height: dp(48)
+
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: dp(82)
+                spacing: dp(4)
+                Label:
+                    text: "Rent/Sale"
+                    color: TEXT_MUTED
+                    size_hint_y: None
+                    height: dp(22)
+                PrettySpinner:
+                    text: root.rent_sale
+                    values: ["Any", "Rent", "Sale"]
+                    on_text: root.rent_sale = self.text
+                    size_hint_y: None
+                    height: dp(48)
+
+            AppButton:
+                text: "Apply filters"
+                size_hint_y: None
+                height: dp(48)
+                on_release: root.apply_filters()
+            Widget:
+
+        Label:
+            text: "Loading..." if root.is_loading else "Listings"
+            size_hint_y: None
+            height: dp(24)
+            color: TEXT_MUTED
+
+        ScrollView:
+            do_scroll_x: False
+            bar_width: dp(6)
+            GridLayout:
+                id: list_container
+                cols: 1
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: dp(8)
 
 <MyPostsScreen>:
     name: "my_posts"
