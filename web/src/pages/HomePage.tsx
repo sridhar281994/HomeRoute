@@ -420,93 +420,100 @@ export default function HomePage() {
       </div>
 
       <div className="grid" style={{ marginTop: 12 }}>
-        {items.map((p) => (
-          <div className="col-12" key={p.id}>
-            <div className="card post-card">
-              <div className="post-header">
-                <div className="post-avatar" aria-hidden="true">
-                  {String(p.owner_company_name || p.owner_name || p.title || "A").trim().slice(0, 1).toUpperCase()}
-                </div>
-                <div>
-                  <div className="h2" style={{ margin: 0 }}>
-                    {p.title}
+        {items.map((p) => {
+          const pid = Number(p.id);
+          const pidKey = Number.isFinite(pid) ? pid : Number.NaN;
+          return (
+            <div className="col-12" key={p.id}>
+              <div className="card post-card">
+                <div className="post-header">
+                  <div className="post-avatar" aria-hidden="true">
+                    {String(p.owner_company_name || p.owner_name || p.title || "A").trim().slice(0, 1).toUpperCase()}
                   </div>
-                  <div className="muted post-meta">
-                    {p.distance_km != null ? `${fmtDistance(p.distance_km)} • ` : ""}
-                    Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} •{" "}
-                    {p.location_display}
-                    {p.created_at ? ` • ${new Date(p.created_at).toLocaleDateString()}` : ""}
+                  <div>
+                    <div className="h2" style={{ margin: 0 }}>
+                      {p.title}
+                    </div>
+                    <div className="muted post-meta">
+                      {p.distance_km != null ? `${fmtDistance(p.distance_km)} • ` : ""}
+                      Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} •{" "}
+                      {p.location_display}
+                      {p.created_at ? ` • ${new Date(p.created_at).toLocaleDateString()}` : ""}
+                    </div>
                   </div>
+                  <div className="spacer" />
                 </div>
-                <div className="spacer" />
-              </div>
 
-              <div className="post-body">
-                <div className="h2" style={{ marginTop: 6 }}>
-                  Photos
-                </div>
-                {p.images?.length ? (
-                <div className="post-media">
-                  <div className="grid" style={{ marginTop: 10 }}>
-                    {p.images.slice(0, 6).map((i: any) => (
-                      <div className="col-6" key={i.id ?? i.url}>
-                        {String(i.content_type || "").toLowerCase().startsWith("video/") ? (
-                          <video controls preload="metadata" src={toApiUrl(i.url)} style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
-                        ) : (
-                          <img src={toApiUrl(i.url)} alt={`Ad ${p.id} media`} loading="lazy" style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
-                        )}
-                      </div>
-                    ))}
+                <div className="post-body">
+                  <div className="h2" style={{ marginTop: 6 }}>
+                    Photos
                   </div>
-                </div>
-                ) : (
+                  {p.images?.length ? (
+                  <div className="post-media">
+                    <div className="grid" style={{ marginTop: 10 }}>
+                      {p.images.slice(0, 6).map((i: any) => (
+                        <div className="col-6" key={i.id ?? i.url}>
+                          {String(i.content_type || "").toLowerCase().startsWith("video/") ? (
+                            <video controls preload="metadata" src={toApiUrl(i.url)} style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
+                          ) : (
+                            <img src={toApiUrl(i.url)} alt={`Ad ${p.id} media`} loading="lazy" style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  ) : (
+                    <div className="muted" style={{ marginTop: 6 }}>
+                      Photos will appear once uploaded.
+                    </div>
+                  )}
+
+                  <div className="h2" style={{ marginTop: 12 }}>
+                    Amenities
+                  </div>
                   <div className="muted" style={{ marginTop: 6 }}>
-                    Photos will appear once uploaded.
+                    {p.amenities?.length ? p.amenities.join(", ") : "—"}
                   </div>
-                )}
 
-                <div className="h2" style={{ marginTop: 12 }}>
-                  Amenities
-                </div>
-                <div className="muted" style={{ marginTop: 6 }}>
-                  {p.amenities?.length ? p.amenities.join(", ") : "—"}
-                </div>
-
-                <div className="row" style={{ marginTop: 12, alignItems: "center" }}>
-                  <button
-                    className="primary"
-                    disabled={!!contacted[Number(p.id)]}
-                  onClick={async () => {
-                      const pid = Number(p.id);
-                      const s = getSession();
-                      if (!s.token) {
-                        setContactMsg((m) => ({ ...m, [pid]: "Login required to contact owner." }));
-                        nav("/login");
-                        return;
-                      }
-                      setContactMsg((m) => ({ ...m, [pid]: "" }));
-                      try {
-                        const contact = await getContact(pid);
-                        const ownerName = String(contact.owner_name || "").trim();
-                        const advNo = String(contact.adv_number || contact.advNo || p.adv_number || p.ad_number || p.id || "").trim();
-                        const sent = "Contact details sent to your registered email/SMS.";
-                        const who = ownerName ? ` (${ownerName})` : "";
-                        const label = advNo ? ` Ad #${advNo}${who}.` : ` Ad${who}.`;
-                        setContacted((c) => ({ ...c, [pid]: true }));
-                        setContactMsg((m) => ({ ...m, [pid]: `${sent}${label}`.trim() }));
-                      } catch (e: any) {
-                        setContactMsg((m) => ({ ...m, [pid]: e.message || "Locked" }));
-                      }
-                    }}
-                  >
-                    {contacted[Number(p.id)] ? "Contacted" : "Contact owner"}
-                  </button>
-                  <span className="muted">{contactMsg[Number(p.id)] || ""}</span>
+                  <div className="row" style={{ marginTop: 12, alignItems: "center" }}>
+                    <button
+                      className="primary"
+                      disabled={!!contacted[pidKey]}
+                    onClick={async () => {
+                        if (!Number.isFinite(pid) || pid <= 0) {
+                          setContactMsg((m) => ({ ...m, [pidKey]: "Invalid ad id." }));
+                          return;
+                        }
+                        const s = getSession();
+                        if (!s.token) {
+                          setContactMsg((m) => ({ ...m, [pidKey]: "Login required to contact owner." }));
+                          nav("/login");
+                          return;
+                        }
+                        setContactMsg((m) => ({ ...m, [pidKey]: "" }));
+                        try {
+                          const contact = await getContact(pid);
+                          const ownerName = String(contact.owner_name || "").trim();
+                          const advNo = String(contact.adv_number || contact.advNo || p.adv_number || p.ad_number || p.id || "").trim();
+                          const sent = "Contact details sent to your registered email/SMS.";
+                          const who = ownerName ? ` (${ownerName})` : "";
+                          const label = advNo ? ` Ad #${advNo}${who}.` : ` Ad${who}.`;
+                          setContacted((c) => ({ ...c, [pidKey]: true }));
+                          setContactMsg((m) => ({ ...m, [pidKey]: `${sent}${label}`.trim() }));
+                        } catch (e: any) {
+                          setContactMsg((m) => ({ ...m, [pidKey]: e.message || "Locked" }));
+                        }
+                      }}
+                    >
+                      {contacted[pidKey] ? "Contacted" : "Contact owner"}
+                    </button>
+                    <span className="muted">{contactMsg[pidKey] || ""}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {!items.length ? (
           <div className="col-12 muted" style={{ marginTop: 8 }}>
             No Upload yet thanks for reaching us.
