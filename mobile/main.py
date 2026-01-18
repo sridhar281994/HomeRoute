@@ -23,6 +23,7 @@ from screens.shell_screens import (
     PropertyDetailScreen,
     SettingsScreen,
     SplashScreen,
+    SubscriptionScreen,
     WelcomeScreen,
 )
 
@@ -51,6 +52,7 @@ class QuickRentApp(App):
         sm.add_widget(MyPostsScreen(name="my_posts"))
         sm.add_widget(PropertyDetailScreen(name="property_detail"))
         sm.add_widget(SettingsScreen(name="profile"))
+        sm.add_widget(SubscriptionScreen(name="subscription"))
 
         sm.add_widget(OwnerDashboardScreen(name="owner_dashboard"))
         sm.add_widget(OwnerAddPropertyScreen(name="owner_add_property"))

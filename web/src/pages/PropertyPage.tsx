@@ -7,6 +7,7 @@ export default function PropertyPage() {
   const pid = Number(id);
   const [p, setP] = useState<any>(null);
   const [msg, setMsg] = useState("");
+  const [contacted, setContacted] = useState(false);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -15,6 +16,7 @@ export default function PropertyPage() {
       try {
         const data = await getProperty(pid);
         setP(data);
+        setContacted(Boolean((data as any)?.contacted));
       } catch (e: any) {
         setMsg(e.message || "Failed");
       }
@@ -90,8 +92,9 @@ export default function PropertyPage() {
                 ))}
               </div>
             ) : (
-              <div className="muted" style={{ marginTop: 6 }}>
-                Photos will appear once uploaded.
+              <div className="post-media placeholder" aria-hidden="true" style={{ marginTop: 10 }}>
+                <div className="media-placeholder" />
+                <div className="media-placeholder" />
               </div>
             )}
           </div>
@@ -107,6 +110,7 @@ export default function PropertyPage() {
         <div className="col-12 row">
           <button
             className="primary"
+            disabled={contacted}
             onClick={async () => {
               setMsg("");
               try {
@@ -122,13 +126,14 @@ export default function PropertyPage() {
                 const sent = "Contact details sent to your registered email/SMS.";
                 const header = advNo ? `Ad #${advNo}` : "Ad";
                 const who = ownerName ? ` (${ownerName})` : "";
+                setContacted(true);
                 setMsg(`${sent} ${header}${who}.`);
               } catch (e: any) {
                 setMsg(e.message || "Locked");
               }
             }}
           >
-            Contact owner
+            {contacted ? "Contacted" : "Contact owner"}
           </button>
           <span className="muted">{msg}</span>
         </div>

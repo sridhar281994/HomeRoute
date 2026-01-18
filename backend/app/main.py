@@ -1644,6 +1644,38 @@ def _property_out(
     return out
 
 
+def _contacted_property_ids(db: Session, user_id: int | None, property_ids: list[int]) -> set[int]:
+    if not user_id:
+        return set()
+    ids = [int(x) for x in property_ids if int(x) > 0]
+    if not ids:
+        return set()
+    free_ids = db.execute(
+        select(FreeContactUsage.property_id).where(
+            (FreeContactUsage.user_id == int(user_id)) & (FreeContactUsage.property_id.in_(ids))
+        )
+    ).scalars().all()
+    paid_ids = db.execute(
+        select(ContactUsage.property_id).where(
+            (ContactUsage.user_id == int(user_id)) & (ContactUsage.property_id.in_(ids))
+        )
+    ).scalars().all()
+    return set(int(x) for x in free_ids) | set(int(x) for x in paid_ids)
+
+
+def _apply_contacted_flags(db: Session, me: User | None, items: list[dict[str, Any]]) -> None:
+    if not me or not items:
+        return
+    ids = [int(x.get("id") or 0) for x in items if int(x.get("id") or 0) > 0]
+    if not ids:
+        return
+    contacted = _contacted_property_ids(db, me.id, ids)
+    for item in items:
+        pid = int(item.get("id") or 0)
+        if pid > 0:
+            item["contacted"] = pid in contacted
+
+
 @app.get("/properties")
 def list_properties(
     db: Annotated[Session, Depends(get_db)],
@@ -1705,6 +1737,7 @@ def list_properties(
 
     rows = db.execute(stmt).all()
     items = [_property_out(p, owner=u) for (p, u) in rows]
+    _apply_contacted_flags(db, me, items)
     # Seed demo data on first-ever run (only if the *table* is empty).
     #
     # NOTE: We must NOT seed based on "no results" for a specific filter, otherwise any
@@ -1790,19 +1823,26 @@ def list_properties(
             # Only return demo results if they match the requested filter.
             rows = db.execute(stmt).all()
             items = [_property_out(p, owner=u) for (p, u) in rows]
+            _apply_contacted_flags(db, me, items)
 
     return {"items": items}
 
 
 @app.get("/properties/{property_id}")
-def get_property(property_id: int, db: Annotated[Session, Depends(get_db)]):
+def get_property(
+    property_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    me: Annotated[User | None, Depends(get_optional_user)],
+):
     p = db.execute(select(Property).options(selectinload(Property.images)).where(Property.id == int(property_id))).scalar_one_or_none()
     if not p or p.status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
     owner = db.get(User, int(p.owner_id))
     if not owner or owner.approval_status != "approved":
         raise HTTPException(status_code=404, detail="Property not found")
-    return _property_out(p, owner=owner)
+    out = _property_out(p, owner=owner)
+    _apply_contacted_flags(db, me, [out])
+    return out
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -1819,6 +1859,7 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 @app.get("/properties/nearby")
 def list_nearby_properties(
     db: Annotated[Session, Depends(get_db)],
+    me: Annotated[User | None, Depends(get_optional_user)],
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
     radius_km: float = Query(default=20.0, gt=0, le=500),
@@ -1908,6 +1949,7 @@ def list_nearby_properties(
                 item = _property_out(p, owner=u)
                 item["distance_km"] = round(float(dkm), 3)
                 items2.append(item)
+        _apply_contacted_flags(db, me, items2)
         return {"items": items2}
 
     rows = db.execute(stmt.limit(int(limit) * 5)).all()
@@ -1920,7 +1962,9 @@ def list_nearby_properties(
             out_items.append(item)
 
     out_items.sort(key=lambda x: (float(x.get("distance_km") or 9e9), -int(x.get("id") or 0)))
-    return {"items": out_items[: int(limit)]}
+    out_items = out_items[: int(limit)]
+    _apply_contacted_flags(db, me, out_items)
+    return {"items": out_items}
 
 
 @app.get("/properties/{property_id}/contact")

@@ -1,4 +1,4 @@
-import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Route, Routes, useNavigate } from "react-router-dom";
 import { clearSession, getSession } from "./api";
 import SplashPage from "./pages/SplashPage";
 import WelcomePage from "./pages/WelcomePage";
@@ -11,9 +11,9 @@ import OwnerAddPage from "./pages/OwnerAddPage";
 import AdminReviewPage from "./pages/AdminReviewPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import MyPostsPage from "./pages/MyPostsPage";
+import SubscriptionPage from "./pages/SubscriptionPage";
 
 export default function App() {
-  const loc = useLocation();
   const nav = useNavigate();
   const s = getSession();
   const role = (s.user?.role || "").toLowerCase();
@@ -30,15 +30,34 @@ export default function App() {
         </div>
         <div className="spacer" />
         <div className="topbar-links">
-          <Link to="/home">Home</Link>
-          <Link to="/myposts">My Posts</Link>
-          <Link to="/profile">Settings</Link>
-          <Link to="/owner/add">Publish Ad</Link>
-          {role === "admin" ? <Link to="/admin/review">Admin Review</Link> : null}
+          <button className="nav-button" type="button" onClick={() => nav("/home")}>
+            Home
+          </button>
+          <button className="nav-button" type="button" onClick={() => nav("/subscription")}>
+            Subscription
+          </button>
+          <button className="nav-button" type="button" onClick={() => nav("/myposts")}>
+            My Posts
+          </button>
+          <button className="nav-button" type="button" onClick={() => nav("/profile")}>
+            Settings
+          </button>
+          <button className="nav-button" type="button" onClick={() => nav("/owner/add")}>
+            Publish Ad
+          </button>
+          {role === "admin" ? (
+            <button className="nav-button" type="button" onClick={() => nav("/admin/review")}>
+              Admin Review
+            </button>
+          ) : null}
           {!isLoggedIn ? (
             <>
-              <Link to="/login">Login</Link>
-              <Link to="/register">Register</Link>
+              <button className="nav-button" type="button" onClick={() => nav("/login")}>
+                Login
+              </button>
+              <button className="nav-button" type="button" onClick={() => nav("/register")}>
+                Register
+              </button>
               {isGuest ? (
                 <button
                   className="danger"
@@ -73,6 +92,7 @@ export default function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/owner/add" element={<OwnerAddPage />} />
         <Route path="/myposts" element={<MyPostsPage />} />
+        <Route path="/subscription" element={<SubscriptionPage />} />
         <Route path="/admin/review" element={<AdminReviewPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

@@ -106,7 +106,21 @@ export default function HomePage() {
             sort_budget: sortBudget || undefined,
             posted_within_days: postedWithinDays || undefined,
           });
-      setItems(res.items || []);
+      const nextItems = res.items || [];
+      setItems(nextItems);
+      const currentSession = getSession();
+      if (currentSession.token) {
+        const nextContacted: Record<number, boolean> = {};
+        for (const item of nextItems) {
+          const pid = Number(item.id);
+          if (Number.isFinite(pid) && item.contacted) {
+            nextContacted[pid] = true;
+          }
+        }
+        setContacted(nextContacted);
+      } else {
+        setContacted({});
+      }
     } catch (e: any) {
       setErr(e.message || "Failed");
     }
@@ -298,7 +312,7 @@ export default function HomePage() {
       <div className="panel">
       <div className="row">
         <p className="h1" style={{ margin: 0 }}>
-          <span className="muted">Uncover the best, Good Luck</span>
+          <span className="home-tagline">Uncover the best, Good luck</span>
         </p>
         <div className="spacer" />
         <button onClick={load}>Refresh</button>
@@ -449,22 +463,23 @@ export default function HomePage() {
                     Photos
                   </div>
                   {p.images?.length ? (
-                  <div className="post-media">
-                    <div className="grid" style={{ marginTop: 10 }}>
-                      {p.images.slice(0, 6).map((i: any) => (
-                        <div className="col-6" key={i.id ?? i.url}>
-                          {String(i.content_type || "").toLowerCase().startsWith("video/") ? (
-                            <video controls preload="metadata" src={toApiUrl(i.url)} style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
-                          ) : (
-                            <img src={toApiUrl(i.url)} alt={`Ad ${p.id} media`} loading="lazy" style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
-                          )}
-                        </div>
-                      ))}
+                    <div className="post-media">
+                      <div className="grid" style={{ marginTop: 10 }}>
+                        {p.images.slice(0, 6).map((i: any) => (
+                          <div className="col-6" key={i.id ?? i.url}>
+                            {String(i.content_type || "").toLowerCase().startsWith("video/") ? (
+                              <video controls preload="metadata" src={toApiUrl(i.url)} style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
+                            ) : (
+                              <img src={toApiUrl(i.url)} alt={`Ad ${p.id} media`} loading="lazy" style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
                   ) : (
-                    <div className="muted" style={{ marginTop: 6 }}>
-                      Photos will appear once uploaded.
+                    <div className="post-media placeholder" aria-hidden="true">
+                      <div className="media-placeholder" />
+                      <div className="media-placeholder" />
                     </div>
                   )}
 
@@ -478,8 +493,8 @@ export default function HomePage() {
                   <div className="row" style={{ marginTop: 12, alignItems: "center" }}>
                     <button
                       className="primary"
-                      disabled={!!contacted[pidKey]}
-                    onClick={async () => {
+                      disabled={!!contacted[pidKey] || !!p.contacted}
+                      onClick={async () => {
                         if (!Number.isFinite(pid) || pid <= 0) {
                           setContactMsg((m) => ({ ...m, [pidKey]: "Invalid ad id." }));
                           return;
@@ -505,7 +520,7 @@ export default function HomePage() {
                         }
                       }}
                     >
-                      {contacted[pidKey] ? "Contacted" : "Contact owner"}
+                      {contacted[pidKey] || p.contacted ? "Contacted" : "Contact owner"}
                     </button>
                     <span className="muted">{contactMsg[pidKey] || ""}</span>
                   </div>
