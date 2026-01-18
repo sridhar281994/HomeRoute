@@ -26,6 +26,8 @@ export type CategoryCatalog = {
   categories: Array<{ group: string; items: string[] }>;
   owner_categories: string[];
   flat_items: Array<{ id: string; label: string; group_id: string; group: string; search: string }>;
+  warning?: string;
+  source?: string;
 };
 
 const KEY = "pd_session_v1";

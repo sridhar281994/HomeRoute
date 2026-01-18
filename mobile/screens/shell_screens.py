@@ -150,6 +150,15 @@ class HomeScreen(Screen):
             self.is_logged_in = False
             self.is_guest = False
 
+        # Seed preferred location from the stored profile.
+        try:
+            u = get_user() or {}
+            self._preferred_state = str(u.get("state") or "").strip()
+            self._preferred_district = str(u.get("district") or "").strip()
+        except Exception:
+            self._preferred_state = ""
+            self._preferred_district = ""
+
         # Revert to the glossy purple/orange background (no image).
         self.bg_image = ""
 
@@ -158,6 +167,10 @@ class HomeScreen(Screen):
 
         # Load state list (non-fatal if offline).
         self._load_states()
+
+        # Best-effort: refresh user profile for latest location (non-fatal).
+        if self.is_logged_in:
+            self._refresh_profile_from_server()
 
         # Best-effort GPS capture (non-fatal); refresh once it becomes available.
         self._ensure_gps_best_effort()
@@ -236,6 +249,50 @@ class HomeScreen(Screen):
     # -----------------------
     # Filter option loaders (State/District/Area)
     # -----------------------
+    def _refresh_profile_from_server(self) -> None:
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_me()
+                u = data.get("user") or {}
+                sess = get_session() or {}
+                set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
+                pref_state = str(u.get("state") or "").strip()
+                pref_district = str(u.get("district") or "").strip()
+
+                def apply(*_):
+                    self._preferred_state = pref_state
+                    self._preferred_district = pref_district
+                    self._apply_preferred_state()
+
+                Clock.schedule_once(apply, 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
+    def _apply_preferred_state(self) -> bool:
+        pref = str(getattr(self, "_preferred_state", "") or "").strip()
+        if not pref:
+            return False
+        if (self.state_value or "").strip().lower() in {"any", ""} and pref in (self.state_options or []):
+            self.state_value = pref
+            # Clear after applying once to avoid overriding manual changes.
+            self._preferred_state = ""
+            return True
+        return False
+
+    def _apply_preferred_district(self) -> bool:
+        pref = str(getattr(self, "_preferred_district", "") or "").strip()
+        if not pref:
+            return False
+        if (self.district_value or "").strip().lower() in {"any", ""} and pref in (self.district_options or []):
+            self.district_value = pref
+            self._preferred_district = ""
+            return True
+        return False
+
     def _norm_any(self, v: str) -> str:
         v = str(v or "").strip()
         return "" if v.lower() in {"any", ""} else v
@@ -254,6 +311,7 @@ class HomeScreen(Screen):
                     # Keep selection stable; default to Any.
                     if (self.state_value or "").strip() not in self.state_options:
                         self.state_value = "Any"
+                    self._apply_preferred_state()
                     self.on_state_selected()
 
                 Clock.schedule_once(apply, 0)
@@ -280,7 +338,12 @@ class HomeScreen(Screen):
                 ds = api_location_districts(state=state).get("items") or []
                 ds = [str(x).strip() for x in ds if str(x).strip()]
                 opts = ["Any"] + ds
-                Clock.schedule_once(lambda *_: setattr(self, "district_options", opts), 0)
+                def apply(*_):
+                    self.district_options = opts
+                    if self._apply_preferred_district():
+                        self.on_district_selected()
+
+                Clock.schedule_once(apply, 0)
             except Exception:
                 return
 
@@ -390,10 +453,18 @@ class HomeScreen(Screen):
                 data = api_meta_categories()
                 cats = data.get("categories") or []
                 values: list[str] = ["Any"]
-                for g in cats:
-                    items = (g or {}).get("items") or []
-                    for it in items:
-                        label = str(it or "").strip()
+                if cats:
+                    for g in cats:
+                        items = (g or {}).get("items") or []
+                        for it in items:
+                            label = str(it or "").strip()
+                            if label:
+                                values.append(label)
+                else:
+                    # Fallback to flat items if categories array is missing.
+                    flat = data.get("flat_items") or []
+                    for it in flat:
+                        label = str((it or {}).get("label") or "").strip()
                         if label:
                             values.append(label)
 
@@ -406,7 +477,17 @@ class HomeScreen(Screen):
                     seen.add(v)
                     deduped.append(v)
 
-                Clock.schedule_once(lambda *_: setattr(self, "need_values", deduped), 0)
+                def apply(*_):
+                    setattr(self, "need_values", deduped)
+                    warning = str(data.get("warning") or "").strip()
+                    if warning and not getattr(self, "_warned_categories", False):
+                        self._warned_categories = True
+                        _popup("Categories", warning)
+                    if len(deduped) <= 1 and not getattr(self, "_warned_categories", False):
+                        self._warned_categories = True
+                        _popup("Categories", "Category list is unavailable. Showing default options.")
+
+                Clock.schedule_once(apply, 0)
             except Exception:
                 # Keep default values.
                 return
