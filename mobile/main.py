@@ -5,7 +5,7 @@ import os
 from kivy.app import App
 from kivy.core.text import LabelBase
 from kivy.lang import Builder
-from kivy.resources import resource_find
+from kivy.resources import resource_add_path, resource_find
 from kivy.uix.screenmanager import FadeTransition, ScreenManager
 from kivy.utils import platform
 
@@ -32,8 +32,13 @@ class QuickRentApp(App):
     title = "QuickRent"
 
     def build(self):
+        base_dir = os.path.dirname(__file__)
+        resource_add_path(base_dir)
+        resource_add_path(os.path.join(base_dir, "kv"))
+        resource_add_path(os.path.join(base_dir, "assets"))
         self._register_fonts()
-        Builder.load_file("kv/screens.kv")
+        kv_path = resource_find("kv/screens.kv") or os.path.join(base_dir, "kv", "screens.kv")
+        Builder.load_file(kv_path)
 
         sm = ScreenManager(transition=FadeTransition())
         sm.add_widget(SplashScreen(name="splash"))
