@@ -1457,14 +1457,22 @@
                     size_hint_y: None
                     height: dp(48)
 
-            Label:
-                text: root.gps_status
-                color: TEXT_MUTED
+            BoxLayout:
+                orientation: "horizontal"
                 size_hint_y: None
-                height: dp(22)
-                halign: "left"
-                valign: "middle"
-                text_size: self.size
+                height: dp(44)
+                spacing: dp(8)
+                AppButton:
+                    text: "Enable GPS"
+                    size_hint_x: None
+                    width: dp(140)
+                    on_release: root.enable_gps()
+                Label:
+                    text: root.gps_status
+                    color: TEXT_MUTED
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.size
             Widget:
 
             BoxLayout:
