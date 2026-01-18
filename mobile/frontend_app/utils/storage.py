@@ -74,6 +74,7 @@ def set_session(*, token: str, user: dict[str, Any], remember: bool) -> None:
     except Exception:
         d["user"] = user or {}
     d["remember_me"] = bool(remember)
+    d["guest"] = False
     _write(d)
 
 
@@ -81,12 +82,31 @@ def clear_session() -> None:
     d = _read()
     d.pop("token", None)
     d.pop("user", None)
+    d.pop("guest", None)
+    _write(d)
+
+
+def set_guest_session() -> None:
+    """
+    Start a local guest session (no auth token).
+    The UI uses this flag to gate restricted actions and show guest mode.
+    """
+    d = _read()
+    d["token"] = ""
+    d["user"] = {"name": "Guest", "role": "guest"}
+    d["remember_me"] = False
+    d["guest"] = True
     _write(d)
 
 
 def get_session() -> dict[str, Any]:
     d = _read()
-    return {"token": d.get("token") or "", "user": d.get("user") or {}, "remember_me": bool(d.get("remember_me", False))}
+    return {
+        "token": d.get("token") or "",
+        "user": d.get("user") or {},
+        "remember_me": bool(d.get("remember_me", False)),
+        "guest": bool(d.get("guest", False)),
+    }
 
 
 def get_token() -> str:

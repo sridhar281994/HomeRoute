@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getCategoryCatalog,
+  getMe,
   getSession,
   listLocationAreas,
   listLocationDistricts,
   listLocationStates,
   listNearbyProperties,
   listProperties,
+  setSession,
   toApiUrl,
   getContact,
 } from "../api";
 import { getBrowserGps } from "../location";
 
 export default function HomePage() {
+  const nav = useNavigate();
+  const session = getSession();
   const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
@@ -24,6 +29,10 @@ export default function HomePage() {
   const [postedWithinDays, setPostedWithinDays] = useState<string>("");
   const [items, setItems] = useState<any[]>([]);
   const [err, setErr] = useState<string>("");
+  const [categoryMsg, setCategoryMsg] = useState<string>("");
+  const [locationMsg, setLocationMsg] = useState<string>("");
+  const [profileState, setProfileState] = useState<string>(() => String((session.user as any)?.state || "").trim());
+  const [profileDistrict, setProfileDistrict] = useState<string>(() => String((session.user as any)?.district || "").trim());
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
   const [gpsMsg, setGpsMsg] = useState<string>("");
   const [catalog, setCatalog] = useState<any>(null);
@@ -36,10 +45,23 @@ export default function HomePage() {
 
   const needGroups = useMemo(() => {
     const cats = (catalog?.categories || []) as Array<{ group: string; items: string[] }>;
-    return cats
+    const grouped = cats
       .map((g) => ({ group: String(g.group || "").trim(), items: (g.items || []).map((x) => String(x || "").trim()).filter(Boolean) }))
       .filter((g) => g.group && g.items.length);
+    if (grouped.length) return grouped;
+
+    const flat = (catalog?.flat_items || []) as Array<{ group: string; label: string }>;
+    if (!flat.length) return [];
+    const byGroup: Record<string, string[]> = {};
+    for (const it of flat) {
+      const group = String(it.group || "").trim() || "General";
+      const label = String(it.label || "").trim();
+      if (!label) continue;
+      (byGroup[group] ||= []).push(label);
+    }
+    return Object.entries(byGroup).map(([group, items]) => ({ group, items }));
   }, [catalog]);
+  const categoryHint = categoryMsg || (needGroups.length ? "" : "Categories unavailable.");
 
   async function load() {
     setErr("");
@@ -118,6 +140,22 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (!session.token) return;
+    (async () => {
+      try {
+        const r = await getMe();
+        const u = r.user as any;
+        setProfileState(String(u.state || "").trim());
+        setProfileDistrict(String(u.district || "").trim());
+        setSession({ token: session.token, user: u });
+      } catch (e: any) {
+        setLocationMsg(e.message || "Failed to load profile location.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.token]);
+
+  useEffect(() => {
     // Avoid leaking location filters across users; keep "Any" as default.
     (async () => {
       try {
@@ -162,6 +200,15 @@ export default function HomePage() {
   }, [state]);
 
   useEffect(() => {
+    if (!profileState || state) return;
+    if (stateOptions.includes(profileState)) {
+      setState(profileState);
+    } else if (stateOptions.length && !locationMsg) {
+      setLocationMsg(`Saved state "${profileState}" is not available.`);
+    }
+  }, [profileState, stateOptions, state, locationMsg]);
+
+  useEffect(() => {
     if (!state || !district) {
       setAreaOptions([]);
       setArea("");
@@ -178,12 +225,24 @@ export default function HomePage() {
   }, [state, district]);
 
   useEffect(() => {
+    if (!profileDistrict || district) return;
+    if (districtOptions.includes(profileDistrict)) {
+      setDistrict(profileDistrict);
+    } else if (districtOptions.length && !locationMsg) {
+      setLocationMsg(`Saved district "${profileDistrict}" is not available.`);
+    }
+  }, [profileDistrict, districtOptions, district, locationMsg]);
+
+  useEffect(() => {
     (async () => {
       try {
         const c = await getCategoryCatalog();
         setCatalog(c);
+        const warn = String((c as any)?.warning || "").trim();
+        setCategoryMsg(warn);
       } catch {
         // Non-fatal: search still works without category metadata.
+        setCategoryMsg("Categories unavailable. Check API /meta/categories.");
       }
     })();
   }, []);
@@ -246,6 +305,7 @@ export default function HomePage() {
               </option>
             ))}
           </select>
+          {locationMsg ? <div className="muted" style={{ marginTop: 6 }}>{locationMsg}</div> : null}
         </div>
         <div className="col-6">
           <label className="muted">District (optional)</label>
@@ -302,6 +362,7 @@ export default function HomePage() {
               </optgroup>
             ))}
           </select>
+          {categoryHint ? <div className="muted" style={{ marginTop: 6 }}>{categoryHint}</div> : null}
         </div>
         <div className="col-6">
           <label className="muted">Post date</label>
@@ -398,8 +459,14 @@ export default function HomePage() {
                   <button
                     className="primary"
                     disabled={!!contacted[Number(p.id)]}
-                    onClick={async () => {
+                  onClick={async () => {
                       const pid = Number(p.id);
+                      const s = getSession();
+                      if (!s.token) {
+                        setContactMsg((m) => ({ ...m, [pid]: "Login required to contact owner." }));
+                        nav("/login");
+                        return;
+                      }
                       setContactMsg((m) => ({ ...m, [pid]: "" }));
                       try {
                         const contact = await getContact(pid);

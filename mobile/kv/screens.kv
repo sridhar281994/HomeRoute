@@ -8,6 +8,7 @@
 #:set TEXT_MAIN (1, 1, 1, 0.92)
 #:set TEXT_MUTED (1, 1, 1, 0.68)
 #:set ACCENT_PURPLE (0.66, 0.33, 0.97, 1)
+#:set ACCENT_PURPLE_MUTED (0.66, 0.33, 0.97, 0.82)
 #:set ACCENT_BLUE (0.38, 0.65, 0.98, 1)
 #:set BTN_BG (1, 1, 1, 0.96)
 
@@ -45,6 +46,7 @@
     background_disabled_normal: ""
     background_color: BTN_BG
     color: ACCENT_PURPLE
+    disabled_color: ACCENT_PURPLE_MUTED
     # Use the existing `background_color` set by screens as the base color.
     # Hover/pressed is computed automatically (desktop hover; press everywhere).
     canvas.before:
@@ -109,6 +111,16 @@
             rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
     canvas.after:
         PopMatrix:
+
+<NavButton@AppButton>:
+    size_hint_x: None
+    width: max(self.texture_size[0] + dp(28), dp(88))
+    size_hint_y: None
+    height: dp(40)
+    text_size: (None, None)
+    halign: "center"
+    valign: "middle"
+    padding: [dp(12), dp(8)]
 
 <AppToggle@HoverToggleButton>:
     markup: True
@@ -350,7 +362,7 @@
                 font_size: min(root.width * 0.05, sp(18))
                 size_hint_y: None
                 height: dp(50)
-                on_release: root.manager.current = 'home'
+                on_release: root.continue_as_guest()
 
         Label:
             text: "© 2025 SRTech Games"
@@ -1319,79 +1331,100 @@
                     width: 1.0
                     rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
 
+        BoxLayout:
+            size_hint_y: None
+            height: dp(46)
+            spacing: dp(8)
+            Label:
+                text: "[b]Uncover the best, Good Luck[/b]"
+                halign: "left"
+                valign: "middle"
+                text_size: self.size
+                color: TEXT_MAIN
             BoxLayout:
+                size_hint_x: None
+                width: self.minimum_width if root.is_guest else 0
                 size_hint_y: None
-                height: dp(44)
-                spacing: dp(8)
+                height: dp(26) if root.is_guest else 0
+                padding: [dp(10), dp(3), dp(10), dp(3)]
+                opacity: 1 if root.is_guest else 0
+                canvas.before:
+                    Color:
+                        rgba: (1, 1, 1, 0.16)
+                    RoundedRectangle:
+                        pos: self.pos
+                        size: self.size
+                        radius: [12]
                 Label:
-                    text: "[b]Uncover the best, Good Luck[/b]"
-                    halign: "left"
-                    valign: "middle"
-                    text_size: self.size
-                    color: TEXT_MAIN
-                Widget:
-                AppButton:
-                    text: "Back"
-                    size_hint_x: None
-                    width: dp(80)
-                    on_release: root.go_back_guest()
+                    text: "[b]Guest mode[/b]"
+                    font_size: sp(12)
+                    color: ACCENT_BLUE
+                    size_hint: None, None
+                    size: self.texture_size
+            Widget:
+            AppButton:
+                text: "Back"
+                size_hint_x: None
+                width: dp(80)
+                on_release: root.go_back_guest()
+                opacity: 1 if not root.is_logged_in else 0
+                disabled: root.is_logged_in
+            AppButton:
+                text: "Refresh"
+                size_hint_x: None
+                width: dp(90)
+                on_release: root.refresh()
+
+        ScrollView:
+            size_hint_y: None
+            height: dp(52)
+            do_scroll_y: False
+            do_scroll_x: True
+            bar_width: 0
+            GridLayout:
+                rows: 1
+                size_hint_x: None
+                width: self.minimum_width
+                size_hint_y: None
+                height: self.minimum_height
+                row_force_default: True
+                row_default_height: dp(40)
+                spacing: dp(8)
+                padding: [dp(4), dp(4), dp(4), dp(4)]
+                NavButton:
+                    text: "Home"
+                    on_release: root.refresh()
+                NavButton:
+                    text: "Subscription"
+                    on_release: root.go_subscription()
+                NavButton:
+                    text: "My Posts"
+                    on_release: root.go_my_posts()
+                NavButton:
+                    text: "Settings"
+                    on_release: root.go_settings()
+                NavButton:
+                    text: "Publish Ad"
+                    on_release: root.go_publish_ad()
+                NavButton:
+                    text: "Logout" if root.is_logged_in else ("Exit Guest" if root.is_guest else "")
+                    width: 0 if not (root.is_logged_in or root.is_guest) else max(self.texture_size[0] + dp(28), dp(88))
+                    opacity: 1 if (root.is_logged_in or root.is_guest) else 0
+                    disabled: not (root.is_logged_in or root.is_guest)
+                    color: (0.94, 0.27, 0.27, 1)
+                    on_release: root.do_logout()
+                NavButton:
+                    text: "Login"
+                    width: 0 if root.is_logged_in else max(self.texture_size[0] + dp(28), dp(88))
                     opacity: 1 if not root.is_logged_in else 0
                     disabled: root.is_logged_in
-                AppButton:
-                    text: "Refresh"
-                    size_hint_x: None
-                    width: dp(90)
-                    on_release: root.refresh()
-
-            ScrollView:
-                size_hint_y: None
-                height: dp(48)
-                do_scroll_y: False
-                do_scroll_x: True
-                bar_width: 0
-                GridLayout:
-                    cols: 7
-                    size_hint_x: None
-                    width: self.minimum_width
-                    size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(8)
-                    AppButton:
-                        text: "Home"
-                        size_hint_x: None
-                        width: dp(90)
-                        on_release: root.refresh()
-                    AppButton:
-                        text: "Subscription"
-                        size_hint_x: None
-                        width: dp(130)
-                        on_release: root.go_subscription()
-                    AppButton:
-                        text: "My Posts"
-                        size_hint_x: None
-                        width: dp(110)
-                        on_release: root.go_my_posts()
-                    AppButton:
-                        text: "Settings"
-                        size_hint_x: None
-                        width: dp(110)
-                        on_release: root.go_settings()
-                    AppButton:
-                        text: "Publish Ad"
-                        size_hint_x: None
-                        width: dp(120)
-                        on_release: root.go_publish_ad()
-                    AppButton:
-                        text: "Logout"
-                        size_hint_x: None
-                        width: dp(100)
-                        color: (0.94, 0.27, 0.27, 1)
-                        on_release: root.do_logout()
-                    AppButton:
-                        text: "Refresh"
-                        size_hint_x: None
-                        width: dp(100)
-                        on_release: root.refresh()
+                    on_release: root.go_login()
+                NavButton:
+                    text: "Register"
+                    width: 0 if root.is_logged_in else max(self.texture_size[0] + dp(28), dp(88))
+                    opacity: 1 if not root.is_logged_in else 0
+                    disabled: root.is_logged_in
+                    on_release: root.go_register()
 
             GridLayout:
                 cols: 2

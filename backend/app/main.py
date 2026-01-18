@@ -100,16 +100,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_CATEGORY_CATALOG_PATH = os.path.join(os.path.dirname(__file__), "category_catalog.json")
+_CATEGORY_CATALOG_PATH = os.environ.get("CATEGORY_CATALOG_PATH") or os.path.join(os.path.dirname(__file__), "category_catalog.json")
+
+def _default_category_catalog() -> dict[str, Any]:
+    # Minimal fallback if the JSON file is missing/corrupt.
+    return {
+        "version": "fallback",
+        "updated": "",
+        "categories": [
+            {"group": "Property & Space", "items": ["Apartment", "Individual House / Villa", "Plot / Land", "Commercial Shop"]},
+            {"group": "Construction Materials", "items": ["Cement Supplier", "Steel / TMT Supplier", "Sand Supplier", "Paint Supplier"]},
+            {"group": "Construction Services", "items": ["Building Contractor", "Civil Contractor", "Interior Designer", "Electrician"]},
+        ],
+    }
 
 
-def _load_category_catalog() -> dict[str, Any]:
+def _load_category_catalog() -> tuple[dict[str, Any], str, str]:
     try:
         with open(_CATEGORY_CATALOG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
+            data = json.load(f) or {}
+        if data.get("categories"):
+            return data, "", "file"
+        return _default_category_catalog(), "Category catalog is empty; using fallback list.", "fallback"
+    except Exception as exc:
         # Never break the API if the catalog file is missing/corrupt.
-        return {"version": "0", "updated": "", "categories": []}
+        return _default_category_catalog(), f"Failed to load category catalog ({exc.__class__.__name__}).", "fallback"
 
 
 def _slugify(s: str) -> str:
@@ -784,7 +799,7 @@ def meta_categories() -> dict[str, Any]:
 
     Mobile/web clients can use `flat_items` for search UIs.
     """
-    catalog = _load_category_catalog()
+    catalog, warning, source = _load_category_catalog()
     flat_items = _catalog_flat_items(catalog)
     return {
         "version": str(catalog.get("version") or ""),
@@ -793,6 +808,8 @@ def meta_categories() -> dict[str, Any]:
         # Owner categories are the same as selectable items.
         "owner_categories": [x.get("label") for x in flat_items if x.get("label")],
         "flat_items": flat_items,
+        "source": source,
+        "warning": warning,
     }
 
 

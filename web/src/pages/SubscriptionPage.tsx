@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { getSession, subscriptionStatus } from "../api";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import GuestGate from "../components/GuestGate";
 
 export default function SubscriptionPage() {
-  const nav = useNavigate();
+  const s = getSession();
   const [status, setStatus] = useState("Unknown");
   const [msg, setMsg] = useState("");
   const plans = [
@@ -24,12 +25,18 @@ export default function SubscriptionPage() {
   }
 
   useEffect(() => {
-    if (!getSession().token) {
-      nav("/login");
-      return;
-    }
+    if (!s.token) return;
     load();
   }, []);
+
+  if (!s.token) {
+    return (
+      <GuestGate
+        title="Subscription"
+        message="Login or register to manage subscriptions and payments."
+      />
+    );
+  }
 
   return (
     <div className="panel">

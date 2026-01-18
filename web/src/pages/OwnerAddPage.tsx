@@ -10,13 +10,14 @@ import {
   ownerListProperties,
   uploadPropertyImage,
 } from "../api";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { getBrowserGps } from "../location";
 import { requestBrowserMediaAccess } from "../permissions";
+import GuestGate from "../components/GuestGate";
 
 export default function OwnerAddPage() {
-  const nav = useNavigate();
   const s = getSession();
+  const isLocked = !s.token;
   const [title, setTitle] = useState("");
   const [state, setState] = useState<string>(((s.user as any)?.state as string) || localStorage.getItem("pd_state") || "");
   const [district, setDistrict] = useState<string>(((s.user as any)?.district as string) || localStorage.getItem("pd_district") || "");
@@ -56,10 +57,6 @@ export default function OwnerAddPage() {
       setMediaMsg(e?.message || "Media access denied.");
     }
   }
-
-  useEffect(() => {
-    if (!s.token) nav("/login");
-  }, [nav, s.token]);
 
   useEffect(() => {
     // Default to "Yes" if company name already exists.
@@ -155,9 +152,19 @@ export default function OwnerAddPage() {
   }
 
   useEffect(() => {
+    if (!s.token) return;
     loadMyAds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [s.token]);
+
+  if (isLocked) {
+    return (
+      <GuestGate
+        title="Publish Ad"
+        message="Login or register to publish ads and upload media."
+      />
+    );
+  }
 
   return (
     <div className="panel">

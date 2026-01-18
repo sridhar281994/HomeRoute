@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { getContact, getProperty, getSession, toApiUrl } from "../api";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 export default function PropertyPage() {
   const { id } = useParams();
   const pid = Number(id);
   const [p, setP] = useState<any>(null);
   const [msg, setMsg] = useState("");
+  const nav = useNavigate();
 
   useEffect(() => {
     (async () => {
@@ -109,6 +110,12 @@ export default function PropertyPage() {
             onClick={async () => {
               setMsg("");
               try {
+                const s = getSession();
+                if (!s.token) {
+                  setMsg("Login required to contact owner.");
+                  nav("/login");
+                  return;
+                }
                 const contact = await getContact(pid);
                 const ownerName = String(contact.owner_name || "").trim();
                 const advNo = String(contact.adv_number || contact.advNo || "").trim();

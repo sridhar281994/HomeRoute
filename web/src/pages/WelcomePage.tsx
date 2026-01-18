@@ -1,9 +1,10 @@
-import { Link, Navigate } from "react-router-dom";
-import { getSession } from "../api";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import { getSession, setGuestSession } from "../api";
 
 export default function WelcomePage() {
+  const nav = useNavigate();
   const s = getSession();
-  if (s.token) return <Navigate to="/home" replace />;
+  if (s.token || s.guest) return <Navigate to="/home" replace />;
 
   return (
     <div className="panel" style={{ textAlign: "center", padding: 28 }}>
@@ -20,9 +21,14 @@ export default function WelcomePage() {
         <Link to="/register">
           <button>Register ✨</button>
         </Link>
-        <Link to="/home">
-          <button>Continue as Guest</button>
-        </Link>
+        <button
+          onClick={() => {
+            setGuestSession();
+            nav("/home");
+          }}
+        >
+          Continue as Guest
+        </button>
       </div>
     </div>
   );
