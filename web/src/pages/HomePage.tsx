@@ -43,6 +43,16 @@ export default function HomePage() {
   const [contactMsg, setContactMsg] = useState<Record<number, string>>({});
   const [didAutoLoad, setDidAutoLoad] = useState<boolean>(false);
 
+  function isValidGps(p: { lat: number; lon: number } | null): p is { lat: number; lon: number } {
+    if (!p) return false;
+    const lat = Number(p.lat);
+    const lon = Number(p.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+    if (Math.abs(lat) < 1e-6 && Math.abs(lon) < 1e-6) return false; // don't treat (0,0) as real GPS
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return false;
+    return true;
+  }
+
   const needGroups = useMemo(() => {
     const cats = (catalog?.categories || []) as Array<{ group: string; items: string[] }>;
     const grouped = cats
@@ -68,9 +78,10 @@ export default function HomePage() {
     try {
       const q = (need || "").trim() || undefined;
       const radius = Number(radiusKm || 0) || 20;
+      const gpsOk = isValidGps(gps);
 
       // If GPS is available, show nearby ads by distance; otherwise fall back to non-GPS listing.
-      const res = gps
+      const res = gpsOk
         ? await listNearbyProperties({
             lat: gps.lat,
             lon: gps.lon,
@@ -104,8 +115,14 @@ export default function HomePage() {
   async function requestGps() {
     try {
       const p = await getBrowserGps({ timeoutMs: 8000 });
-      setGps(p);
-      setGpsMsg("");
+      if (isValidGps(p)) {
+        setGps(p);
+        setGpsMsg("");
+      } else {
+        // Avoid ever displaying or using (0,0) GPS.
+        setGps(null);
+        setGpsMsg("GPS not available.");
+      }
     } catch (e: any) {
       setGpsMsg(e?.message || "GPS permission denied.");
     }
@@ -122,7 +139,7 @@ export default function HomePage() {
   useEffect(() => {
     // If GPS becomes available after the first load, reload once to show nearby + distance info.
     if (!didAutoLoad) return;
-    if (!gps) return;
+    if (!isValidGps(gps)) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gps, didAutoLoad]);
@@ -341,7 +358,7 @@ export default function HomePage() {
           <label className="muted">Nearby radius (km)</label>
           <input value={radiusKm} onChange={(e) => setRadiusKm(e.target.value)} inputMode="numeric" />
           <div className="muted" style={{ marginTop: 6 }}>
-            {gps ? `Using GPS (${gps.lat.toFixed(4)}, ${gps.lon.toFixed(4)})` : "GPS not available (showing non-nearby results)."}
+            {isValidGps(gps) ? "GPS enabled (showing nearby results)." : "GPS not available (showing non-nearby results)."}
           </div>
           <div className="row" style={{ marginTop: 6, alignItems: "center" }}>
             <button onClick={requestGps}>Enable GPS</button>

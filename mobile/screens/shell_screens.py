@@ -9,11 +9,13 @@ from kivy.factory import Factory
 from kivy.properties import BooleanProperty, DictProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.gridlayout import GridLayout
 from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 from kivy.graphics import Color, RoundedRectangle, Line
+from kivy.metrics import dp
 
 from frontend_app.utils.api import (
     ApiError,
@@ -362,17 +364,38 @@ class HomeScreen(Screen):
     # -----------------------
     # GPS (Nearby)
     # -----------------------
+    def _is_valid_gps(self, loc: Any) -> bool:
+        try:
+            if not loc:
+                return False
+            lat = float(loc[0])
+            lon = float(loc[1])
+            if abs(lat) < 1e-6 and abs(lon) < 1e-6:
+                return False  # don't treat (0,0) as real GPS
+            if abs(lat) > 90 or abs(lon) > 180:
+                return False
+            return True
+        except Exception:
+            return False
+
     def _ensure_gps_best_effort(self) -> None:
         def after(ok: bool) -> None:
             loc = get_last_known_location() if ok else None
-            if loc:
+            if self._is_valid_gps(loc):
                 self._gps = (float(loc[0]), float(loc[1]))
-                self.gps_status = f"Using GPS ({self._gps[0]:.4f}, {self._gps[1]:.4f})"
+                # Never show coordinates in the UI.
+                self.gps_status = "GPS enabled (showing nearby results)."
             else:
                 self._gps = None
                 self.gps_status = "GPS not available (showing non-nearby results)."
 
         ensure_permissions(required_location_permissions(), on_result=after)
+
+    def enable_gps(self) -> None:
+        """
+        Manual action from Home screen button.
+        """
+        self._ensure_gps_best_effort()
 
     def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
         """
@@ -424,28 +447,55 @@ class HomeScreen(Screen):
 
         card.bind(pos=_sync_bg, size=_sync_bg)
 
-        header = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=48)
-        avatar = Label(text=(title[:1].upper() if title else "A"), size_hint=(None, None), size=(42, 42), halign="center", valign="middle")
+        header = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=dp(52))
+
+        avatar = Label(
+            text=(title[:1].upper() if title else "A"),
+            size_hint=(None, None),
+            size=(dp(42), dp(42)),
+            halign="center",
+            valign="middle",
+            color=(1, 1, 1, 0.95),
+        )
         avatar.text_size = avatar.size
+        with avatar.canvas.before:
+            Color(0.66, 0.33, 0.97, 0.95)
+            av_bg = RoundedRectangle(pos=avatar.pos, size=avatar.size, radius=[dp(21)])
+
+        def _sync_avatar(*_):
+            av_bg.pos = avatar.pos
+            av_bg.size = avatar.size
+
+        avatar.bind(pos=_sync_avatar, size=_sync_avatar)
         header.add_widget(avatar)
 
-        hb = BoxLayout(orientation="vertical", spacing=2)
-        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=24))
-        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+        hb = BoxLayout(orientation="vertical", spacing=dp(2))
+        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=dp(24)))
+        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
         header.add_widget(hb)
         card.add_widget(header)
 
         card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
         if images:
-            first = images[0] or {}
-            ctype = str(first.get("content_type") or "").lower()
-            if ctype.startswith("image/"):
-                img = AsyncImage(source=to_api_url(first.get("url") or ""), allow_stretch=True)
-                img.size_hint_y = None
-                img.height = 200
-                card.add_widget(img)
-            else:
-                card.add_widget(Label(text="(Video attached)", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
+            # Show up to 6 items as a 2-column grid (roughly like the web HomePage).
+            media = list(images)[:6]
+            grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
+            thumb_h = dp(140)
+            rows = (len(media) + 1) // 2
+            grid.height = rows * thumb_h + max(0, rows - 1) * dp(8)
+
+            for it in media:
+                it = it or {}
+                ctype = str(it.get("content_type") or "").lower()
+                if ctype.startswith("image/"):
+                    img = AsyncImage(source=to_api_url(it.get("url") or ""), allow_stretch=True, keep_ratio=False)
+                    img.size_hint_y = None
+                    img.height = thumb_h
+                    grid.add_widget(img)
+                else:
+                    grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
+
+            card.add_widget(grid)
         else:
             card.add_widget(Label(text="Photos will appear once uploaded.", size_hint_y=None, height=20, color=(1, 1, 1, 0.85)))
 
