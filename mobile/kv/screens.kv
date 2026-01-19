@@ -1445,10 +1445,24 @@
                 AppButton:
                     text: "Refresh"
                     on_release: root.refresh()
-                AppButton:
-                    text: "Hide Filters" if root.filters_open else "Show Filters"
-                    on_release: root.toggle_filters()
+
+            BoxLayout:
+                size_hint_y: None
+                height: dp(36)
+                padding: [dp(4), 0, dp(4), 0]
+                spacing: dp(8)
+                Label:
+                    text: "Filters"
+                    color: TEXT_MUTED
+                    size_hint_x: None
+                    width: dp(70)
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.size
                 Widget:
+                Switch:
+                    active: root.filters_open
+                    on_active: root.filters_open = self.active
 
             BoxLayout:
                 id: filter_panel
