@@ -326,23 +326,13 @@
                     rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
 
             Label:
-                text: "[b]Find your perfect place[/b]  [font=EmojiFont]🏠✨[/font]"
+                text: "[b]Discover your IDEAL Home[/b]  [font=EmojiFont]🏠✨[/font]"
                 font_size: min(root.width * 0.08, sp(28))
                 size_hint_y: None
                 halign: "center"
                 valign: "middle"
                 text_size: (self.width, None)
                 height: self.texture_size[1] + dp(20)
-
-            Label:
-                text: "Browse properties for free. Login to contact owners."
-                font_size: min(root.width * 0.045, sp(16))
-                color: TEXT_MUTED
-                size_hint_y: None
-                halign: "center"
-                valign: "middle"
-                text_size: (self.width, None)
-                height: self.texture_size[1] + dp(10)
 
             Image:
                 source: "assets/QuickRent.png"
