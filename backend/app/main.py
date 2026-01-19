@@ -1839,7 +1839,7 @@ def list_properties(
     return {"items": items}
 
 
-@app.get("/properties/{property_id}")
+@app.get("/properties/{property_id:int}")
 def get_property(
     property_id: int,
     db: Annotated[Session, Depends(get_db)],
@@ -1978,7 +1978,7 @@ def list_nearby_properties(
     return {"items": out_items}
 
 
-@app.get("/properties/{property_id}/contact")
+@app.get("/properties/{property_id:int}/contact")
 def get_property_contact(
     property_id: int,
     me: Annotated[User, Depends(get_current_user)],
@@ -2120,7 +2120,7 @@ def owner_list_properties(
     return {"items": items}
 
 
-@app.delete("/owner/properties/{property_id}")
+@app.delete("/owner/properties/{property_id:int}")
 def owner_delete_property(
     property_id: int,
     me: Annotated[User, Depends(get_current_user)],
@@ -2276,7 +2276,7 @@ def admin_pending_properties(
     return {"items": items}
 
 
-@app.post("/admin/properties/{property_id}/approve")
+@app.post("/admin/properties/{property_id:int}/approve")
 def admin_approve_property(
     property_id: int,
     me: Annotated[User, Depends(get_current_user)],
@@ -2296,7 +2296,7 @@ def admin_approve_property(
     return {"ok": True}
 
 
-@app.post("/admin/properties/{property_id}/reject")
+@app.post("/admin/properties/{property_id:int}/reject")
 def admin_reject_property(
     property_id: int,
     me: Annotated[User, Depends(get_current_user)],
@@ -2316,7 +2316,7 @@ def admin_reject_property(
     return {"ok": True}
 
 
-@app.post("/admin/properties/{property_id}/suspend")
+@app.post("/admin/properties/{property_id:int}/suspend")
 def admin_suspend_property(
     property_id: int,
     me: Annotated[User, Depends(get_current_user)],
@@ -2336,7 +2336,7 @@ def admin_suspend_property(
     return {"ok": True}
 
 
-@app.post("/admin/properties/{property_id}/allow-duplicates")
+@app.post("/admin/properties/{property_id:int}/allow-duplicates")
 def admin_allow_duplicates(
     property_id: int,
     me: Annotated[User, Depends(get_current_user)],
@@ -2640,7 +2640,7 @@ def admin_revenue(
     return {"items": items}
 
 
-@app.post("/properties/{property_id}/images")
+@app.post("/properties/{property_id:int}/images")
 def upload_property_image(
     property_id: int,
     me: Annotated[User, Depends(get_current_user)],
