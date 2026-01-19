@@ -482,6 +482,17 @@ def _safe_upload_ext(*, filename: str, content_type: str) -> str:
 
 def _user_out(u: User) -> dict[str, Any]:
     img = (u.profile_image_path or "").strip()
+    # Only expose an upload URL if the file actually exists. This prevents clients
+    # from attempting to fetch stale/missing uploads (which leads to noisy 404s).
+    img_url = ""
+    if img:
+        try:
+            safe = img.lstrip("/")
+            disk_path = os.path.join(_uploads_dir(), safe)
+            if os.path.exists(disk_path):
+                img_url = _public_image_url(safe)
+        except Exception:
+            img_url = ""
     return {
         "id": u.id,
         "email": u.email,
@@ -492,7 +503,7 @@ def _user_out(u: User) -> dict[str, Any]:
         "district": u.district,
         "owner_category": u.owner_category,
         "company_name": u.company_name,
-        "profile_image_url": _public_image_url(img) if img else "",
+        "profile_image_url": img_url,
     }
 
 

@@ -153,13 +153,29 @@ class HomeScreen(Screen):
             panel = self.ids.get("filter_panel")
             if not panel:
                 return
+            # Keep height synced to content when expanded, otherwise collapsing/expanding
+            # can get "stuck" at height=0 on some devices/layout passes.
+            if not hasattr(self, "_filter_height_sync"):
+                self._filter_height_sync = panel.setter("height")
             if self.filters_open:
+                try:
+                    panel.unbind(minimum_height=self._filter_height_sync)
+                except Exception:
+                    pass
+                try:
+                    panel.bind(minimum_height=self._filter_height_sync)
+                except Exception:
+                    pass
                 panel.disabled = False
                 panel.opacity = 1
                 panel.height = panel.minimum_height
             else:
                 panel.disabled = True
                 panel.opacity = 0
+                try:
+                    panel.unbind(minimum_height=self._filter_height_sync)
+                except Exception:
+                    pass
                 panel.height = 0
         except Exception:
             return
@@ -694,6 +710,9 @@ class HomeScreen(Screen):
                 q = need if need and need.lower() != "any" else ""
                 rent_sale = self._norm_any(self.rent_sale)
                 max_price = (self.max_price or "").strip()
+                # Defensive: only send numeric max_price (avoid backend int parse errors).
+                if max_price and not max_price.isdigit():
+                    max_price = ""
                 state = self._norm_any(self.state_value)
                 district = self._norm_any(self.district_value)
                 area = self._norm_any(self.area_value)
@@ -936,6 +955,17 @@ class SettingsScreen(Screen):
     email_value = StringProperty("")
     role_value = StringProperty("")
     profile_image_url = StringProperty("")
+    default_profile_image = StringProperty("")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Resolve a packaged/local placeholder image (best-effort).
+        try:
+            from kivy.resources import resource_find
+
+            self.default_profile_image = resource_find("assets/QuickRent.png") or "assets/QuickRent.png"
+        except Exception:
+            self.default_profile_image = "assets/QuickRent.png"
 
     def on_pre_enter(self, *args):
         sess = get_session() or {}
@@ -948,6 +978,8 @@ class SettingsScreen(Screen):
         # Load latest profile from server.
         u_local = get_user() or {}
         self._apply_user(u_local)
+        # Avoid loading potentially stale/broken cached upload URLs before refresh.
+        self.profile_image_url = ""
         self._refresh_profile_from_server()
 
     def _apply_user(self, u: dict[str, Any]) -> None:
@@ -956,7 +988,7 @@ class SettingsScreen(Screen):
         self.phone_value = str(u.get("phone") or "")
         self.email_value = str(u.get("email") or "")
         self.role_value = str(u.get("role") or "")
-        self.profile_image_url = str(u.get("profile_image_url") or "")
+        self.profile_image_url = to_api_url(str(u.get("profile_image_url") or ""))
 
         # Keep inputs in sync if KV ids exist.
         try:
