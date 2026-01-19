@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 export default function PropertyPage() {
   const { id } = useParams();
   const pid = Number(id);
-  const pidOk = Number.isFinite(pid) && pid > 0;
+  const pidOk = Number.isInteger(pid) && pid > 0;
   const [p, setP] = useState<any>(null);
   const [msg, setMsg] = useState("");
   const [contacted, setContacted] = useState(false);
