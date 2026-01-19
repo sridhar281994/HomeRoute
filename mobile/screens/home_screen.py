@@ -1,0 +1,773 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from kivy.clock import Clock
+from kivy.factory import Factory
+from kivy.metrics import dp
+from kivy.properties import (
+    BooleanProperty,
+    ListProperty,
+    ObjectProperty,
+    StringProperty,
+)
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.image import AsyncImage
+from kivy.uix.label import Label
+from kivy.uix.popup import Popup
+from kivy.uix.screenmanager import Screen
+from kivy.graphics import Color, Line, RoundedRectangle
+
+from frontend_app.utils.android_location import get_last_known_location
+from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions
+from frontend_app.utils.api import (
+    ApiError,
+    api_get_property_contact,
+    api_list_nearby_properties,
+    api_list_properties,
+    api_location_areas,
+    api_location_districts,
+    api_location_states,
+    api_me,
+    api_meta_categories,
+    to_api_url,
+)
+from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
+
+
+def _popup(title: str, message: str) -> None:
+    def _open(*_):
+        popup = Popup(
+            title=title,
+            content=Label(text=str(message)),
+            size_hint=(0.78, 0.35),
+            auto_dismiss=True,
+        )
+        popup.open()
+        Clock.schedule_once(lambda _dt: popup.dismiss(), 2.2)
+
+    Clock.schedule_once(_open, 0)
+
+
+@dataclass
+class PropertyCard:
+    id: int
+    title: str
+    price: str
+    location: str
+    kind: str
+    rent_sale: str
+
+
+class FilterPopup(Popup):
+    """
+    Popup to edit Home screen filters.
+
+    The KV rule binds UI directly to the `home` screen instance.
+    """
+
+    home = ObjectProperty(None)
+
+
+class HomeScreen(Screen):
+    """
+    Home / Property Feed + Search & Filters.
+    """
+
+    items = ListProperty([])
+    need_category = StringProperty("Any")
+    need_values = ListProperty(["Any"])
+
+    # Filters matching the web Home page
+    state_value = StringProperty("Any")
+    district_value = StringProperty("Any")
+    area_value = StringProperty("Any")
+    radius_km = StringProperty("20")
+    gps_status = StringProperty("GPS not available (showing non-nearby results).")
+    rent_sale = StringProperty("Any")
+    max_price = StringProperty("")
+    sort_budget = StringProperty("Any (Newest)")
+    posted_within_days = StringProperty("Any")
+
+    state_options = ListProperty(["Any"])
+    district_options = ListProperty(["Any"])
+    area_options = ListProperty(["Any"])
+
+    bg_image = StringProperty("")
+
+    is_loading = BooleanProperty(False)
+    is_logged_in = BooleanProperty(False)
+    is_guest = BooleanProperty(False)
+
+    def on_pre_enter(self, *args):
+        # Gate buttons until user logs in.
+        try:
+            sess = get_session() or {}
+            token = str(sess.get("token") or "")
+            self.is_logged_in = bool(token)
+            self.is_guest = bool(sess.get("guest")) and not self.is_logged_in
+        except Exception:
+            self.is_logged_in = False
+            self.is_guest = False
+
+        # Seed preferred location from the stored profile.
+        try:
+            u = get_user() or {}
+            self._preferred_state = str(u.get("state") or "").strip()
+            self._preferred_district = str(u.get("district") or "").strip()
+        except Exception:
+            self._preferred_state = ""
+            self._preferred_district = ""
+
+        # Revert to the glossy purple/orange background (no image).
+        self.bg_image = ""
+
+        # Load customer "need" categories (non-fatal if offline).
+        self._load_need_categories()
+
+        # Load state list (non-fatal if offline).
+        self._load_states()
+
+        # Best-effort: refresh user profile for latest location (non-fatal).
+        if self.is_logged_in:
+            self._refresh_profile_from_server()
+
+        # Best-effort GPS capture (non-fatal); refresh once it becomes available.
+        self._ensure_gps_best_effort()
+
+        Clock.schedule_once(lambda _dt: self.refresh(), 0)
+
+    # -----------------------
+    # Top nav actions (Home header)
+    # -----------------------
+    def go_home(self):
+        if self.manager and self.manager.current != "home":
+            self.manager.current = "home"
+        self.refresh()
+
+    def go_login(self):
+        if self.manager:
+            self.manager.current = "login"
+
+    def go_register(self):
+        if self.manager:
+            self.manager.current = "register"
+
+    def go_back_guest(self):
+        # Guest "Back" goes to Welcome screen.
+        if self.is_logged_in:
+            return
+        if self.manager:
+            self.manager.current = "welcome"
+
+    def go_my_posts(self):
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to view My Posts.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        if self.manager:
+            self.manager.current = "my_posts"
+
+    def go_settings(self):
+        # Settings screen already handles login gating, but keep UX consistent here.
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to open Settings.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        if self.manager:
+            self.manager.current = "profile"
+
+    def go_subscription(self):
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to view Subscription.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        if self.manager:
+            self.manager.current = "subscription"
+
+    def go_publish_ad(self):
+        self.go_owner()
+
+    def do_logout(self):
+        if not self.is_logged_in:
+            # Guest "logout" clears guest flag and returns to Welcome.
+            try:
+                if (get_session() or {}).get("guest"):
+                    clear_session()
+            except Exception:
+                pass
+            if self.manager:
+                self.manager.current = "welcome"
+            return
+        clear_session()
+        self.is_logged_in = False
+        self.is_guest = False
+        if self.manager:
+            self.manager.current = "welcome"
+
+    def open_filters(self):
+        FilterPopup(home=self).open()
+
+    # -----------------------
+    # Filter option loaders (State/District/Area)
+    # -----------------------
+    def _refresh_profile_from_server(self) -> None:
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_me()
+                u = data.get("user") or {}
+                sess = get_session() or {}
+                set_session(
+                    token=str(sess.get("token") or ""),
+                    user=u,
+                    remember=bool(sess.get("remember_me") or False),
+                )
+                pref_state = str(u.get("state") or "").strip()
+                pref_district = str(u.get("district") or "").strip()
+
+                def apply(*_):
+                    self._preferred_state = pref_state
+                    self._preferred_district = pref_district
+                    self._apply_preferred_state()
+
+                Clock.schedule_once(apply, 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
+    def _apply_preferred_state(self) -> bool:
+        pref = str(getattr(self, "_preferred_state", "") or "").strip()
+        if not pref:
+            return False
+        if (self.state_value or "").strip().lower() in {"any", ""} and pref in (self.state_options or []):
+            self.state_value = pref
+            # Clear after applying once to avoid overriding manual changes.
+            self._preferred_state = ""
+            return True
+        return False
+
+    def _apply_preferred_district(self) -> bool:
+        pref = str(getattr(self, "_preferred_district", "") or "").strip()
+        if not pref:
+            return False
+        if (self.district_value or "").strip().lower() in {"any", ""} and pref in (self.district_options or []):
+            self.district_value = pref
+            self._preferred_district = ""
+            return True
+        return False
+
+    def _norm_any(self, v: str) -> str:
+        v = str(v or "").strip()
+        return "" if v.lower() in {"any", ""} else v
+
+    def _load_states(self):
+        from threading import Thread
+
+        def work():
+            try:
+                st = api_location_states().get("items") or []
+                st = [str(x).strip() for x in st if str(x).strip()]
+                opts = ["Any"] + st
+
+                def apply(*_):
+                    self.state_options = opts
+                    # Keep selection stable; default to Any.
+                    if (self.state_value or "").strip() not in self.state_options:
+                        self.state_value = "Any"
+                    self._apply_preferred_state()
+                    self.on_state_selected()
+
+                Clock.schedule_once(apply, 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
+    def on_state_selected(self, *_):
+        # Reset dependent selections
+        self.district_value = "Any"
+        self.area_value = "Any"
+        self.district_options = ["Any"]
+        self.area_options = ["Any"]
+
+        state = self._norm_any(self.state_value)
+        if not state:
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                ds = api_location_districts(state=state).get("items") or []
+                ds = [str(x).strip() for x in ds if str(x).strip()]
+                opts = ["Any"] + ds
+
+                def apply(*_):
+                    self.district_options = opts
+                    if self._apply_preferred_district():
+                        self.on_district_selected()
+
+                Clock.schedule_once(apply, 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
+    def on_district_selected(self, *_):
+        self.area_value = "Any"
+        self.area_options = ["Any"]
+        state = self._norm_any(self.state_value)
+        district = self._norm_any(self.district_value)
+        if not state or not district:
+            return
+
+        from threading import Thread
+
+        def work():
+            try:
+                ar = api_location_areas(state=state, district=district).get("items") or []
+                ar = [str(x).strip() for x in ar if str(x).strip()]
+                opts = ["Any"] + ar
+                Clock.schedule_once(lambda *_: setattr(self, "area_options", opts), 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
+    # -----------------------
+    # GPS (Nearby)
+    # -----------------------
+    def _is_valid_gps(self, loc: Any) -> bool:
+        try:
+            if not loc:
+                return False
+            lat = float(loc[0])
+            lon = float(loc[1])
+            if abs(lat) < 1e-6 and abs(lon) < 1e-6:
+                return False  # don't treat (0,0) as real GPS
+            if abs(lat) > 90 or abs(lon) > 180:
+                return False
+            return True
+        except Exception:
+            return False
+
+    def _ensure_gps_best_effort(self) -> None:
+        def after(ok: bool) -> None:
+            loc = get_last_known_location() if ok else None
+            if self._is_valid_gps(loc):
+                self._gps = (float(loc[0]), float(loc[1]))
+                # Never show coordinates in the UI.
+                self.gps_status = "GPS enabled (showing nearby results)."
+            else:
+                self._gps = None
+                self.gps_status = "GPS not available (showing non-nearby results)."
+
+        ensure_permissions(required_location_permissions(), on_result=after)
+
+    def enable_gps(self) -> None:
+        """
+        Manual action from Home screen button.
+        """
+        self._ensure_gps_best_effort()
+
+    def feed_card(self, raw: dict[str, Any]) -> BoxLayout:
+        """
+        Public wrapper to build a feed card.
+
+        Other screens (e.g. My Posts) call this method to reuse the layout without
+        reaching into a protected member.
+        """
+        return self._feed_card(raw)
+
+    def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
+        """
+        Build a feed card roughly matching the web UI:
+        title/meta header, optional media preview, and an action button.
+        """
+        p = raw or {}
+        title = str(p.get("title") or "Property").strip()
+        adv_no = str(p.get("adv_number") or p.get("ad_number") or p.get("id") or "").strip()
+        distance_txt = ""
+        try:
+            dist_raw = p.get("distance_km")
+            if dist_raw is not None:
+                dist = float(dist_raw)
+                if dist >= 0:
+                    distance_txt = f"{dist:.1f}km from you" if dist < 10 else f"{round(dist)}km from you"
+        except Exception:
+            distance_txt = ""
+        meta = " • ".join(
+            [
+                x
+                for x in [
+                    distance_txt,
+                    f"Ad #{adv_no}" if adv_no else "",
+                    str(p.get("rent_sale") or ""),
+                    str(p.get("property_type") or ""),
+                    str(p.get("price_display") or ""),
+                    str(p.get("location_display") or ""),
+                ]
+                if x
+            ]
+        )
+        images = p.get("images") or []
+        already_contacted = bool(p.get("contacted"))
+
+        card = BoxLayout(orientation="vertical", padding=(12, 10), spacing=8, size_hint_y=None)
+        card.bind(minimum_height=card.setter("height"))
+
+        # Card background
+        with card.canvas.before:
+            Color(0, 0, 0, 0.35)
+            rect = RoundedRectangle(pos=card.pos, size=card.size, radius=[16])
+            Color(1, 1, 1, 0.12)
+            border = Line(rounded_rectangle=[card.x, card.y, card.width, card.height, 16], width=1.0)
+
+        def _sync_bg(*_):
+            rect.pos = card.pos
+            rect.size = card.size
+            border.rounded_rectangle = [card.x, card.y, card.width, card.height, 16]
+
+        card.bind(pos=_sync_bg, size=_sync_bg)
+
+        header = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=dp(52))
+
+        avatar = Label(
+            text=(title[:1].upper() if title else "A"),
+            size_hint=(None, None),
+            size=(dp(42), dp(42)),
+            halign="center",
+            valign="middle",
+            color=(1, 1, 1, 0.95),
+        )
+        avatar.text_size = avatar.size
+        with avatar.canvas.before:
+            Color(0.66, 0.33, 0.97, 0.95)
+            av_bg = RoundedRectangle(pos=avatar.pos, size=avatar.size, radius=[dp(21)])
+
+        def _sync_avatar(*_):
+            av_bg.pos = avatar.pos
+            av_bg.size = avatar.size
+
+        avatar.bind(pos=_sync_avatar, size=_sync_avatar)
+        header.add_widget(avatar)
+
+        hb = BoxLayout(orientation="vertical", spacing=dp(2))
+        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=dp(24)))
+        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
+        header.add_widget(hb)
+        card.add_widget(header)
+
+        card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
+        thumb_h = dp(140)
+        if images:
+            # Show up to 6 items as a 2-column grid (roughly like the web HomePage).
+            media = list(images)[:6]
+            grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
+            rows = (len(media) + 1) // 2
+            grid.height = rows * thumb_h + max(0, rows - 1) * dp(8)
+
+            for it in media:
+                it = it or {}
+                ctype = str(it.get("content_type") or "").lower()
+                if ctype.startswith("image/"):
+                    img = AsyncImage(source=to_api_url(it.get("url") or ""), allow_stretch=True, keep_ratio=False)
+                    img.size_hint_y = None
+                    img.height = thumb_h
+                    grid.add_widget(img)
+                else:
+                    grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
+
+            card.add_widget(grid)
+        else:
+            grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
+            grid.height = thumb_h
+
+            def _placeholder_tile() -> BoxLayout:
+                tile = BoxLayout(size_hint_y=None, height=thumb_h)
+                with tile.canvas.before:
+                    Color(0, 0, 0, 0.22)
+                    rect = RoundedRectangle(pos=tile.pos, size=tile.size, radius=[dp(12)])
+                    Color(1, 1, 1, 0.12)
+                    border = Line(
+                        rounded_rectangle=[tile.x, tile.y, tile.width, tile.height, dp(12)],
+                        width=1.0,
+                    )
+
+                def _sync_tile(*_):
+                    rect.pos = tile.pos
+                    rect.size = tile.size
+                    border.rounded_rectangle = [tile.x, tile.y, tile.width, tile.height, dp(12)]
+
+                tile.bind(pos=_sync_tile, size=_sync_tile)
+                return tile
+
+            grid.add_widget(_placeholder_tile())
+            grid.add_widget(_placeholder_tile())
+            card.add_widget(grid)
+
+        amenities = p.get("amenities") or []
+        card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
+        card.add_widget(
+            Label(
+                text=(", ".join([str(x) for x in amenities]) if amenities else "—"),
+                size_hint_y=None,
+                height=36,
+                color=(1, 1, 1, 0.85),
+            )
+        )
+
+        btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
+        btn_contact = Factory.AppButton(
+            text="Contacted" if already_contacted else "Contact owner",
+            size_hint_y=None,
+            height=44,
+        )
+        btn_contact.disabled = already_contacted
+        lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
+        if already_contacted:
+            lbl_status.text = "Contact details already sent."
+
+        def do_contact(*_):
+            sess = get_session() or {}
+            if not (sess.get("token") or ""):
+                lbl_status.text = "Login required to contact owner."
+                if self.manager:
+                    self.manager.current = "login"
+                return
+            pid_raw = p.get("id")
+            try:
+                pid = int(str(pid_raw).strip())
+            except (TypeError, ValueError):
+                lbl_status.text = "Invalid ad id."
+                return
+            if pid <= 0:
+                lbl_status.text = "Invalid ad id."
+                return
+            btn_contact.disabled = True
+
+            from threading import Thread
+
+            def work():
+                try:
+                    contact = api_get_property_contact(pid)
+                    owner_name = str(contact.get("owner_name") or "").strip()
+                    adv_no_inner = str(contact.get("adv_number") or contact.get("advNo") or pid).strip()
+                    who = f" ({owner_name})" if owner_name else ""
+
+                    def done(*_dt):
+                        p["contacted"] = True
+                        btn_contact.text = "Contacted"
+                        lbl_status.text = (
+                            f"Contact details sent to your registered email/SMS for Ad #{adv_no_inner}{who}."
+                        )
+
+                    Clock.schedule_once(done, 0)
+                except ApiError as e:
+                    err_msg = str(e) or "Locked"
+
+                    def fail(*_dt):
+                        btn_contact.disabled = False
+                        lbl_status.text = err_msg
+
+                    Clock.schedule_once(fail, 0)
+
+            Thread(target=work, daemon=True).start()
+
+        btn_contact.bind(on_release=do_contact)
+        btn_row.add_widget(btn_contact)
+        card.add_widget(btn_row)
+        card.add_widget(lbl_status)
+
+        return card
+
+    def _load_need_categories(self):
+        def work():
+            try:
+                data = api_meta_categories()
+                cats = data.get("categories") or []
+                values: list[str] = ["Any"]
+                if cats:
+                    for g in cats:
+                        items = (g or {}).get("items") or []
+                        for it in items:
+                            label = str(it or "").strip()
+                            if label:
+                                values.append(label)
+                else:
+                    # Fallback to flat items if categories array is missing.
+                    flat = data.get("flat_items") or []
+                    for it in flat:
+                        label = str((it or {}).get("label") or "").strip()
+                        if label:
+                            values.append(label)
+
+                # De-dup while keeping order
+                seen: set[str] = set()
+                deduped = []
+                for v in values:
+                    if v in seen:
+                        continue
+                    seen.add(v)
+                    deduped.append(v)
+
+                def apply(*_):
+                    setattr(self, "need_values", deduped)
+                    warning = str(data.get("warning") or "").strip()
+                    if warning and not getattr(self, "_warned_categories", False):
+                        self._warned_categories = True
+                        _popup("Categories", warning)
+                    if len(deduped) <= 1 and not getattr(self, "_warned_categories", False):
+                        self._warned_categories = True
+                        _popup("Categories", "Category list is unavailable. Showing default options.")
+
+                Clock.schedule_once(apply, 0)
+            except Exception:
+                # Keep default values.
+                return
+
+        from threading import Thread
+
+        Thread(target=work, daemon=True).start()
+
+    def refresh(self):
+        if self.is_loading:
+            return
+        self.is_loading = True
+
+        def work():
+            try:
+                need = (self.need_category or "").strip()
+                q = need if need and need.lower() != "any" else ""
+                rent_sale_norm = self._norm_any(self.rent_sale)
+                max_price = (self.max_price or "").strip()
+                # Defensive: only send numeric max_price (avoid backend int parse errors).
+                if max_price and not max_price.isdigit():
+                    max_price = ""
+                state = self._norm_any(self.state_value)
+                district = self._norm_any(self.district_value)
+                area = self._norm_any(self.area_value)
+
+                sort_budget = (self.sort_budget or "").strip()
+                sort_budget_param = ""
+                if sort_budget.lower().startswith("top"):
+                    sort_budget_param = "top"
+                elif sort_budget.lower().startswith("bottom"):
+                    sort_budget_param = "bottom"
+
+                posted = (self.posted_within_days or "").strip()
+                posted_param = ""
+                if posted.lower() == "today":
+                    posted_param = "1"
+                elif posted.lower().startswith("last 7"):
+                    posted_param = "7"
+                elif posted.lower().startswith("last 30"):
+                    posted_param = "30"
+                elif posted.lower().startswith("last 90"):
+                    posted_param = "90"
+
+                # Nearby endpoint if GPS is available; otherwise fall back to non-GPS listing.
+                loc = getattr(self, "_gps", None)
+                try:
+                    radius = int(str(self.radius_km or "").strip() or "20")
+                except Exception:
+                    radius = 20
+
+                if loc:
+                    data = api_list_nearby_properties(
+                        lat=float(loc[0]),
+                        lon=float(loc[1]),
+                        radius_km=radius,
+                        q=q,
+                        rent_sale=rent_sale_norm,
+                        max_price=max_price,
+                        state=state,
+                        district=district,
+                        area=area,
+                        posted_within_days=posted_param,
+                        limit=60,
+                    )
+                else:
+                    data = api_list_properties(
+                        q=q,
+                        rent_sale=rent_sale_norm,
+                        max_price=max_price,
+                        state=state,
+                        district=district,
+                        area=area,
+                        sort_budget=sort_budget_param,
+                        posted_within_days=posted_param,
+                    )
+                cards: list[dict[str, Any]] = []
+                for p in (data.get("items") or []):
+                    cards.append(
+                        {
+                            "id": int(p.get("id") or 0),
+                            "title": str(p.get("title") or "Property"),
+                            "price": str(p.get("price_display") or p.get("price") or ""),
+                            "location": str(p.get("location_display") or p.get("location") or ""),
+                            "kind": str(p.get("property_type") or ""),
+                            "rent_sale": str(p.get("rent_sale") or ""),
+                            "raw": p,
+                        }
+                    )
+
+                def done(*_):
+                    self.items = cards
+                    # Render simple list into the KV container (no RecycleView dependency).
+                    try:
+                        container = self.ids.get("list_container")
+                        if container is not None:
+                            container.clear_widgets()
+                            for c in cards:
+                                raw = c.get("raw") or {}
+                                container.add_widget(self._feed_card(raw))
+                    except Exception:
+                        pass
+                    self.is_loading = False
+
+                Clock.schedule_once(done, 0)
+            except ApiError as e:
+                err_msg = str(e)
+                Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
+                Clock.schedule_once(lambda *_: setattr(self, "is_loading", False), 0)
+
+        from threading import Thread
+
+        Thread(target=work, daemon=True).start()
+
+    def go_profile(self):
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to open Profile/Settings.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        if self.manager:
+            self.manager.current = "profile"
+
+    def go_owner(self):
+        if not self.is_logged_in:
+            _popup("Login required", "Please login to open Owner dashboard.")
+            if self.manager:
+                self.manager.current = "login"
+            return
+        u = get_user() or {}
+        if (u.get("role") or "").lower() != "owner":
+            _popup("Owner account required", "Please register/login as Owner to access this dashboard.")
+            return
+        if self.manager:
+            self.manager.current = "owner_dashboard"
+
+    @staticmethod
+    def go_admin():
+        # Removed from home page UI; keep method for backward KV compatibility.
+        _popup("Not available", "Admin entry is hidden in the app UI.")
+

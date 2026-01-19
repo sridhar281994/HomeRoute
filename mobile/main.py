@@ -15,8 +15,8 @@ from screens.widgets import HoverButton, HoverToggleButton  # noqa: F401
 from screens.login_screen import LoginScreen
 from screens.register_screen import RegisterScreen
 from screens.reset_password_screen import ForgotPasswordScreen, ResetPasswordScreen
+from screens.home_screen import HomeScreen
 from screens.shell_screens import (
-    HomeScreen,
     MyPostsScreen,
     OwnerAddPropertyScreen,
     OwnerDashboardScreen,
