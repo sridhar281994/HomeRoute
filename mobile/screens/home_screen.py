@@ -695,6 +695,29 @@ class HomeScreen(Screen):
                         posted_within_days=posted_param,
                         limit=60,
                     )
+                    # Nearby results require ads to have GPS coords. If none match (common),
+                    # fall back to normal listing so refresh never "empties" the Home feed.
+                    nearby_items = data.get("items") or []
+                    if not nearby_items:
+                        data = api_list_properties(
+                            q=q,
+                            rent_sale=rent_sale_norm,
+                            max_price=max_price,
+                            state=state,
+                            district=district,
+                            area=area,
+                            sort_budget=sort_budget_param,
+                            posted_within_days=posted_param,
+                        )
+                        # Keep GPS on, but communicate fallback.
+                        Clock.schedule_once(
+                            lambda *_: setattr(
+                                self,
+                                "gps_status",
+                                "GPS enabled (no nearby ads found; showing all results).",
+                            ),
+                            0,
+                        )
                 else:
                     data = api_list_properties(
                         q=q,
