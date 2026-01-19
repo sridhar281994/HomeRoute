@@ -439,7 +439,7 @@ export default function HomePage() {
       <div className="grid" style={{ marginTop: 12 }}>
         {items.map((p) => {
           const pid = Number(p.id);
-          const pidKey = Number.isFinite(pid) ? pid : Number.NaN;
+          const pidKey = Number.isInteger(pid) ? pid : Number.NaN;
           return (
             <div className="col-12" key={p.id}>
               <div className="card post-card">
@@ -498,7 +498,7 @@ export default function HomePage() {
                       className="primary"
                       disabled={!!contacted[pidKey] || !!p.contacted}
                       onClick={async () => {
-                        if (!Number.isFinite(pid) || pid <= 0) {
+                        if (!Number.isInteger(pid) || pid <= 0) {
                           setContactMsg((m) => ({ ...m, [pidKey]: "Invalid ad id." }));
                           return;
                         }

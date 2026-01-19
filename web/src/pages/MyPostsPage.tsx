@@ -92,7 +92,11 @@ export default function MyPostsPage() {
                             </div>
                           </div>
                           <div className="spacer" />
-                          {String(p.status || "").toLowerCase() === "approved" ? <Link to={`/property/${p.id}`}>Open ➜</Link> : null}
+                          {(() => {
+                            const pid = Number(p.id);
+                            if (!Number.isInteger(pid) || pid <= 0) return null;
+                            return <Link to={`/property/${pid}`}>Open ➜</Link>;
+                          })()}
                           <button
                             className="danger"
                             onClick={async () => {
@@ -100,7 +104,12 @@ export default function MyPostsPage() {
                               const ok = window.confirm(`Delete Ad #${label}? This cannot be undone.`);
                               if (!ok) return;
                               try {
-                                await ownerDeleteProperty(Number(p.id));
+                                const pid = Number(p.id);
+                                if (!Number.isInteger(pid) || pid <= 0) {
+                                  setMsg("Invalid ad id.");
+                                  return;
+                                }
+                                await ownerDeleteProperty(pid);
                                 setMsg(`Deleted Ad #${label}`);
                                 load();
                               } catch (e: any) {
