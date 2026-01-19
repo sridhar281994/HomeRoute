@@ -899,7 +899,7 @@
                             rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
 
                     AsyncImage:
-                        source: root.profile_image_url if root.profile_image_url else ""
+                        source: root.profile_image_url if root.profile_image_url else root.default_profile_image
                         allow_stretch: True
                         keep_ratio: True
                         size_hint_x: None

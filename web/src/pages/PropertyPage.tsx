@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 export default function PropertyPage() {
   const { id } = useParams();
   const pid = Number(id);
+  const pidOk = Number.isFinite(pid) && pid > 0;
   const [p, setP] = useState<any>(null);
   const [msg, setMsg] = useState("");
   const [contacted, setContacted] = useState(false);
@@ -13,6 +14,11 @@ export default function PropertyPage() {
   useEffect(() => {
     (async () => {
       setMsg("");
+      if (!pidOk) {
+        setP(null);
+        setMsg("Invalid ad id.");
+        return;
+      }
       try {
         const data = await getProperty(pid);
         setP(data);
@@ -21,7 +27,7 @@ export default function PropertyPage() {
         setMsg(e.message || "Failed");
       }
     })();
-  }, [pid]);
+  }, [pid, pidOk]);
 
   if (!p) {
     return (

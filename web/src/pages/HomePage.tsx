@@ -77,8 +77,11 @@ export default function HomePage() {
     setErr("");
     try {
       const q = (need || "").trim() || undefined;
-      const radius = Number(radiusKm || 0) || 20;
+      const radiusNum = parseInt(String(radiusKm || "").trim(), 10);
+      const radius = Number.isFinite(radiusNum) && radiusNum > 0 ? radiusNum : 20;
       const gpsOk = isValidGps(gps);
+      const maxPriceTrim = String(maxPrice || "").trim();
+      const maxPriceParam = /^\d+$/.test(maxPriceTrim) ? maxPriceTrim : undefined;
 
       // If GPS is available, show nearby ads by distance; otherwise fall back to non-GPS listing.
       const res = gpsOk
@@ -90,7 +93,7 @@ export default function HomePage() {
             state: state || undefined,
             area: area || undefined,
             q,
-            max_price: maxPrice || undefined,
+            max_price: maxPriceParam,
             rent_sale: rentSale || undefined,
             property_type: undefined,
             posted_within_days: postedWithinDays || undefined,
@@ -98,7 +101,7 @@ export default function HomePage() {
           })
         : await listProperties({
             q,
-            max_price: maxPrice || undefined,
+            max_price: maxPriceParam,
             rent_sale: rentSale || undefined,
             district: district || undefined,
             state: state || undefined,
