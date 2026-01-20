@@ -42,7 +42,9 @@ def google_sign_in(
         from android.runnable import run_on_ui_thread  # type: ignore
         from jnius import autoclass  # type: ignore
     except Exception as e:
-        Clock.schedule_once(lambda *_: on_error(f"Google Sign-In is unavailable in this build: {e}"), 0)
+        # Don't capture exception variable `e` in a lambda; Python clears it after except.
+        msg = f"Google Sign-In is unavailable in this build: {e}"
+        Clock.schedule_once(lambda *_dt, msg=msg: on_error(msg), 0)
         return
 
     global _bound
@@ -101,7 +103,8 @@ def google_sign_in(
         except Exception as e:
             cb = _pending.get("on_error")
             if cb:
-                Clock.schedule_once(lambda *_: cb(str(e) or "Failed to start Google Sign-In."), 0)
+                msg = str(e) or "Failed to start Google Sign-In."
+                Clock.schedule_once(lambda *_dt, msg=msg: cb(msg), 0)
 
     _start()
 

@@ -81,10 +81,11 @@ class RegisterScreen(Screen):
                             sp.bind(text=self.on_state_changed)  # type: ignore[arg-type]
                         except Exception:
                             pass
-                        if (sp.text or "").strip() in {"Select Country", "Select State", ""}:
-                            preferred = "Tamil Nadu" if "Tamil Nadu" in sp.values else (sp.values[0] if sp.values else "")
-                            if preferred:
-                                sp.text = preferred
+                        # Default to "Any" (no filtering). Do not auto-select a real state
+                        # because that triggers district fetches and confuses users.
+                        if (sp.text or "").strip() in {"Select Country", "Select State", "", "Any"}:
+                            if "Any" in sp.values:
+                                sp.text = "Any"
 
                     # Trigger districts population based on selected state
                     self.on_state_changed()
@@ -137,12 +138,9 @@ class RegisterScreen(Screen):
         if not name:
             self._popup("Invalid", "Please enter your full name.")
             return
-        if not state or state in {"Select Country", "Select State"}:
-            self._popup("Invalid", "Please select your state.")
-            return
-        if not district or district in {"Select District"}:
-            self._popup("Invalid", "Please select your district.")
-            return
+        # State/District are optional for registration. UI defaults to "Any".
+        state_norm = "" if state in {"Select Country", "Select State", "Any"} else state
+        district_norm = "" if district in {"Select District", "Any"} else district
         if role not in {"owner", "customer"}:
             self._popup("Invalid", "Please select role: Owner or Customer.")
             return
@@ -161,8 +159,8 @@ class RegisterScreen(Screen):
                     phone=phone,
                     password=password_safe,
                     name=name.strip(),
-                    state=state,
-                    district=district,
+                    state=state_norm,
+                    district=district_norm,
                     role=api_role,
                     owner_category=(owner_category if api_role == "owner" else ""),
                 )
@@ -226,21 +224,25 @@ class RegisterScreen(Screen):
         google_sign_in(server_client_id=server_client_id, on_success=on_success, on_error=on_error)
 
     def country_values(self):
-        return list(getattr(self, "_states_cache", []) or [])
+        st = list(getattr(self, "_states_cache", []) or [])
+        # Keep "Any" as a stable first option.
+        return ["Any"] + [x for x in st if x and str(x).strip() and str(x).strip() != "Any"]
 
     def district_values(self):
-        return list(getattr(self, "_districts_cache", []) or [])
+        ds = list(getattr(self, "_districts_cache", []) or [])
+        return ["Any"] + [x for x in ds if x and str(x).strip() and str(x).strip() != "Any"]
 
     def on_state_changed(self, *_):
         # When state changes, fetch districts from backend.
         if "district_spinner" not in self.ids:
             return
         state = (self.ids.get("country_spinner").text or "").strip() if self.ids.get("country_spinner") else ""
-        if not state or state in {"Select Country", "Select State"}:
+        if (not state) or state in {"Select Country", "Select State", "Any"}:
             self._districts_cache = []
             try:
                 self.ids["district_spinner"].values = []
-                self.ids["district_spinner"].text = "Select District"
+                # Keep District at "Any" when State is not selected.
+                self.ids["district_spinner"].text = "Any"
             except Exception:
                 pass
             return
@@ -256,7 +258,8 @@ class RegisterScreen(Screen):
                     self._districts_cache = ds
                     try:
                         self.ids["district_spinner"].values = self.district_values()
-                        self.ids["district_spinner"].text = "Select District"
+                        # Reset district to "Any" on state change.
+                        self.ids["district_spinner"].text = "Any"
                     except Exception:
                         pass
 
