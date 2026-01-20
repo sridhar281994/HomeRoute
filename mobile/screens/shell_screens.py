@@ -32,6 +32,7 @@ from frontend_app.utils.api import (
     api_meta_categories,
     api_owner_create_property,
     api_owner_list_properties,
+    api_owner_update_property,
     api_subscription_status,
     api_upload_property_media,
     to_api_url,
@@ -185,14 +186,33 @@ class MyPostsScreen(Screen):
                                     Label(text="No posts yet.", size_hint_y=None, height=32, color=(1, 1, 1, 0.75))
                                 )
                             else:
-                                # Reuse HomeScreen card layout when possible.
+                                from kivy.metrics import dp
+
+                                # Reuse HomeScreen card layout when possible, but add an Edit button.
                                 home = self.manager.get_screen("home") if self.manager else None
                                 for p in items:
+                                    # Main card
                                     if home and hasattr(home, "feed_card"):
-                                        container.add_widget(home.feed_card(p))  # type: ignore[attr-defined]
+                                        card = home.feed_card(p)  # type: ignore[attr-defined]
                                     else:
                                         title = str((p or {}).get("title") or "Post")
-                                        container.add_widget(Label(text=title, size_hint_y=None, height=32))
+                                        card = Label(text=title, size_hint_y=None, height=dp(32))
+
+                                    wrap = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
+                                    wrap.bind(minimum_height=wrap.setter("height"))
+                                    wrap.add_widget(card)
+
+                                    actions = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(8))
+                                    btn_edit = Factory.AppButton(text="Edit")
+                                    actions.add_widget(btn_edit)
+                                    wrap.add_widget(actions)
+
+                                    def _edit(*_args, p=p):
+                                        self.edit_post(p)
+
+                                    btn_edit.bind(on_release=_edit)
+
+                                    container.add_widget(wrap)
                     except Exception:
                         pass
                     self.is_loading = False
@@ -212,6 +232,17 @@ class MyPostsScreen(Screen):
     def back(self):
         if self.manager:
             self.manager.current = "home"
+
+    def edit_post(self, p: dict[str, Any]) -> None:
+        if not self.manager:
+            return
+        try:
+            scr = self.manager.get_screen("owner_add_property")
+            if hasattr(scr, "start_edit"):
+                scr.start_edit(p)  # type: ignore[attr-defined]
+            self.manager.current = "owner_add_property"
+        except Exception:
+            _popup("Error", "Unable to open edit screen.")
 
 
 class SettingsScreen(Screen):
@@ -561,11 +592,58 @@ class OwnerDashboardScreen(Screen):
 
 
 class OwnerAddPropertyScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._edit_data: dict[str, Any] | None = None
+        self.edit_property_id: int | None = None
+
+    def start_edit(self, p: dict[str, Any]) -> None:
+        """
+        Called from MyPostsScreen to edit an existing post.
+        Stores edit context and pre-fills form best-effort.
+        """
+        try:
+            pid = int((p or {}).get("id") or 0)
+        except Exception:
+            pid = 0
+        self.edit_property_id = pid if pid > 0 else None
+        self._edit_data = dict(p or {})
+        # Best-effort prefill (KV ids may not exist yet).
+        self._apply_edit_prefill()
+
+    def _apply_edit_prefill(self) -> None:
+        p = self._edit_data or {}
+        try:
+            if "submit_btn" in self.ids:
+                self.ids["submit_btn"].text = "Save Changes" if self.edit_property_id else "Submit (goes to admin review)"
+            if "title_input" in self.ids:
+                self.ids["title_input"].text = str(p.get("title") or "")
+            if "price_input" in self.ids:
+                # price_display is formatted; prefer raw int if present.
+                self.ids["price_input"].text = str(p.get("price") or "")
+            if "rent_sale_spinner" in self.ids:
+                rs = str(p.get("rent_sale") or "").strip().title() or "Rent"
+                self.ids["rent_sale_spinner"].text = rs
+            if "category_spinner" in self.ids:
+                cat = str(p.get("property_type") or "").strip().lower() or "property"
+                if cat not in {"materials", "services", "property"}:
+                    cat = "property"
+                self.ids["category_spinner"].text = cat
+            if "contact_phone_input" in self.ids:
+                self.ids["contact_phone_input"].text = str(p.get("contact_phone") or p.get("phone") or "")
+            if "media_summary" in self.ids:
+                # Edits currently don't manage media uploads.
+                self.ids["media_summary"].text = ""
+        except Exception:
+            return
     def on_pre_enter(self, *args):
         # Load location dropdowns from backend (and default to profile state/district if present).
         u = get_user() or {}
-        preferred_state = str(u.get("state") or "").strip()
-        preferred_district = str(u.get("district") or "").strip()
+        p = self._edit_data or {}
+        preferred_state = str(p.get("state") or u.get("state") or "").strip()
+        preferred_district = str(p.get("district") or u.get("district") or "").strip()
+        preferred_area = str(p.get("area") or "").strip()
+        self._apply_edit_prefill()
 
         from threading import Thread
 
@@ -587,6 +665,8 @@ class OwnerAddPropertyScreen(Screen):
                     # Try to set preferred district after districts load (best-effort).
                     if preferred_district:
                         Clock.schedule_once(lambda *_: self._apply_preferred_district(preferred_district), 0.2)
+                    if preferred_area:
+                        Clock.schedule_once(lambda *_: self._apply_preferred_area(preferred_area), 0.35)
 
                 Clock.schedule_once(apply_states, 0)
             except Exception:
@@ -602,6 +682,16 @@ class OwnerAddPropertyScreen(Screen):
             if preferred_district and preferred_district in (sp.values or []):
                 sp.text = preferred_district
                 self.on_district_changed()
+        except Exception:
+            return
+
+    def _apply_preferred_area(self, preferred_area: str):
+        try:
+            if "area_spinner" not in self.ids:
+                return
+            sp = self.ids["area_spinner"]
+            if preferred_area and preferred_area in (sp.values or []):
+                sp.text = preferred_area
         except Exception:
             return
 
@@ -805,7 +895,7 @@ class OwnerAddPropertyScreen(Screen):
             return
 
         from threading import Thread
-        # api_owner_create_property imported at module level
+        # api_owner_create_property/api_owner_update_property imported at module level
 
         def _start_submit(gps_lat: float | None, gps_lng: float | None) -> None:
             try:
@@ -827,23 +917,47 @@ class OwnerAddPropertyScreen(Screen):
                     "gps_lat": gps_lat,
                     "gps_lng": gps_lng,
                 }
-                res = api_owner_create_property(payload=payload)
-                pid = res.get("id")
-                status = res.get("status") or "pending"
+                if self.edit_property_id:
+                    res = api_owner_update_property(property_id=int(self.edit_property_id), payload=payload)
+                    pid = self.edit_property_id
+                    status = ((res.get("property") or {}).get("status") or "updated").strip() if isinstance(res, dict) else "updated"
+                else:
+                    res = api_owner_create_property(payload=payload)
+                    pid = res.get("id")
+                    status = res.get("status") or "pending"
 
                 # Upload selected media (best-effort).
                 selected = list(getattr(self, "_selected_media", []) or [])
-                if pid and selected:
+                if (not self.edit_property_id) and pid and selected:
                     for i, fp in enumerate(selected):
                         api_upload_property_media(property_id=int(pid), file_path=str(fp), sort_order=i)
 
                 def done(*_):
-                    msg = f"Ad created (#{pid}) • status: {status}"
-                    if selected:
+                    if self.edit_property_id:
+                        msg = f"Ad updated (#{pid})"
+                    else:
+                        msg = f"Ad created (#{pid}) • status: {status}"
+                    if selected and (not self.edit_property_id):
                         msg += f"\nUploaded {len(selected)} file(s)."
-                    _popup("Submitted", msg)
+                    _popup("Saved", msg)
                     if self.manager:
-                        self.manager.current = "owner_dashboard"
+                        # Refresh lists so edits reflect everywhere.
+                        try:
+                            home = self.manager.get_screen("home")
+                            if hasattr(home, "refresh"):
+                                home.refresh()  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
+                        try:
+                            mp = self.manager.get_screen("my_posts")
+                            if hasattr(mp, "refresh"):
+                                mp.refresh()  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
+                        self.manager.current = "my_posts" if self.edit_property_id else "owner_dashboard"
+                        # Exit edit mode after save.
+                        self.edit_property_id = None
+                        self._edit_data = None
 
                 Clock.schedule_once(done, 0)
             except ApiError as e:
@@ -851,6 +965,13 @@ class OwnerAddPropertyScreen(Screen):
                 Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
 
         def _maybe_with_location(ok: bool) -> None:
+            # For edits, don't force location permission / GPS capture.
+            if self.edit_property_id:
+                def work():
+                    _start_submit(None, None)
+                Thread(target=work, daemon=True).start()
+                return
+
             loc = get_last_known_location() if ok else None
             gps_lat, gps_lng = (loc[0], loc[1]) if loc else (None, None)
 
