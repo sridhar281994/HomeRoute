@@ -2,17 +2,61 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import requests
 from kivy.clock import Clock
 from kivy.utils import platform
 
+# ------------------------------------------------------------
+# CONFIGURATION
+# ------------------------------------------------------------
 REQUEST_CODE_GOOGLE_SIGN_IN = 4915
 
-GOOGLE_OAUTH_CLIENT_ID = "634110997767-juj3od861h6po1udb0huea59hog0931l.apps.googleusercontent.com"
+# Firebase Web API Key (from Firebase console)
+FIREBASE_API_KEY = "AIzaSyA-lF8xJ4DSHyHFLffkEZgmLi1tXtE8jx4"
+
+# Firebase REST endpoint
+FIREBASE_SIGNIN_URL = (
+    "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp"
+)
 
 _bound = False
 _pending: dict[str, Any] = {}
 
 
+# ------------------------------------------------------------
+# FIREBASE TOKEN EXCHANGE
+# ------------------------------------------------------------
+def _exchange_google_token_with_firebase(
+    google_id_token: str,
+) -> dict[str, Any]:
+    """
+    Exchange Google ID token with Firebase Identity Toolkit REST API.
+    Returns Firebase auth response JSON.
+    """
+    url = f"{FIREBASE_SIGNIN_URL}?key={FIREBASE_API_KEY}"
+
+    payload = {
+        "postBody": f"id_token={google_id_token}&providerId=google.com",
+        "requestUri": "http://localhost",
+        "returnSecureToken": True,
+    }
+
+    r = requests.post(url, json=payload, timeout=20)
+    if r.status_code != 200:
+        raise RuntimeError(
+            f"Firebase auth failed ({r.status_code}): {r.text}"
+        )
+
+    data = r.json()
+    if "idToken" not in data:
+        raise RuntimeError("Firebase did not return idToken")
+
+    return data
+
+
+# ------------------------------------------------------------
+# LEGACY GOOGLE SIGN-IN FLOW
+# ------------------------------------------------------------
 def _legacy_start_sign_in(*, act, gso, request_code: int, autoclass, on_error: Callable[[str], None]) -> None:
     """
     Legacy Google Sign-In flow using GoogleApiClient.
@@ -67,15 +111,20 @@ def _legacy_start_sign_in(*, act, gso, request_code: int, autoclass, on_error: C
     act.startActivityForResult(intent, request_code)
 
 
+# ------------------------------------------------------------
+# PUBLIC ENTRY POINT
+# ------------------------------------------------------------
 def google_sign_in(
     *,
     server_client_id: str,
-    on_success: Callable[[str, dict[str, str]], None],
+    on_success: Callable[[dict[str, Any]], None],
     on_error: Callable[[str], None],
 ) -> None:
     """
-    Start Google Sign-In on Android and return an ID token.
-    Uses legacy intent flow for maximum stability.
+    Start Google Sign-In on Android and authenticate via Firebase.
+
+    on_success(firebase_payload_dict)
+    on_error(error_message)
     """
     if platform != "android":
         Clock.schedule_once(
@@ -90,6 +139,13 @@ def google_sign_in(
             lambda *_: on_error(
                 "Google Sign-In is not configured (missing GOOGLE_OAUTH_CLIENT_ID)."
             ),
+            0,
+        )
+        return
+
+    if not FIREBASE_API_KEY or "PASTE_" in FIREBASE_API_KEY:
+        Clock.schedule_once(
+            lambda *_: on_error("Firebase API key is not configured."),
             0,
         )
         return
@@ -122,51 +178,59 @@ def google_sign_in(
             def fail(msg: str) -> None:
                 cb = _pending.get("on_error")
                 if cb:
-                    cb(str(msg))
+                    Clock.schedule_once(lambda *_: cb(str(msg)), 0)
 
             try:
-                # ---------------------------------------------------------
-                # Prefer legacy API result parsing (PyJNIus stable).
-                # Some environments throw `GoogleSignIn has no attribute ...`
-                # when accessing modern static methods via PyJNIus reflection.
-                # ---------------------------------------------------------
-                account = None
-                try:
-                    Auth = autoclass("com.google.android.gms.auth.api.Auth")
-                    result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
-                    if result is not None and bool(result.isSuccess()):
-                        account = result.getSignInAccount()
-                except Exception:
-                    account = None
+                GoogleSignIn = autoclass(
+                    "com.google.android.gms.auth.api.signin.GoogleSignIn"
+                )
+                ApiException = autoclass(
+                    "com.google.android.gms.common.api.ApiException"
+                )
 
-                # Fallback to modern parsing only if legacy isn't available.
-                if account is None:
-                    try:
-                        GoogleSignIn = autoclass(
-                            "com.google.android.gms.auth.api.signin.GoogleSignIn"
-                        )
-                        ApiException = autoclass(
-                            "com.google.android.gms.common.api.ApiException"
-                        )
+                # -----------------------------
+                # Try modern API first (safe)
+                # -----------------------------
+                try:
+                    if hasattr(GoogleSignIn, "getSignedInAccountFromIntent"):
                         task = GoogleSignIn.getSignedInAccountFromIntent(data)
                         account = task.getResult(ApiException)
-                    except Exception as e:
-                        fail(str(e) or "Google Sign-In failed.")
+                    else:
+                        raise RuntimeError("Modern API unavailable")
+                except Exception:
+                    # -----------------------------
+                    # Legacy API fallback
+                    # -----------------------------
+                    Auth = autoclass("com.google.android.gms.auth.api.Auth")
+                    result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
+                    if (
+                        result is None
+                        or hasattr(result, "isSuccess")
+                        and not bool(result.isSuccess())
+                    ):
+                        fail("Google Sign-In failed.")
                         return True
+                    account = result.getSignInAccount()
 
-                token = str(account.getIdToken() or "").strip()
-                if not token:
+                google_token = str(account.getIdToken() or "").strip()
+                if not google_token:
                     fail("Google Sign-In did not return an ID token.")
                     return True
 
-                profile = {
-                    "email": str(account.getEmail() or "").strip(),
-                    "name": str(account.getDisplayName() or "").strip(),
-                }
+                # -------------------------------------------------
+                # Exchange Google token with Firebase
+                # -------------------------------------------------
+                try:
+                    firebase_payload = _exchange_google_token_with_firebase(
+                        google_token
+                    )
+                except Exception as e:
+                    fail(f"Firebase authentication failed: {e}")
+                    return True
 
                 cb = _pending.get("on_success")
                 if cb:
-                    cb(token, profile)
+                    Clock.schedule_once(lambda *_: cb(firebase_payload), 0)
 
             except Exception as e:
                 fail(str(e) or "Google Sign-In failed.")
