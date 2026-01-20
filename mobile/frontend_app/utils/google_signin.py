@@ -153,13 +153,23 @@ def google_sign_in(
             gso = builder.requestEmail().requestIdToken(cid).build()
             # Prefer the modern GoogleSignInClient flow.
             try:
-                # Using application context can avoid some overload resolution issues in PyJNIus.
-                ctx = act.getApplicationContext()
-                client = GoogleSignIn.getClient(ctx, gso)
+                # Prefer the Activity overload first (most compatible across auth lib versions).
+                client = GoogleSignIn.getClient(act, gso)
                 intent = client.getSignInIntent()
                 act.startActivityForResult(intent, REQUEST_CODE_GOOGLE_SIGN_IN)
-            except AttributeError:
-                # Fallback for older Play Services Auth where getClient() isn't present.
+            except Exception:
+                # Some Play Services Auth builds may not have the expected overloads/methods.
+                # Try the Context overload next, then fallback to legacy API.
+                try:
+                    ctx = act.getApplicationContext()
+                    client = GoogleSignIn.getClient(ctx, gso)
+                    intent = client.getSignInIntent()
+                    act.startActivityForResult(intent, REQUEST_CODE_GOOGLE_SIGN_IN)
+                    return
+                except Exception:
+                    pass
+
+                # Fallback for older Play Services Auth where GoogleSignInClient isn't present.
                 _legacy_start_sign_in(
                     act=act,
                     gso=gso,

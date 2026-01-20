@@ -1210,16 +1210,17 @@
                     height: dp(48)
                     spacing: dp(10)
                     AppToggle:
+                        id: role_owner_btn
                         text: "[b]Owner[/b]  [font=EmojiFont]🏢[/font]"
                         group: "role_group"
                         allow_no_selection: False
                         on_state:
                             if self.state == "down": root.set_role("owner")
                     AppToggle:
+                        id: role_customer_btn
                         text: "[b]Customer[/b]  [font=EmojiFont]🧍[/font]"
                         group: "role_group"
                         allow_no_selection: False
-                        state: "down"
                         on_state:
                             if self.state == "down": root.set_role("customer")
 
