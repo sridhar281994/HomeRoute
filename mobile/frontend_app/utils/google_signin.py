@@ -13,8 +13,8 @@ _pending: dict[str, Any] = {}
 
 def _legacy_start_sign_in(*, act, gso, request_code: int, autoclass, on_error: Callable[[str], None]) -> None:
     """
-    Fallback for older Play Services Auth versions where
-    `GoogleSignIn.getClient(...)` is unavailable.
+    Legacy Google Sign-In flow using GoogleApiClient.
+    This avoids GoogleSignIn.getClient() which breaks under PyJNIus.
     """
     try:
         from jnius import PythonJavaClass, java_method  # type: ignore
@@ -73,6 +73,7 @@ def google_sign_in(
 ) -> None:
     """
     Start Google Sign-In on Android and return an ID token.
+    Uses legacy intent flow for maximum stability.
     """
     if platform != "android":
         Clock.schedule_once(
@@ -130,11 +131,14 @@ def google_sign_in(
                 )
 
                 # -----------------------------
-                # Modern API (if available)
+                # Try modern API first (safe)
                 # -----------------------------
                 try:
-                    task = GoogleSignIn.getSignedInAccountFromIntent(data)
-                    account = task.getResult(ApiException)
+                    if hasattr(GoogleSignIn, "getSignedInAccountFromIntent"):
+                        task = GoogleSignIn.getSignedInAccountFromIntent(data)
+                        account = task.getResult(ApiException)
+                    else:
+                        raise RuntimeError("Modern API unavailable")
                 except Exception:
                     # -----------------------------
                     # Legacy API fallback
@@ -172,7 +176,7 @@ def google_sign_in(
         activity.bind(on_activity_result=_on_activity_result)
 
     # ---------------------------------------------------------
-    # Start sign-in on UI thread
+    # Start sign-in on UI thread (legacy only)
     # ---------------------------------------------------------
     @run_on_ui_thread
     def _start() -> None:
