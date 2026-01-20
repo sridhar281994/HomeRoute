@@ -783,8 +783,9 @@ class HomeScreen(Screen):
                 self.manager.current = "login"
             return
         u = get_user() or {}
-        if (u.get("role") or "").lower() != "owner":
-            _popup("Owner account required", "Please register/login as Owner to access this dashboard.")
+        role = (u.get("role") or "").lower().strip()
+        if role not in {"user", "owner", "admin"}:
+            _popup("Login required", "Please login with a valid account to publish ads.")
             return
         if self.manager:
             self.manager.current = "owner_dashboard"
