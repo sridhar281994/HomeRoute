@@ -193,9 +193,13 @@ def google_sign_in(
                 "com.google.android.gms.auth.api.signin.GoogleSignInOptions"
             )
 
-            builder = GoogleSignInOptions.Builder(
-                GoogleSignInOptions.DEFAULT_SIGN_IN
+            # PyJNIus does not consistently expose Java inner classes as attributes,
+            # so `GoogleSignInOptions.Builder(...)` can fail with:
+            # "has no attribute 'Builder'". Load the inner class explicitly.
+            GoogleSignInOptionsBuilder = autoclass(
+                "com.google.android.gms.auth.api.signin.GoogleSignInOptions$Builder"
             )
+            builder = GoogleSignInOptionsBuilder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             gso = builder.requestEmail().requestIdToken(cid).build()
 
             client = _GoogleSignIn.getClient(act, gso)
