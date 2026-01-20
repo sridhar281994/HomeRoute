@@ -130,7 +130,7 @@ def google_sign_in(
                 )
 
                 # -----------------------------
-                # Modern API
+                # Modern API (if available)
                 # -----------------------------
                 try:
                     task = GoogleSignIn.getSignedInAccountFromIntent(data)
@@ -183,41 +183,15 @@ def google_sign_in(
             GoogleSignInOptions = autoclass(
                 "com.google.android.gms.auth.api.signin.GoogleSignInOptions"
             )
-            GoogleSignIn = autoclass(
-                "com.google.android.gms.auth.api.signin.GoogleSignIn"
-            )
 
             builder = GoogleSignInOptions.Builder(
                 GoogleSignInOptions.DEFAULT_SIGN_IN
             )
             gso = builder.requestEmail().requestIdToken(cid).build()
 
-            # -----------------------------
-            # Preferred modern client flow
-            # -----------------------------
-            try:
-                client = GoogleSignIn.getClient(act, gso)
-                intent = client.getSignInIntent()
-                act.startActivityForResult(intent, REQUEST_CODE_GOOGLE_SIGN_IN)
-                return
-            except Exception:
-                pass
-
-            # -----------------------------
-            # Try Context overload
-            # -----------------------------
-            try:
-                ctx = act.getApplicationContext()
-                client = GoogleSignIn.getClient(ctx, gso)
-                intent = client.getSignInIntent()
-                act.startActivityForResult(intent, REQUEST_CODE_GOOGLE_SIGN_IN)
-                return
-            except Exception:
-                pass
-
-            # -----------------------------
-            # Legacy fallback
-            # -----------------------------
+            # -------------------------------------------------
+            # Always use legacy intent flow (PyJNIus safe)
+            # -------------------------------------------------
             _legacy_start_sign_in(
                 act=act,
                 gso=gso,
