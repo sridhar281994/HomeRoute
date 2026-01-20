@@ -13,7 +13,7 @@ REQUEST_CODE_GOOGLE_SIGN_IN = 4915
 _bound = False
 _pending: dict[str, Any] = {}
 
-_LOG_TAG = "QuickRentGoogleSignIn"
+_LOG_TAG = "Quickrent4uGoogleSignIn"
 _log_fn: Callable[[str], None] | None = None
 
 

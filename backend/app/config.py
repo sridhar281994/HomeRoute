@@ -119,7 +119,7 @@ def brevo_from_email() -> str:
 
 
 def brevo_sender_name() -> str:
-    return (os.environ.get("BREVO_SENDER_NAME") or "QuickRent").strip()
+    return (os.environ.get("BREVO_SENDER_NAME") or "Quickrent4u").strip()
 
 
 def smtp_host() -> str:

@@ -28,7 +28,7 @@ from screens.shell_screens import (
 
 
 class QuickRentApp(App):
-    title = "QuickRent"
+    title = "Quickrent4u"
 
     def build(self):
         base_dir = os.path.dirname(__file__)
