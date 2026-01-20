@@ -13,6 +13,34 @@ REQUEST_CODE_GOOGLE_SIGN_IN = 4915
 _bound = False
 _pending: dict[str, Any] = {}
 
+_LOG_TAG = "QuickRentGoogleSignIn"
+_log_fn: Callable[[str], None] | None = None
+
+
+def _log(message: str) -> None:
+    """Log to Android logcat when available; fallback to print."""
+    global _log_fn
+    if _log_fn is None:
+        try:
+            if platform == "android":
+                from jnius import autoclass  # type: ignore
+
+                Log = autoclass("android.util.Log")
+
+                def _android_log(msg: str) -> None:
+                    Log.d(_LOG_TAG, str(msg))
+
+                _log_fn = _android_log
+            else:
+                _log_fn = lambda msg: print(f"[{_LOG_TAG}] {msg}")
+        except Exception:
+            _log_fn = lambda msg: print(f"[{_LOG_TAG}] {msg}")
+    try:
+        _log_fn(str(message))
+    except Exception:
+        # Never let logging break sign-in flow.
+        pass
+
 
 # ------------------------------------------------------------
 # PUBLIC ENTRY POINT
@@ -29,7 +57,9 @@ def google_sign_in(
     on_success(id_token, profile_dict)
     on_error(error_message)
     """
+    _log("Starting Google Sign-In flow.")
     if platform != "android":
+        _log("Platform is not Android; aborting.")
         Clock.schedule_once(
             lambda *_: on_error("Google Sign-In is only available on Android builds."),
             0,
@@ -38,6 +68,7 @@ def google_sign_in(
 
     cid = (server_client_id or "").strip()
     if not cid:
+        _log("Missing OAuth client ID; aborting.")
         Clock.schedule_once(
             lambda *_: on_error(
                 "Google Sign-In is not configured (missing GOOGLE_OAUTH_CLIENT_ID)."
@@ -53,6 +84,7 @@ def google_sign_in(
         from jnius import JavaClass, autoclass  # type: ignore
     except Exception as e:
         msg = f"Google Sign-In is unavailable in this build: {e}"
+        _log(msg)
         Clock.schedule_once(lambda *_dt, msg=msg: on_error(msg), 0)
         return
 
@@ -76,18 +108,24 @@ def google_sign_in(
     # ---------------------------------------------------------
     if not _bound:
         _bound = True
+        _log("Binding activity result listener.")
 
         def _on_activity_result(request_code: int, result_code: int, data) -> bool:
             if request_code != REQUEST_CODE_GOOGLE_SIGN_IN:
                 return False
 
             def fail(msg: str) -> None:
+                _log(f"Sign-in failed: {msg}")
                 cb = _pending.get("on_error")
                 if cb:
                     Clock.schedule_once(lambda *_: cb(str(msg)), 0)
 
             try:
                 Activity = autoclass("android.app.Activity")
+                _log(
+                    f"Activity result: req={request_code} "
+                    f"result={result_code} data={'yes' if data is not None else 'no'}"
+                )
                 if int(result_code) != int(Activity.RESULT_OK):
                     fail("Google Sign-In cancelled.")
                     return True
@@ -96,6 +134,7 @@ def google_sign_in(
                     fail("Google Sign-In returned no data.")
                     return True
 
+                _log("Parsing Google Sign-In intent.")
                 task = _GoogleSignIn.getSignedInAccountFromIntent(data)
 
                 # Prefer Task.getResult() with no args (avoids PyJNIus overload issues).
@@ -105,6 +144,7 @@ def google_sign_in(
                 if not id_token:
                     fail("Google Sign-In did not return an ID token (check OAuth client ID).")
                     return True
+                _log("Google Sign-In returned ID token.")
 
                 profile: dict[str, str] = {}
                 try:
@@ -147,6 +187,7 @@ def google_sign_in(
         try:
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
             act = PythonActivity.mActivity
+            _log("Launching Google Sign-In intent.")
 
             GoogleSignInOptions = autoclass(
                 "com.google.android.gms.auth.api.signin.GoogleSignInOptions"
@@ -165,6 +206,7 @@ def google_sign_in(
             cb = _pending.get("on_error")
             if cb:
                 msg = str(e) or "Failed to start Google Sign-In."
+                _log(msg)
                 Clock.schedule_once(lambda *_dt, msg=msg: cb(msg), 0)
 
     _start()
