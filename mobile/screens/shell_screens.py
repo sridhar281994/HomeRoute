@@ -5,6 +5,7 @@ from typing import Any
 
 from kivy.clock import Clock
 from kivy.factory import Factory
+from kivy.metrics import dp
 from kivy.properties import BooleanProperty, DictProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.filechooser import FileChooserListView
@@ -54,6 +55,59 @@ def _popup(title: str, msg: str) -> None:
         Clock.schedule_once(lambda _dt: popup.dismiss(), 2.2)
 
     Clock.schedule_once(_open, 0)
+
+
+def _default_media_dir() -> str:
+    """
+    Best-effort starting directory for image/video pickers on Android.
+
+    We avoid `~` because on Android it points to the app's private storage,
+    which may contain the packaged source tree (looks like the repo).
+    """
+    try:
+        from kivy.utils import platform
+
+        if platform != "android":
+            return os.path.expanduser("~")
+    except Exception:
+        return os.path.expanduser("~")
+
+    # Try Android public media dirs first (Pictures/DCIM).
+    try:
+        from jnius import autoclass  # type: ignore
+
+        Environment = autoclass("android.os.Environment")
+        pictures = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+        if pictures is not None:
+            p = str(pictures.getAbsolutePath() or "").strip()
+            if p and os.path.isdir(p):
+                return p
+    except Exception:
+        pass
+
+    for p in [
+        "/storage/emulated/0/Pictures",
+        "/storage/emulated/0/DCIM",
+        "/sdcard/Pictures",
+        "/sdcard/DCIM",
+        "/storage/emulated/0/Download",
+        "/sdcard/Download",
+    ]:
+        try:
+            if os.path.isdir(p):
+                return p
+        except Exception:
+            continue
+
+    # Fallback: external storage root if present.
+    for p in ["/storage/emulated/0", "/sdcard"]:
+        try:
+            if os.path.isdir(p):
+                return p
+        except Exception:
+            continue
+
+    return os.path.expanduser("~")
 
 
 class SplashScreen(Screen):
@@ -339,7 +393,10 @@ class SettingsScreen(Screen):
 
     def open_image_picker(self):
         def _open_picker() -> None:
-            chooser = FileChooserListView(path=os.path.expanduser("~"), filters=["*.png", "*.jpg", "*.jpeg", "*.webp"])
+            chooser = FileChooserListView(
+                path=_default_media_dir(),
+                filters=["*.png", "*.jpg", "*.jpeg", "*.webp"],
+            )
 
             # Auto-upload on selection (no separate Save/Upload button).
             popup = Popup(title="Choose Profile Image", size_hint=(0.9, 0.9), auto_dismiss=False)
@@ -360,11 +417,11 @@ class SettingsScreen(Screen):
             except Exception:
                 pass
 
-            buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+            buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10), padding=[dp(10), dp(10)])
             btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
             buttons.add_widget(btn_cancel)
 
-            root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+            root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
             root.add_widget(Label(text="Tap an image to upload immediately."))
             root.add_widget(chooser)
             root.add_widget(buttons)
@@ -800,7 +857,7 @@ class OwnerAddPropertyScreen(Screen):
         """
         def _open_picker() -> None:
             chooser = FileChooserListView(
-                path=os.path.expanduser("~"),
+                path=_default_media_dir(),
                 filters=["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.mp4", "*.mov", "*.m4v", "*.avi", "*.mkv"],
                 multiselect=True,
             )
@@ -844,13 +901,13 @@ class OwnerAddPropertyScreen(Screen):
                 except Exception:
                     popup.dismiss()
 
-            buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+            buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10), padding=[dp(10), dp(10)])
             btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
             btn_ok = Factory.AppButton(text="Use Selected")
             buttons.add_widget(btn_cancel)
             buttons.add_widget(btn_ok)
 
-            root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+            root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
             root.add_widget(Label(text="Select up to 10 images and optionally 1 video."))
             root.add_widget(chooser)
             root.add_widget(buttons)

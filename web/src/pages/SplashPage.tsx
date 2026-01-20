@@ -15,7 +15,7 @@ export default function SplashPage() {
   return (
     <div className="panel" style={{ textAlign: "center", padding: 28 }}>
       <p className="h1" style={{ margin: 0 }}>
-        QuickRent
+        Quickrent4u
       </p>
       <p className="muted" style={{ marginTop: 10 }}>
         Loading...

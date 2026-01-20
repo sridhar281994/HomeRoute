@@ -1,5 +1,5 @@
 [app]
-title = QuickRent
+title = Quickrent4u
 package.name = quickrent
 package.domain = org.quickrent
 

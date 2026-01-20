@@ -1204,6 +1204,12 @@
                     size_hint_y: None
                     height: dp(48)
 
+                Label:
+                    text: "[b]Choose Role[/b]"
+                    size_hint_y: None
+                    height: dp(22)
+                    color: TEXT_MUTED
+
                 # Role selection: Owner / Customer
                 BoxLayout:
                     size_hint_y: None
@@ -1241,7 +1247,7 @@
                     disabled: True
                     spacing: dp(8)
                     Label:
-                        text: "[b]Owner Category Selection[/b]  [font=EmojiFont]🏗️[/font]"
+                        text: "[b]Choose Category[/b]  [font=EmojiFont]🏗️[/font]"
                         size_hint_y: None
                         height: dp(24)
                         color: 1, 1, 1, 0.9
@@ -1251,6 +1257,12 @@
                         values: root.owner_category_values()
                         size_hint_y: None
                         height: dp(48)
+
+                Label:
+                    text: "[b]Choose Location[/b]"
+                    size_hint_y: None
+                    height: dp(22)
+                    color: TEXT_MUTED
 
                 PrettySpinner:
                     id: country_spinner

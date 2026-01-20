@@ -55,7 +55,7 @@ from app.google_play import GooglePlayNotConfigured, verify_subscription_with_go
 from app.sms import send_sms
 
 
-app = FastAPI(title="QuickRent API")
+app = FastAPI(title="Quickrent4u API")
 
 # Production hardening: ensure we don't run with dangerous defaults.
 enforce_secure_secrets()
@@ -3016,7 +3016,7 @@ def root():
           <head>
             <meta charset="utf-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>QuickRent</title>
+            <title>Quickrent4u</title>
             <style>
               body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; line-height: 1.4; }
               code { background: #f5f5f5; padding: 2px 6px; border-radius: 6px; }
