@@ -26,7 +26,10 @@ fullscreen = 0
 # Android specific
 android.enable_androidx = True
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_COARSE_LOCATION,ACCESS_FINE_LOCATION,READ_MEDIA_IMAGES,READ_MEDIA_VIDEO,READ_EXTERNAL_STORAGE
-android.gradle_dependencies = com.google.android.gms:play-services-auth:21.0.0
+android.gradle_dependencies = \
+    com.google.android.gms:play-services-auth:21.0.0, \
+    com.google.android.gms:play-services-base:18.5.0
+android.gradle_options = -Dorg.gradle.jvmargs=-Xmx4096m
 android.release_artifact = aab
 android.api = 34
 android.minapi = 21
