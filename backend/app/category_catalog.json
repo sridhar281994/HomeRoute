@@ -18,6 +18,21 @@
       ]
     },
     {
+    "group": "Room & Stay",
+    "items": [
+      "Hotel Room",
+      "Budget Room",
+      "Luxury Room",
+      "PG / Hostel Room",
+      "Homestay Room",
+      "Service Apartment",
+      "Guest House",
+      "Villa Stay",
+      "Dormitory Bed",
+      "Resort Room"
+    ]
+  },
+    {
       "group": "Construction Materials",
       "items": [
         "Cement Supplier",
