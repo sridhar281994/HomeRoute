@@ -33,6 +33,7 @@ def _popup(title: str, msg: str) -> None:
 class LoginScreen(Screen):
     font_scale = NumericProperty(1.0)
     remember_me = BooleanProperty(False)
+    is_processing = BooleanProperty(False)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -95,14 +96,19 @@ class LoginScreen(Screen):
     # Send OTP
     # -----------------------
     def send_otp_to_user(self):
+        if self.is_processing:
+            return
+        self.is_processing = True
         identifier = self._read_identifier()
         password = self._read_password()
 
         if not self._validate_identifier(identifier):
             _popup("Error", "Enter a valid registered email or number.")
+            self.is_processing = False
             return
         if len(password) < 4:
             _popup("Error", "Enter your password.")
+            self.is_processing = False
             return
 
         btn = self.ids.get("request_otp_btn") if hasattr(self, "ids") else None
@@ -140,6 +146,7 @@ class LoginScreen(Screen):
                 Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
             finally:
                 Clock.schedule_once(lambda *_: _set_btn_state(False), 0)
+                Clock.schedule_once(lambda *_: setattr(self, "is_processing", False), 0)
 
         Thread(target=work, daemon=True).start()
 
@@ -148,19 +155,42 @@ class LoginScreen(Screen):
     # Verify OTP + Login
     # -----------------------
     def verify_and_login(self):
+        if self.is_processing:
+            return
+        self.is_processing = True
         identifier = self._read_identifier()
         password = self._read_password()
         otp = _safe_text(self, "otp_input")
 
         if not self._validate_identifier(identifier):
             _popup("Error", "Enter a valid registered email or number.")
+            self.is_processing = False
             return
         if len(password) < 4:
             _popup("Error", "Enter your password.")
+            self.is_processing = False
             return
         if not otp:
             _popup("Error", "Enter the OTP.")
+            self.is_processing = False
             return
+
+        # Disable the Verify button to prevent double-press race:
+        # a second verify attempt can consume OTP then show "Invalid OTP"
+        # even though the first attempt already logged in.
+        verify_btn = self.ids.get("verify_login_btn") if hasattr(self, "ids") else None
+        verify_prev_text = getattr(verify_btn, "text", None)
+
+        def _set_verify_state(verifying: bool) -> None:
+            if not verify_btn:
+                return
+            try:
+                verify_btn.disabled = bool(verifying)
+                verify_btn.text = "Verifying..." if verifying else (verify_prev_text or "Verify & Login")
+            except Exception:
+                return
+
+        Clock.schedule_once(lambda *_: _set_verify_state(True), 0)
 
         def work():
             try:
@@ -183,6 +213,12 @@ class LoginScreen(Screen):
             except ApiError as exc:
                 msg = str(exc)
                 Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+            except Exception as exc:
+                msg = str(exc) or "Login failed."
+                Clock.schedule_once(lambda *_dt, msg=msg: _popup("Error", msg), 0)
+            finally:
+                Clock.schedule_once(lambda *_: _set_verify_state(False), 0)
+                Clock.schedule_once(lambda *_: setattr(self, "is_processing", False), 0)
 
         Thread(target=work, daemon=True).start()
 

@@ -775,6 +775,31 @@ class PropertyCreateIn(BaseModel):
     gps_lng: float | None = None
 
 
+class PropertyUpdateIn(BaseModel):
+    """
+    Partial update for owner/admin editing an existing property.
+    Only provided fields are updated.
+    """
+
+    title: str | None = None
+    description: str | None = None
+    property_type: str | None = None
+    rent_sale: str | None = None
+    price: int | None = None
+    location: str | None = None
+    state: str | None = None
+    district: str | None = None
+    area: str | None = None
+    address: str | None = None
+    amenities: list[str] | None = None
+    availability: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
+    company_name: str | None = None
+    gps_lat: float | None = None
+    gps_lng: float | None = None
+
+
 class ModerateIn(BaseModel):
     reason: str = ""
 
@@ -2298,6 +2323,111 @@ def owner_create_property(
     db.flush()
     _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="create", reason="")
     return {"id": p.id, "ad_number": (p.ad_number or "").strip() or str(p.id), "status": p.status}
+
+
+@app.patch("/owner/properties/{property_id:int}")
+def owner_update_property(
+    property_id: int,
+    data: PropertyUpdateIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Owner can edit their own ad. Admin can edit any ad.
+    """
+    if me.role not in {"user", "owner", "admin"}:
+        raise HTTPException(status_code=403, detail="Login required")
+    if _is_guest_account(me):
+        raise HTTPException(status_code=403, detail="Please register/login to edit ads")
+
+    p = db.get(Property, int(property_id))
+    if not p:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    if me.role != "admin" and int(p.owner_id) != int(me.id):
+        raise HTTPException(status_code=403, detail="Only the owner who created the ad can edit it")
+
+    # Apply updates (only fields provided by client).
+    if data.title is not None:
+        title = (data.title or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Title is required")
+        p.title = title
+    if data.description is not None:
+        p.description = (data.description or "").strip()
+    if data.property_type is not None:
+        p.property_type = (data.property_type or "").strip() or p.property_type
+    if data.rent_sale is not None:
+        rs = (data.rent_sale or "").strip().lower()
+        if rs and rs not in {"rent", "sale"}:
+            raise HTTPException(status_code=400, detail="Invalid rent_sale")
+        p.rent_sale = rs or p.rent_sale
+    if data.price is not None:
+        try:
+            p.price = int(data.price or 0)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid price")
+    if data.location is not None:
+        p.location = (data.location or "").strip()
+    if data.address is not None:
+        address = (data.address or "").strip()
+        p.address = address
+        p.address_normalized = _norm_key(address)
+    if data.amenities is not None:
+        try:
+            p.amenities_json = json.dumps(list(data.amenities or []))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid amenities")
+    if data.availability is not None:
+        p.availability = (data.availability or "").strip() or p.availability
+    if data.contact_phone is not None:
+        ph = (data.contact_phone or "").strip()
+        p.contact_phone = ph
+        p.contact_phone_normalized = _norm_phone(ph)
+    if data.contact_email is not None:
+        p.contact_email = (data.contact_email or "").strip()
+
+    # Optional company name update: also updates owner profile if owner edits.
+    if data.company_name is not None:
+        company_name = (data.company_name or "").strip()
+        if company_name and me.role != "admin":
+            me.company_name = company_name
+            me.company_name_normalized = _norm_key(company_name)
+            db.add(me)
+
+    # GPS updates (if explicitly provided).
+    if data.gps_lat is not None or data.gps_lng is not None:
+        if data.gps_lat is None or data.gps_lng is None:
+            raise HTTPException(status_code=400, detail="Provide both GPS latitude and longitude (or omit both)")
+        try:
+            lat_f = float(data.gps_lat)
+            lng_f = float(data.gps_lng)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
+        if not (-90.0 <= lat_f <= 90.0) or not (-180.0 <= lng_f <= 180.0):
+            raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
+        p.gps_lat = lat_f
+        p.gps_lng = lng_f
+
+    # Location updates: if any part is provided, require the full trio after applying.
+    loc_touched = (data.state is not None) or (data.district is not None) or (data.area is not None)
+    if loc_touched:
+        if data.state is not None:
+            p.state = (data.state or "").strip()
+            p.state_normalized = _norm_key(p.state)
+        if data.district is not None:
+            p.district = (data.district or "").strip()
+            p.district_normalized = _norm_key(p.district)
+        if data.area is not None:
+            p.area = (data.area or "").strip()
+            p.area_normalized = _norm_key(p.area)
+        _validate_location_selection(state=p.state, district=p.district, area=p.area)
+
+    p.updated_at = dt.datetime.now(dt.timezone.utc)
+    db.add(p)
+    _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="update", reason="")
+
+    owner = me if int(p.owner_id) == int(me.id) else db.get(User, int(p.owner_id))
+    return {"ok": True, "property": _property_out(p, owner=owner or me, include_unapproved_images=True, include_internal=True)}
 
 
 # -----------------------
