@@ -140,6 +140,14 @@ export function verifyOtp(identifier: string, password: string, otp: string) {
   });
 }
 
+export function loginWithGoogle(id_token: string) {
+  return api<{ access_token: string; user: any }>("/auth/google", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id_token }),
+  });
+}
+
 export function adminLogin(identifier: string, password: string) {
   return api<{ access_token: string; user: any }>("/admin/auth/login", {
     method: "POST",

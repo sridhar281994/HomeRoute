@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { getSession, requestOtp, setSession, verifyOtp } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { getSession, loginWithGoogle, requestOtp, setSession, verifyOtp } from "../api";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import PasswordField from "../components/PasswordField";
 
@@ -15,6 +15,59 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [msg, setMsg] = useState<string>("");
+  const googleBtnRef = useRef<HTMLDivElement | null>(null);
+
+  const googleClientId =
+    String((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || "").trim() ||
+    "634110997767-juj3od861h6po1udb0huea59hog0931l.apps.googleusercontent.com";
+
+  useEffect(() => {
+    let cancelled = false;
+    let rendered = false;
+    let tries = 0;
+
+    const tick = () => {
+      if (cancelled || rendered) return;
+      const api = window.google?.accounts?.id;
+      if (!api || !googleBtnRef.current) {
+        if (tries++ < 50) setTimeout(tick, 100);
+        return;
+      }
+
+      try {
+        api.initialize({
+          client_id: googleClientId,
+          callback: async (resp) => {
+            try {
+              const credential = String(resp?.credential || "").trim();
+              if (!credential) throw new Error("Google Sign-In did not return a credential.");
+              const r = await loginWithGoogle(credential);
+              setSession({ token: r.access_token, user: r.user });
+              const role = String((r.user as any)?.role || "").toLowerCase();
+              nav(role === "admin" ? "/admin/review" : "/home");
+            } catch (e: any) {
+              setMsg(e?.message || "Google login failed.");
+            }
+          },
+        });
+        api.renderButton(googleBtnRef.current, {
+          theme: "outline",
+          size: "large",
+          shape: "pill",
+          text: "continue_with",
+          width: 320,
+        });
+        rendered = true;
+      } catch (e: any) {
+        setMsg(e?.message || "Google Sign-In initialization failed.");
+      }
+    };
+
+    tick();
+    return () => {
+      cancelled = true;
+    };
+  }, [googleClientId, nav]);
 
   return (
     <div className="panel">
@@ -30,6 +83,10 @@ export default function LoginPage() {
       <p className="muted">Request an OTP, then verify to login.</p>
 
       <div className="grid" style={{ marginTop: 12 }}>
+        <div className="col-12">
+          <label className="muted">Google</label>
+          <div ref={googleBtnRef} />
+        </div>
         <div className="col-6">
           <label className="muted">Email / Username / Phone</label>
           <input placeholder="Email, username, or phone" value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
