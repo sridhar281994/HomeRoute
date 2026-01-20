@@ -191,6 +191,7 @@ class HomeScreen(Screen):
             self.manager.current = "subscription"
 
     def go_publish_ad(self):
+        # Publish Ad should go straight to the Publish Ad page (no dashboard).
         self.go_owner()
 
     def do_logout(self):
@@ -778,7 +779,7 @@ class HomeScreen(Screen):
 
     def go_owner(self):
         if not self.is_logged_in:
-            _popup("Login required", "Please login to open Owner dashboard.")
+            _popup("Login required", "Please login to publish an ad.")
             if self.manager:
                 self.manager.current = "login"
             return
@@ -788,7 +789,16 @@ class HomeScreen(Screen):
             _popup("Login required", "Please login with a valid account to publish ads.")
             return
         if self.manager:
-            self.manager.current = "owner_dashboard"
+            # Ensure the publish form is in "new post" mode (not edit).
+            try:
+                scr = self.manager.get_screen("owner_add_property")
+                if hasattr(scr, "start_new"):
+                    scr.start_new()  # type: ignore[attr-defined]
+                elif hasattr(scr, "start_edit"):
+                    scr.start_edit({})  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            self.manager.current = "owner_add_property"
 
     @staticmethod
     def go_admin():

@@ -575,27 +575,33 @@ class SubscriptionScreen(Screen):
             self.manager.current = "home"
 
 
-class OwnerDashboardScreen(Screen):
-    owner_category = StringProperty("")
-
-    def on_pre_enter(self, *args):
-        u = get_user() or {}
-        self.owner_category = str(u.get("owner_category") or "")
-
-    def go_add(self):
-        if self.manager:
-            self.manager.current = "owner_add_property"
-
-    def go_back(self):
-        if self.manager:
-            self.manager.current = "home"
-
-
 class OwnerAddPropertyScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._edit_data: dict[str, Any] | None = None
         self.edit_property_id: int | None = None
+        self._selected_media: list[str] = []
+
+    def start_new(self) -> None:
+        """
+        Open the Publish Ad screen in 'new ad' mode (not editing).
+        """
+        self.edit_property_id = None
+        self._edit_data = None
+        self._selected_media = []
+        try:
+            if "submit_btn" in self.ids:
+                self.ids["submit_btn"].text = "Submit (goes to admin review)"
+            if "title_input" in self.ids:
+                self.ids["title_input"].text = ""
+            if "price_input" in self.ids:
+                self.ids["price_input"].text = ""
+            if "contact_phone_input" in self.ids:
+                self.ids["contact_phone_input"].text = ""
+            if "media_summary" in self.ids:
+                self.ids["media_summary"].text = ""
+        except Exception:
+            pass
 
     def start_edit(self, p: dict[str, Any]) -> None:
         """
@@ -957,7 +963,8 @@ class OwnerAddPropertyScreen(Screen):
                                 mp.refresh()  # type: ignore[attr-defined]
                         except Exception:
                             pass
-                        self.manager.current = "my_posts" if self.edit_property_id else "owner_dashboard"
+                        # After save, show the user's posts list (no dashboard screen).
+                        self.manager.current = "my_posts"
                         # Exit edit mode after save.
                         self.edit_property_id = None
                         self._edit_data = None
@@ -988,6 +995,7 @@ class OwnerAddPropertyScreen(Screen):
 
     def go_back(self):
         if self.manager:
-            self.manager.current = "my_posts" if self.edit_property_id else "owner_dashboard"
+            # Back should return to My Posts when editing, otherwise Home.
+            self.manager.current = "my_posts" if self.edit_property_id else "home"
 
 
