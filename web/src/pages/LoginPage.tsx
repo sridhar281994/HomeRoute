@@ -31,8 +31,8 @@ export default function LoginPage() {
 
       <div className="grid" style={{ marginTop: 12 }}>
         <div className="col-6">
-          <label className="muted">Email/Username</label>
-          <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
+          <label className="muted">Email / Username / Phone</label>
+          <input placeholder="Email, username, or phone" value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
         </div>
         <div className="col-6">
           <PasswordField label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
