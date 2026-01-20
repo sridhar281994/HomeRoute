@@ -1722,16 +1722,12 @@ def list_properties(
         stmt = stmt.order_by(Property.price.asc(), Property.id.desc())
     else:
         stmt = stmt.order_by(Property.id.desc())
-    if district_norm and state_norm and area_norm:
-        stmt = stmt.where(
-            (Property.district_normalized == district_norm)
-            & (Property.state_normalized == state_norm)
-            & (Property.area_normalized == area_norm)
-        )
-    elif state_norm and district_norm:
-        stmt = stmt.where((Property.state_normalized == state_norm) & (Property.district_normalized == district_norm))
-    elif district_norm:
+    if state_norm:
+        stmt = stmt.where(Property.state_normalized == state_norm)
+    if district_norm:
         stmt = stmt.where(Property.district_normalized == district_norm)
+    if area_norm:
+        stmt = stmt.where(Property.area_normalized == area_norm)
     if q:
         q_like = f"%{q.strip()}%"
         stmt = stmt.where((Property.title.ilike(q_like)) | (Property.location.ilike(q_like)))
@@ -1747,7 +1743,22 @@ def list_properties(
         stmt = stmt.where(Property.created_at >= (now - dt.timedelta(days=int(posted_within_days))))
 
     rows = db.execute(stmt).all()
-    items = [_property_out(p, owner=u) for (p, u) in rows]
+    user_lat = None
+    user_lon = None
+    if me and _is_valid_gps(getattr(me, "gps_lat", None), getattr(me, "gps_lng", None)):
+        user_lat = float(me.gps_lat)
+        user_lon = float(me.gps_lng)
+    items: list[dict[str, Any]] = []
+    for (p, u) in rows:
+        item = _property_out(p, owner=u)
+        if user_lat is not None and user_lon is not None:
+            try:
+                if p.gps_lat is not None and p.gps_lng is not None:
+                    dkm = _haversine_km(float(user_lat), float(user_lon), float(p.gps_lat), float(p.gps_lng))
+                    item["distance_km"] = round(float(dkm), 3)
+            except Exception:
+                pass
+        items.append(item)
     _apply_contacted_flags(db, me, items)
     # Seed demo data on first-ever run (only if the *table* is empty).
     #
@@ -1833,7 +1844,17 @@ def list_properties(
 
             # Only return demo results if they match the requested filter.
             rows = db.execute(stmt).all()
-            items = [_property_out(p, owner=u) for (p, u) in rows]
+            items = []
+            for (p, u) in rows:
+                item = _property_out(p, owner=u)
+                if user_lat is not None and user_lon is not None:
+                    try:
+                        if p.gps_lat is not None and p.gps_lng is not None:
+                            dkm = _haversine_km(float(user_lat), float(user_lon), float(p.gps_lat), float(p.gps_lng))
+                            item["distance_km"] = round(float(dkm), 3)
+                    except Exception:
+                        pass
+                items.append(item)
             _apply_contacted_flags(db, me, items)
 
     return {"items": items}
@@ -1854,6 +1875,23 @@ def get_property(
     out = _property_out(p, owner=owner)
     _apply_contacted_flags(db, me, [out])
     return out
+
+
+def _is_valid_gps(lat: float | None, lon: float | None) -> bool:
+    try:
+        if lat is None or lon is None:
+            return False
+        lat_f = float(lat)
+        lon_f = float(lon)
+        if not math.isfinite(lat_f) or not math.isfinite(lon_f):
+            return False
+        if abs(lat_f) < 1e-6 and abs(lon_f) < 1e-6:
+            return False
+        if abs(lat_f) > 90 or abs(lon_f) > 180:
+            return False
+        return True
+    except Exception:
+        return False
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -1895,6 +1933,11 @@ def list_nearby_properties(
     district_norm = _norm_key((district or "").strip())
     state_norm = _norm_key((state or "").strip())
     area_norm = _norm_key((area or "").strip())
+
+    if me and _is_valid_gps(lat, lon):
+        me.gps_lat = float(lat)
+        me.gps_lng = float(lon)
+        db.add(me)
 
     # Bounding box (fast prefilter).
     lat_delta = float(radius_km) / 111.0

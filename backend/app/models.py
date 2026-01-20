@@ -23,6 +23,9 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), default="")
     state: Mapped[str] = mapped_column(String(80), default="")
     district: Mapped[str] = mapped_column(String(120), default="")
+    # Last known GPS location (for distance calculations).
+    gps_lat: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    gps_lng: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     # NOTE: Kept for backward compatibility with older mobile clients.
     gender: Mapped[str] = mapped_column(String(32), default="")
     role: Mapped[str] = mapped_column(String(32), default="user")  # user | owner | admin

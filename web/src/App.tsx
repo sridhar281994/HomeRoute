@@ -11,7 +11,6 @@ import OwnerAddPage from "./pages/OwnerAddPage";
 import AdminReviewPage from "./pages/AdminReviewPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import MyPostsPage from "./pages/MyPostsPage";
-import SubscriptionPage from "./pages/SubscriptionPage";
 
 export default function App() {
   const nav = useNavigate();
@@ -32,9 +31,6 @@ export default function App() {
         <div className="topbar-links">
           <button className="nav-button" type="button" onClick={() => nav("/home")}>
             Home
-          </button>
-          <button className="nav-button" type="button" onClick={() => nav("/subscription")}>
-            Subscription
           </button>
           <button className="nav-button" type="button" onClick={() => nav("/myposts")}>
             My Posts
@@ -92,7 +88,6 @@ export default function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/owner/add" element={<OwnerAddPage />} />
         <Route path="/myposts" element={<MyPostsPage />} />
-        <Route path="/subscription" element={<SubscriptionPage />} />
         <Route path="/admin/review" element={<AdminReviewPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

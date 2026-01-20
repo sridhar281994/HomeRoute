@@ -1430,9 +1430,6 @@
                     text: "Settings"
                     on_release: root.go_settings()
                 AppButton:
-                    text: "Subscription"
-                    on_release: root.go_subscription()
-                AppButton:
                     text: "Refresh"
                     on_release: root.refresh()
 
@@ -1457,7 +1454,7 @@
                     on_release: root.open_filters()
 
             Label:
-                text: "Loading..." if root.is_loading else "Listings"
+                text: "Loading..." if root.is_loading else "Posts"
                 size_hint_y: None
                 height: dp(24)
                 color: TEXT_MUTED
@@ -1481,8 +1478,24 @@
     size_hint: 1, 1
     auto_dismiss: True
     background: ""
-    background_color: (0, 0, 0, 0.55)
+    background_color: (0, 0, 0, 0)
     FloatLayout:
+        canvas.before:
+            Color:
+                rgba: BG_PURPLE
+            Rectangle:
+                pos: self.pos
+                size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
         BoxLayout:
             orientation: "vertical"
             size_hint: 0.95, 0.9
@@ -1616,12 +1629,6 @@
                         size_hint_y: None
                         height: dp(44)
                         spacing: dp(8)
-                        AppButton:
-                            text: "Enable GPS"
-                            size_hint_x: None
-                            width: dp(140)
-                            on_release:
-                                if root.home: root.home.enable_gps()
                         Label:
                             text: root.home.gps_status if root.home else ""
                             color: TEXT_MUTED
@@ -1939,16 +1946,16 @@
                 height: dp(26)
 
             Label:
-                text: "[b]Owner Capabilities[/b]\\n• Profile Management\\n• Listing Management\\n• Lead Management"
+                text: "[b]Owner Capabilities[/b]\\n• Profile Management\\n• Post Management\\n• Lead Management"
                 color: 1, 1, 1, 0.85
 
             AppButton:
-                text: "Create Listing  [font=EmojiFont]➕[/font]"
+                text: "Create Post  [font=EmojiFont]➕[/font]"
                 size_hint_y: None
                 height: dp(50)
                 on_release: root.go_add()
             Label:
-                text: "My Listings (demo)"
+                text: "My Posts (demo)"
                 color: 1, 1, 1, 0.85
             AppButton:
                 text: "Back"
