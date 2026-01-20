@@ -56,6 +56,16 @@ def google_sign_in(
         Clock.schedule_once(lambda *_dt, msg=msg: on_error(msg), 0)
         return
 
+    # Explicit PyJNIus bindings for overloaded static methods.
+    # Use full JNI signatures to avoid "GoogleSignIn has no attribute" errors.
+    class _GoogleSignIn(JavaClass):  # type: ignore[misc]
+        __javaclass__ = "com/google/android/gms/auth/api/signin/GoogleSignIn"
+        __javastaticmethods__ = [
+            "getClient(Landroid/content/Context;Lcom/google/android/gms/auth/api/signin/GoogleSignInOptions;)"
+            "Lcom/google/android/gms/auth/api/signin/GoogleSignInClient;",
+            "getSignedInAccountFromIntent(Landroid/content/Intent;)Lcom/google/android/gms/tasks/Task;",
+        ]
+
     global _bound
     _pending.clear()
     _pending["on_success"] = on_success
@@ -66,22 +76,6 @@ def google_sign_in(
     # ---------------------------------------------------------
     if not _bound:
         _bound = True
-
-        # Explicit PyJNIus bindings for overloaded static methods.
-        # This prevents errors like: "GoogleSignIn has no attribute getClient".
-        class _GoogleSignIn(JavaClass):  # type: ignore[misc]
-            __javaclass__ = "com/google/android/gms/auth/api/signin/GoogleSignIn"
-            __javastaticmethods__ = [
-                (
-                    "getClient",
-                    "(Landroid/app/Activity;Lcom/google/android/gms/auth/api/signin/GoogleSignInOptions;)"
-                    "Lcom/google/android/gms/auth/api/signin/GoogleSignInClient;",
-                ),
-                (
-                    "getSignedInAccountFromIntent",
-                    "(Landroid/content/Intent;)Lcom/google/android/gms/tasks/Task;",
-                ),
-            ]
 
         def _on_activity_result(request_code: int, result_code: int, data) -> bool:
             if request_code != REQUEST_CODE_GOOGLE_SIGN_IN:
@@ -162,17 +156,6 @@ def google_sign_in(
                 GoogleSignInOptions.DEFAULT_SIGN_IN
             )
             gso = builder.requestEmail().requestIdToken(cid).build()
-
-            # Explicit binding avoids PyJNIus attribute resolution issues.
-            class _GoogleSignIn(JavaClass):  # type: ignore[misc]
-                __javaclass__ = "com/google/android/gms/auth/api/signin/GoogleSignIn"
-                __javastaticmethods__ = [
-                    (
-                        "getClient",
-                        "(Landroid/app/Activity;Lcom/google/android/gms/auth/api/signin/GoogleSignInOptions;)"
-                        "Lcom/google/android/gms/auth/api/signin/GoogleSignInClient;",
-                    )
-                ]
 
             client = _GoogleSignIn.getClient(act, gso)
             intent = client.getSignInIntent()
