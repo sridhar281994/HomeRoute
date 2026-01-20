@@ -125,36 +125,34 @@ def google_sign_in(
                     cb(str(msg))
 
             try:
-                GoogleSignIn = autoclass(
-                    "com.google.android.gms.auth.api.signin.GoogleSignIn"
-                )
-                ApiException = autoclass(
-                    "com.google.android.gms.common.api.ApiException"
-                )
-
-                # -----------------------------
-                # Try modern API first (safe)
-                # -----------------------------
+                # ---------------------------------------------------------
+                # Prefer legacy API result parsing (PyJNIus stable).
+                # Some environments throw `GoogleSignIn has no attribute ...`
+                # when accessing modern static methods via PyJNIus reflection.
+                # ---------------------------------------------------------
+                account = None
                 try:
-                    if hasattr(GoogleSignIn, "getSignedInAccountFromIntent"):
-                        task = GoogleSignIn.getSignedInAccountFromIntent(data)
-                        account = task.getResult(ApiException)
-                    else:
-                        raise RuntimeError("Modern API unavailable")
-                except Exception:
-                    # -----------------------------
-                    # Legacy API fallback
-                    # -----------------------------
                     Auth = autoclass("com.google.android.gms.auth.api.Auth")
                     result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
-                    if (
-                        result is None
-                        or hasattr(result, "isSuccess")
-                        and not bool(result.isSuccess())
-                    ):
-                        fail("Google Sign-In failed.")
+                    if result is not None and bool(result.isSuccess()):
+                        account = result.getSignInAccount()
+                except Exception:
+                    account = None
+
+                # Fallback to modern parsing only if legacy isn't available.
+                if account is None:
+                    try:
+                        GoogleSignIn = autoclass(
+                            "com.google.android.gms.auth.api.signin.GoogleSignIn"
+                        )
+                        ApiException = autoclass(
+                            "com.google.android.gms.common.api.ApiException"
+                        )
+                        task = GoogleSignIn.getSignedInAccountFromIntent(data)
+                        account = task.getResult(ApiException)
+                    except Exception as e:
+                        fail(str(e) or "Google Sign-In failed.")
                         return True
-                    account = result.getSignInAccount()
 
                 token = str(account.getIdToken() or "").strip()
                 if not token:
