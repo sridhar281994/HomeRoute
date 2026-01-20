@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-import requests
 from kivy.clock import Clock
 from kivy.utils import platform
 
@@ -11,104 +10,8 @@ from kivy.utils import platform
 # ------------------------------------------------------------
 REQUEST_CODE_GOOGLE_SIGN_IN = 4915
 
-# Firebase Web API Key (from Firebase console)
-FIREBASE_API_KEY = "AIzaSyA-lF8xJ4DSHyHFLffkEZgmLi1tXtE8jx4"
-
-# Firebase REST endpoint
-FIREBASE_SIGNIN_URL = (
-    "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp"
-)
-
 _bound = False
 _pending: dict[str, Any] = {}
-
-
-# ------------------------------------------------------------
-# FIREBASE TOKEN EXCHANGE
-# ------------------------------------------------------------
-def _exchange_google_token_with_firebase(
-    google_id_token: str,
-) -> dict[str, Any]:
-    """
-    Exchange Google ID token with Firebase Identity Toolkit REST API.
-    Returns Firebase auth response JSON.
-    """
-    url = f"{FIREBASE_SIGNIN_URL}?key={FIREBASE_API_KEY}"
-
-    payload = {
-        "postBody": f"id_token={google_id_token}&providerId=google.com",
-        "requestUri": "http://localhost",
-        "returnSecureToken": True,
-    }
-
-    r = requests.post(url, json=payload, timeout=20)
-    if r.status_code != 200:
-        raise RuntimeError(
-            f"Firebase auth failed ({r.status_code}): {r.text}"
-        )
-
-    data = r.json()
-    if "idToken" not in data:
-        raise RuntimeError("Firebase did not return idToken")
-
-    return data
-
-
-# ------------------------------------------------------------
-# LEGACY GOOGLE SIGN-IN FLOW
-# ------------------------------------------------------------
-def _legacy_start_sign_in(*, act, gso, request_code: int, autoclass, on_error: Callable[[str], None]) -> None:
-    """
-    Legacy Google Sign-In flow using GoogleApiClient.
-    This avoids GoogleSignIn.getClient() which breaks under PyJNIus.
-    """
-    try:
-        from jnius import PythonJavaClass, java_method  # type: ignore
-    except Exception as e:
-        raise RuntimeError(f"Legacy Google Sign-In unavailable: {e}") from e
-
-    # Keep references alive to avoid GC while the flow is in progress.
-    class _OnConnectionFailedListener(PythonJavaClass):  # type: ignore[misc]
-        __javainterfaces__ = [
-            "com/google/android/gms/common/api/GoogleApiClient$OnConnectionFailedListener"
-        ]
-
-        def __init__(self, cb: Callable[[str], None]):
-            super().__init__()
-            self._cb = cb
-
-        @java_method("(Lcom/google/android/gms/common/ConnectionResult;)V")
-        def onConnectionFailed(self, connection_result) -> None:
-            try:
-                msg = str(connection_result) if connection_result is not None else "Connection failed."
-            except Exception:
-                msg = "Connection failed."
-            self._cb(msg)
-
-    Auth = autoclass("com.google.android.gms.auth.api.Auth")
-    GoogleApiClientBuilder = autoclass(
-        "com.google.android.gms.common.api.GoogleApiClient$Builder"
-    )
-
-    listener = _OnConnectionFailedListener(on_error)
-    client = (
-        GoogleApiClientBuilder(act)
-        .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
-        .addOnConnectionFailedListener(listener)
-        .build()
-    )
-
-    try:
-        client.connect()
-    except Exception:
-        pass
-
-    # Keep references alive
-    _pending["legacy_client"] = client
-    _pending["legacy_listener"] = listener
-
-    intent = Auth.GoogleSignInApi.getSignInIntent(client)
-    act.startActivityForResult(intent, request_code)
 
 
 # ------------------------------------------------------------
@@ -117,13 +20,13 @@ def _legacy_start_sign_in(*, act, gso, request_code: int, autoclass, on_error: C
 def google_sign_in(
     *,
     server_client_id: str,
-    on_success: Callable[[dict[str, Any]], None],
+    on_success: Callable[[str, dict[str, str]], None],
     on_error: Callable[[str], None],
 ) -> None:
     """
-    Start Google Sign-In on Android and authenticate via Firebase.
+    Start Google Sign-In on Android and return a Google ID token.
 
-    on_success(firebase_payload_dict)
+    on_success(id_token, profile_dict)
     on_error(error_message)
     """
     if platform != "android":
@@ -143,18 +46,11 @@ def google_sign_in(
         )
         return
 
-    if not FIREBASE_API_KEY or "PASTE_" in FIREBASE_API_KEY:
-        Clock.schedule_once(
-            lambda *_: on_error("Firebase API key is not configured."),
-            0,
-        )
-        return
-
     # Android imports
     try:
         from android import activity  # type: ignore
         from android.runnable import run_on_ui_thread  # type: ignore
-        from jnius import autoclass  # type: ignore
+        from jnius import JavaClass, autoclass  # type: ignore
     except Exception as e:
         msg = f"Google Sign-In is unavailable in this build: {e}"
         Clock.schedule_once(lambda *_dt, msg=msg: on_error(msg), 0)
@@ -171,6 +67,22 @@ def google_sign_in(
     if not _bound:
         _bound = True
 
+        # Explicit PyJNIus bindings for overloaded static methods.
+        # This prevents errors like: "GoogleSignIn has no attribute getClient".
+        class _GoogleSignIn(JavaClass):  # type: ignore[misc]
+            __javaclass__ = "com/google/android/gms/auth/api/signin/GoogleSignIn"
+            __javastaticmethods__ = [
+                (
+                    "getClient",
+                    "(Landroid/app/Activity;Lcom/google/android/gms/auth/api/signin/GoogleSignInOptions;)"
+                    "Lcom/google/android/gms/auth/api/signin/GoogleSignInClient;",
+                ),
+                (
+                    "getSignedInAccountFromIntent",
+                    "(Landroid/content/Intent;)Lcom/google/android/gms/tasks/Task;",
+                ),
+            ]
+
         def _on_activity_result(request_code: int, result_code: int, data) -> bool:
             if request_code != REQUEST_CODE_GOOGLE_SIGN_IN:
                 return False
@@ -181,56 +93,50 @@ def google_sign_in(
                     Clock.schedule_once(lambda *_: cb(str(msg)), 0)
 
             try:
-                GoogleSignIn = autoclass(
-                    "com.google.android.gms.auth.api.signin.GoogleSignIn"
-                )
-                ApiException = autoclass(
-                    "com.google.android.gms.common.api.ApiException"
-                )
+                Activity = autoclass("android.app.Activity")
+                if int(result_code) != int(Activity.RESULT_OK):
+                    fail("Google Sign-In cancelled.")
+                    return True
 
-                # -----------------------------
-                # Try modern API first (safe)
-                # -----------------------------
+                if data is None:
+                    fail("Google Sign-In returned no data.")
+                    return True
+
+                task = _GoogleSignIn.getSignedInAccountFromIntent(data)
+
+                # Prefer Task.getResult() with no args (avoids PyJNIus overload issues).
+                account = task.getResult()
+
+                id_token = str(account.getIdToken() or "").strip()
+                if not id_token:
+                    fail("Google Sign-In did not return an ID token (check OAuth client ID).")
+                    return True
+
+                profile: dict[str, str] = {}
                 try:
-                    if hasattr(GoogleSignIn, "getSignedInAccountFromIntent"):
-                        task = GoogleSignIn.getSignedInAccountFromIntent(data)
-                        account = task.getResult(ApiException)
-                    else:
-                        raise RuntimeError("Modern API unavailable")
+                    profile["email"] = str(account.getEmail() or "")
                 except Exception:
-                    # -----------------------------
-                    # Legacy API fallback
-                    # -----------------------------
-                    Auth = autoclass("com.google.android.gms.auth.api.Auth")
-                    result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
-                    if (
-                        result is None
-                        or hasattr(result, "isSuccess")
-                        and not bool(result.isSuccess())
-                    ):
-                        fail("Google Sign-In failed.")
-                        return True
-                    account = result.getSignInAccount()
-
-                google_token = str(account.getIdToken() or "").strip()
-                if not google_token:
-                    fail("Google Sign-In did not return an ID token.")
-                    return True
-
-                # -------------------------------------------------
-                # Exchange Google token with Firebase
-                # -------------------------------------------------
+                    profile["email"] = ""
                 try:
-                    firebase_payload = _exchange_google_token_with_firebase(
-                        google_token
-                    )
-                except Exception as e:
-                    fail(f"Firebase authentication failed: {e}")
-                    return True
+                    profile["name"] = str(account.getDisplayName() or "")
+                except Exception:
+                    profile["name"] = ""
+                try:
+                    profile["given_name"] = str(account.getGivenName() or "")
+                except Exception:
+                    profile["given_name"] = ""
+                try:
+                    profile["family_name"] = str(account.getFamilyName() or "")
+                except Exception:
+                    profile["family_name"] = ""
+                try:
+                    profile["id"] = str(account.getId() or "")
+                except Exception:
+                    profile["id"] = ""
 
                 cb = _pending.get("on_success")
                 if cb:
-                    Clock.schedule_once(lambda *_: cb(firebase_payload), 0)
+                    Clock.schedule_once(lambda *_: cb(id_token, profile), 0)
 
             except Exception as e:
                 fail(str(e) or "Google Sign-In failed.")
@@ -257,18 +163,20 @@ def google_sign_in(
             )
             gso = builder.requestEmail().requestIdToken(cid).build()
 
-            # -------------------------------------------------
-            # Always use legacy intent flow (PyJNIus safe)
-            # -------------------------------------------------
-            _legacy_start_sign_in(
-                act=act,
-                gso=gso,
-                request_code=REQUEST_CODE_GOOGLE_SIGN_IN,
-                autoclass=autoclass,
-                on_error=lambda msg: Clock.schedule_once(
-                    lambda *_dt, msg=msg: on_error(msg), 0
-                ),
-            )
+            # Explicit binding avoids PyJNIus attribute resolution issues.
+            class _GoogleSignIn(JavaClass):  # type: ignore[misc]
+                __javaclass__ = "com/google/android/gms/auth/api/signin/GoogleSignIn"
+                __javastaticmethods__ = [
+                    (
+                        "getClient",
+                        "(Landroid/app/Activity;Lcom/google/android/gms/auth/api/signin/GoogleSignInOptions;)"
+                        "Lcom/google/android/gms/auth/api/signin/GoogleSignInClient;",
+                    )
+                ]
+
+            client = _GoogleSignIn.getClient(act, gso)
+            intent = client.getSignInIntent()
+            act.startActivityForResult(intent, REQUEST_CODE_GOOGLE_SIGN_IN)
 
         except Exception as e:
             cb = _pending.get("on_error")
