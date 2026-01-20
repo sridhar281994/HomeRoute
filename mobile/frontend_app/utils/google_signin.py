@@ -7,6 +7,8 @@ from kivy.utils import platform
 
 REQUEST_CODE_GOOGLE_SIGN_IN = 4915
 
+GOOGLE_OAUTH_CLIENT_ID = "634110997767-juj3od861h6po1udb0huea59hog0931l.apps.googleusercontent.com"
+
 _bound = False
 _pending: dict[str, Any] = {}
 
