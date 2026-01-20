@@ -3,6 +3,7 @@ import re
 import os
 
 from kivy.clock import Clock
+from kivy.properties import StringProperty
 from kivy.uix.popup import Popup
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
@@ -17,6 +18,11 @@ DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "634110997767-juj3od861h6po1udb0huea59hog0931l.
 
 
 class RegisterScreen(Screen):
+    # Source of truth for the segmented control (Owner/Customer).
+    # KV binds the toggle button "state" to this property so the active styling
+    # cannot drift to the wrong button.
+    role = StringProperty("customer")
+
     OWNER_CATEGORIES: list[str] = [
         # Property & Real Estate
         "Apartment Owner",
@@ -64,7 +70,7 @@ class RegisterScreen(Screen):
         # the "active color" appearing on the wrong button after navigation).
         def _sync_role(*_):
             try:
-                role = (self._get("role_value") or "customer").strip().lower()
+                role = (self._get("role_value") or self.role or "customer").strip().lower()
             except Exception:
                 role = "customer"
             self.set_role(role)
@@ -298,6 +304,9 @@ class RegisterScreen(Screen):
             return
         self._applying_role = True
 
+        # Source-of-truth for KV bindings.
+        self.role = role_value
+
         if "role_value" in self.ids:
             self.ids["role_value"].text = role_value
         try:
@@ -307,14 +316,14 @@ class RegisterScreen(Screen):
                 self.ids["owner_category_box"].height = self.ids["owner_category_box"].minimum_height if is_owner else 0
                 self.ids["owner_category_box"].disabled = not is_owner
 
-            # Enforce segmented-control visual state deterministically:
-            # only the selected button should be "down".
+            # Enforce segmented-control visual state deterministically
+            # (also keeps behavior consistent if KV is loaded without bindings).
             owner_btn = self.ids.get("role_owner_btn")
             customer_btn = self.ids.get("role_customer_btn")
             if owner_btn is not None and customer_btn is not None:
                 if is_owner:
-                    owner_btn.state = "down"
                     customer_btn.state = "normal"
+                    owner_btn.state = "down"
                 else:
                     owner_btn.state = "normal"
                     customer_btn.state = "down"

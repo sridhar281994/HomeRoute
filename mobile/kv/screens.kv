@@ -1212,17 +1212,15 @@
                     AppToggle:
                         id: role_owner_btn
                         text: "[b]Owner[/b]  [font=EmojiFont]🏢[/font]"
-                        group: "role_group"
-                        allow_no_selection: False
-                        on_state:
-                            if self.state == "down": root.set_role("owner")
+                        # Bind visual state to the screen role, so the "active" style
+                        # never shifts to the wrong button.
+                        state: "down" if root.role == "owner" else "normal"
+                        on_release: root.set_role("owner")
                     AppToggle:
                         id: role_customer_btn
                         text: "[b]Customer[/b]  [font=EmojiFont]🧍[/font]"
-                        group: "role_group"
-                        allow_no_selection: False
-                        on_state:
-                            if self.state == "down": root.set_role("customer")
+                        state: "down" if root.role == "customer" else "normal"
+                        on_release: root.set_role("customer")
 
                 # Hidden role holder used by python (simple + reliable)
                 TextInput:
