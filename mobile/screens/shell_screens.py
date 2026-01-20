@@ -616,6 +616,9 @@ class OwnerAddPropertyScreen(Screen):
         try:
             if "submit_btn" in self.ids:
                 self.ids["submit_btn"].text = "Save Changes" if self.edit_property_id else "Submit (goes to admin review)"
+            # Only auto-fill fields when editing an existing post.
+            if not self.edit_property_id:
+                return
             if "title_input" in self.ids:
                 self.ids["title_input"].text = str(p.get("title") or "")
             if "price_input" in self.ids:
@@ -985,6 +988,6 @@ class OwnerAddPropertyScreen(Screen):
 
     def go_back(self):
         if self.manager:
-            self.manager.current = "owner_dashboard"
+            self.manager.current = "my_posts" if self.edit_property_id else "owner_dashboard"
 
 
