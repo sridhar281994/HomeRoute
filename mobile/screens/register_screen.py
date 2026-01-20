@@ -60,6 +60,17 @@ class RegisterScreen(Screen):
         Ensure spinners have values whenever the screen opens.
         This avoids cases where District dropdown stays empty until state changes.
         """
+        # Ensure the role segmented control reflects the stored value (prevents
+        # the "active color" appearing on the wrong button after navigation).
+        def _sync_role(*_):
+            try:
+                role = (self._get("role_value") or "customer").strip().lower()
+            except Exception:
+                role = "customer"
+            self.set_role(role)
+
+        Clock.schedule_once(_sync_role, 0)
+
         # Populate State/District lists from backend.
         from threading import Thread
 
@@ -279,6 +290,14 @@ class RegisterScreen(Screen):
         KV helper: store role in a hidden TextInput id `role_value` and toggle owner-category UI.
         """
         role_value = (role_value or "").strip().lower()
+        if role_value not in {"owner", "customer"}:
+            role_value = "customer"
+
+        # Prevent recursion when we programmatically flip ToggleButton states.
+        if getattr(self, "_applying_role", False):
+            return
+        self._applying_role = True
+
         if "role_value" in self.ids:
             self.ids["role_value"].text = role_value
         try:
@@ -287,5 +306,19 @@ class RegisterScreen(Screen):
                 self.ids["owner_category_box"].opacity = 1 if is_owner else 0
                 self.ids["owner_category_box"].height = self.ids["owner_category_box"].minimum_height if is_owner else 0
                 self.ids["owner_category_box"].disabled = not is_owner
+
+            # Enforce segmented-control visual state deterministically:
+            # only the selected button should be "down".
+            owner_btn = self.ids.get("role_owner_btn")
+            customer_btn = self.ids.get("role_customer_btn")
+            if owner_btn is not None and customer_btn is not None:
+                if is_owner:
+                    owner_btn.state = "down"
+                    customer_btn.state = "normal"
+                else:
+                    owner_btn.state = "normal"
+                    customer_btn.state = "down"
         except Exception:
             pass
+        finally:
+            self._applying_role = False
