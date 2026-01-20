@@ -11,6 +11,51 @@ _bound = False
 _pending: dict[str, Any] = {}
 
 
+def _legacy_start_sign_in(*, act, gso, request_code: int, autoclass, on_error: Callable[[str], None]) -> None:
+    """
+    Fallback for older Play Services Auth versions where
+    `GoogleSignIn.getClient(...)` is unavailable.
+    """
+    try:
+        from jnius import PythonJavaClass, java_method  # type: ignore
+    except Exception as e:
+        raise RuntimeError(f"Legacy Google Sign-In unavailable: {e}") from e
+
+    # Keep references alive to avoid GC while the flow is in progress.
+    class _OnConnectionFailedListener(PythonJavaClass):  # type: ignore[misc]
+        __javainterfaces__ = ["com/google/android/gms/common/api/GoogleApiClient$OnConnectionFailedListener"]
+
+        def __init__(self, cb: Callable[[str], None]):
+            super().__init__()
+            self._cb = cb
+
+        @java_method("(Lcom/google/android/gms/common/ConnectionResult;)V")
+        def onConnectionFailed(self, connection_result) -> None:
+            try:
+                msg = str(connection_result) if connection_result is not None else "Connection failed."
+            except Exception:
+                msg = "Connection failed."
+            self._cb(msg)
+
+    Auth = autoclass("com.google.android.gms.auth.api.Auth")
+    GoogleApiClientBuilder = autoclass("com.google.android.gms.common.api.GoogleApiClient$Builder")
+
+    listener = _OnConnectionFailedListener(on_error)
+    client = GoogleApiClientBuilder(act).addApi(Auth.GOOGLE_SIGN_IN_API, gso).addOnConnectionFailedListener(listener).build()
+    try:
+        client.connect()
+    except Exception:
+        # Even if connect throws, older APIs may still provide an intent.
+        pass
+
+    # Store references to keep them alive.
+    _pending["legacy_client"] = client
+    _pending["legacy_listener"] = listener
+
+    intent = Auth.GoogleSignInApi.getSignInIntent(client)
+    act.startActivityForResult(intent, request_code)
+
+
 def google_sign_in(
     *,
     server_client_id: str,
@@ -67,8 +112,18 @@ def google_sign_in(
             try:
                 GoogleSignIn = autoclass("com.google.android.gms.auth.api.signin.GoogleSignIn")
                 ApiException = autoclass("com.google.android.gms.common.api.ApiException")
-                task = GoogleSignIn.getSignedInAccountFromIntent(data)
-                account = task.getResult(ApiException)
+                # New API path (preferred).
+                try:
+                    task = GoogleSignIn.getSignedInAccountFromIntent(data)
+                    account = task.getResult(ApiException)
+                except AttributeError:
+                    # Legacy API path for older Play Services Auth.
+                    Auth = autoclass("com.google.android.gms.auth.api.Auth")
+                    result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
+                    if result is None or (hasattr(result, "isSuccess") and not bool(result.isSuccess())):
+                        fail("Google Sign-In failed.")
+                        return True
+                    account = result.getSignInAccount()
                 token = str(account.getIdToken() or "").strip()
                 if not token:
                     fail("Google Sign-In did not return an ID token.")
@@ -96,10 +151,22 @@ def google_sign_in(
 
             builder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             gso = builder.requestEmail().requestIdToken(cid).build()
-            client = GoogleSignIn.getClient(act, gso)
-
-            intent = client.getSignInIntent()
-            act.startActivityForResult(intent, REQUEST_CODE_GOOGLE_SIGN_IN)
+            # Prefer the modern GoogleSignInClient flow.
+            try:
+                # Using application context can avoid some overload resolution issues in PyJNIus.
+                ctx = act.getApplicationContext()
+                client = GoogleSignIn.getClient(ctx, gso)
+                intent = client.getSignInIntent()
+                act.startActivityForResult(intent, REQUEST_CODE_GOOGLE_SIGN_IN)
+            except AttributeError:
+                # Fallback for older Play Services Auth where getClient() isn't present.
+                _legacy_start_sign_in(
+                    act=act,
+                    gso=gso,
+                    request_code=REQUEST_CODE_GOOGLE_SIGN_IN,
+                    autoclass=autoclass,
+                    on_error=lambda msg: Clock.schedule_once(lambda *_dt, msg=msg: on_error(msg), 0),
+                )
         except Exception as e:
             cb = _pending.get("on_error")
             if cb:

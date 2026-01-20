@@ -19,7 +19,6 @@ from screens.home_screen import HomeScreen
 from screens.shell_screens import (
     MyPostsScreen,
     OwnerAddPropertyScreen,
-    OwnerDashboardScreen,
     PropertyDetailScreen,
     SettingsScreen,
     SplashScreen,
@@ -54,7 +53,6 @@ class QuickRentApp(App):
         sm.add_widget(SettingsScreen(name="profile"))
         sm.add_widget(SubscriptionScreen(name="subscription"))
 
-        sm.add_widget(OwnerDashboardScreen(name="owner_dashboard"))
         sm.add_widget(OwnerAddPropertyScreen(name="owner_add_property"))
 
         sm.current = "splash"
