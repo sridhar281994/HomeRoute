@@ -119,6 +119,173 @@ def _resolve_server_client_id(server_client_id: str) -> str:
 
 
 # ------------------------------------------------------------
+# DIAGNOSTICS (helps resolve DEVELOPER_ERROR=10 quickly)
+# ------------------------------------------------------------
+def _extract_android_oauth_cert_hashes_from_google_services(
+    path: str, package_name: str
+) -> list[str]:
+    """
+    Extract Android OAuth certificate hashes (oauth_client client_type == 1)
+    for the given package from google-services.json.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return []
+
+    hashes: list[str] = []
+    try:
+        clients = data.get("client") or []
+        if not isinstance(clients, list):
+            return []
+        for c in clients:
+            info = (c or {}).get("client_info") or {}
+            android_info = (info or {}).get("android_client_info") or {}
+            pkg = str((android_info or {}).get("package_name") or "").strip()
+            if pkg and package_name and pkg != package_name:
+                continue
+
+            oauth = (c or {}).get("oauth_client") or []
+            if not isinstance(oauth, list):
+                continue
+            for entry in oauth:
+                if (entry or {}).get("client_type") != 1:
+                    continue
+                ai = (entry or {}).get("android_info") or {}
+                epkg = str((ai or {}).get("package_name") or "").strip()
+                if epkg and package_name and epkg != package_name:
+                    continue
+                h = str((ai or {}).get("certificate_hash") or "").strip()
+                if h:
+                    hashes.append(h)
+    except Exception:
+        return []
+
+    # De-dupe while preserving order
+    seen: set[str] = set()
+    out: list[str] = []
+    for h in hashes:
+        if h not in seen:
+            out.append(h)
+            seen.add(h)
+    return out
+
+
+def _get_runtime_signing_sha1s(*, act, autoclass) -> list[str]:
+    """
+    Best-effort: compute runtime signing certificate SHA-1 fingerprints as
+    colon-separated hex (e.g. 'AA:BB:...').
+    """
+    try:
+        PackageManager = autoclass("android.content.pm.PackageManager")
+        MessageDigest = autoclass("java.security.MessageDigest")
+    except Exception:
+        return []
+
+    try:
+        pkg = str(act.getPackageName() or "").strip()
+        if not pkg:
+            return []
+    except Exception:
+        return []
+
+    sig_bytes_list = []
+    pm = act.getPackageManager()
+
+    # API 28+: GET_SIGNING_CERTIFICATES; older: GET_SIGNATURES.
+    try:
+        flags = int(PackageManager.GET_SIGNING_CERTIFICATES)
+        pi = pm.getPackageInfo(pkg, flags)
+        signing_info = pi.signingInfo if hasattr(pi, "signingInfo") else None
+        if signing_info is not None:
+            # Prefer APK content signatures when available (avoids history confusion).
+            if hasattr(signing_info, "getApkContentsSigners"):
+                signers = signing_info.getApkContentsSigners()
+            else:
+                signers = signing_info.getSigningCertificateHistory()
+            for s in list(signers or []):
+                try:
+                    sig_bytes_list.append(s.toByteArray())
+                except Exception:
+                    pass
+    except Exception:
+        try:
+            flags = int(PackageManager.GET_SIGNATURES)
+            pi = pm.getPackageInfo(pkg, flags)
+            sigs = pi.signatures if hasattr(pi, "signatures") else None
+            for s in list(sigs or []):
+                try:
+                    sig_bytes_list.append(s.toByteArray())
+                except Exception:
+                    pass
+        except Exception:
+            return []
+
+    out: list[str] = []
+    for b in sig_bytes_list:
+        try:
+            md = MessageDigest.getInstance("SHA-1")
+            digest = md.digest(b)
+            # digest is a Java byte[]; pyjnius iterates as signed ints.
+            parts = []
+            for x in digest:
+                parts.append(f"{(int(x) & 0xFF):02X}")
+            fp = ":".join(parts)
+            if fp:
+                out.append(fp)
+        except Exception:
+            continue
+
+    # De-dupe
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for fp in out:
+        if fp not in seen:
+            uniq.append(fp)
+            seen.add(fp)
+    return uniq
+
+
+def _log_developer_error_help(*, act, autoclass) -> None:
+    """
+    Log high-signal hints for status=10 (DEVELOPER_ERROR), including the
+    runtime SHA-1 and what google-services.json contains.
+    """
+    try:
+        pkg = str(act.getPackageName() or "").strip()
+    except Exception:
+        pkg = ""
+
+    sha1s = _get_runtime_signing_sha1s(act=act, autoclass=autoclass)
+    _log("DEVELOPER_ERROR troubleshooting:")
+    if pkg:
+        _log(f"- package: {pkg}")
+    if sha1s:
+        _log("- runtime signing SHA-1:")
+        for fp in sha1s:
+            _log(f"  - {fp}")
+    else:
+        _log("- runtime signing SHA-1: unavailable (could not read signing certs)")
+
+    gs_path = resource_find("google-services.json") or ""
+    if gs_path and os.path.exists(gs_path) and pkg:
+        cert_hashes = _extract_android_oauth_cert_hashes_from_google_services(gs_path, pkg)
+        if cert_hashes:
+            _log("- google-services.json Android certificate_hash entries:")
+            for h in cert_hashes:
+                _log(f"  - {h}")
+        else:
+            _log(
+                "- google-services.json contains no Android OAuth client (client_type=1) "
+                "for this package. Re-download it from Firebase after adding the correct SHA-1 "
+                "(debug/release or Play App Signing) for your app."
+            )
+    else:
+        _log("- google-services.json: not found via resources (or package unknown).")
+
+
+# ------------------------------------------------------------
 # LEGACY SIGN-IN STARTER (NO LISTENERS — ANDROID SAFE)
 # ------------------------------------------------------------
 def _legacy_start_sign_in(
@@ -273,6 +440,12 @@ def google_sign_in(
                         # Make the most common misconfig extra explicit.
                         if code == 10:
                             msg += " (DEVELOPER_ERROR: check package name + SHA-1 / app signing in Google/Firebase config)"
+                            try:
+                                PythonActivity = autoclass("org.kivy.android.PythonActivity")
+                                act = PythonActivity.mActivity
+                                _log_developer_error_help(act=act, autoclass=autoclass)
+                            except Exception:
+                                pass
                         fail(msg)
                         return True
                     # Fallback legacy API
@@ -331,6 +504,26 @@ def google_sign_in(
         try:
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
             act = PythonActivity.mActivity
+
+            # One-time early warning for the most common misconfiguration:
+            # google-services.json missing an Android OAuth client (client_type=1 with SHA-1).
+            if not _pending.get("config_diagnostics_logged"):
+                _pending["config_diagnostics_logged"] = True
+                try:
+                    pkg = str(act.getPackageName() or "").strip()
+                    gs_path = resource_find("google-services.json") or ""
+                    if gs_path and os.path.exists(gs_path) and pkg:
+                        cert_hashes = _extract_android_oauth_cert_hashes_from_google_services(
+                            gs_path, pkg
+                        )
+                        if not cert_hashes:
+                            _log(
+                                "Warning: google-services.json has no Android OAuth client "
+                                "(client_type=1 with certificate_hash). This commonly causes "
+                                "Google Sign-In status=10 (DEVELOPER_ERROR)."
+                            )
+                except Exception:
+                    pass
 
             GoogleSignInOptions = autoclass(
                 "com.google.android.gms.auth.api.signin.GoogleSignInOptions"
