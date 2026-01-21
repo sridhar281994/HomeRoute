@@ -14,7 +14,7 @@ from frontend_app.utils.storage import get_session, set_session
 
 # Email regex
 EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
-DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "333176294914-t7b1h2ams20nn0dvf2k4n5cedq71q8dm.apps.googleusercontent.com"
+DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "333176294914-nusbltfj219k3ou30dnqluvcqsvsr93d.apps.googleusercontent.com"
 
 
 class RegisterScreen(Screen):
