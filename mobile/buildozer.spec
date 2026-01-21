@@ -4,8 +4,8 @@ package.name = quickrent
 package.domain = org.quickrent
 
 # Use the same PNG for app icon and presplash.
-icon.filename = assets/QuickRent.png
-presplash.filename = assets/QuickRent.png
+icon.filename = assets/Quickrent.png
+presplash.filename = assets/Quickrent.png
 
 # Your main.py lives inside the mobile/ folder.
 source.dir = .
