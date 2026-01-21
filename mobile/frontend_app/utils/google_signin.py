@@ -120,76 +120,74 @@ def google_sign_in(
     _pending["on_success"] = on_success
     _pending["on_error"] = on_error
 
-    # ---------------------------------------------------------
-    # Activity result binding (only once)
-    # ---------------------------------------------------------
-    if not _bound:
-        _bound = True
-        _log("Binding activity result listener.")
+# ---------------------------------------------------------
+# Activity result binding (only once)
+# ---------------------------------------------------------
+if not _bound:
+    _bound = True
+    _log("Binding activity result listener.")
 
-        def _on_activity_result(request_code: int, result_code: int, data) -> bool:
-            if request_code != REQUEST_CODE_GOOGLE_SIGN_IN:
-                return False
+    def _on_activity_result(request_code: int, result_code: int, data) -> bool:
+        if request_code != REQUEST_CODE_GOOGLE_SIGN_IN:
+            return False
 
-            def fail(msg: str) -> None:
-                _log(f"Sign-in failed: {msg}")
-                cb = _pending.get("on_error")
-                if cb:
-                    Clock.schedule_once(lambda *_: cb(str(msg)), 0)
+        def fail(msg: str) -> None:
+            _log(f"Sign-in failed: {msg}")
+            cb = _pending.get("on_error")
+            if cb:
+                Clock.schedule_once(lambda *_: cb(str(msg)), 0)
 
+        try:
+            # NOTE:
+            # Legacy Google Sign-In may return RESULT_CANCELED even on success.
+            # Do NOT rely on result_code. Always parse the intent.
+
+            if data is None:
+                fail("Google Sign-In returned no data.")
+                return True
+
+            _log("Parsing Google Sign-In intent.")
+
+            # Try modern API first
             try:
-                Activity = autoclass("android.app.Activity")
-
-                if int(result_code) != int(Activity.RESULT_OK):
-                    fail("Google Sign-In cancelled.")
+                GoogleSignIn = autoclass(
+                    "com.google.android.gms.auth.api.signin.GoogleSignIn"
+                )
+                task = GoogleSignIn.getSignedInAccountFromIntent(data)
+                account = task.getResult()
+            except Exception:
+                # Fallback legacy API
+                Auth = autoclass("com.google.android.gms.auth.api.Auth")
+                result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
+                if (
+                    result is None
+                    or hasattr(result, "isSuccess")
+                    and not bool(result.isSuccess())
+                ):
+                    fail("Google Sign-In failed.")
                     return True
+                account = result.getSignInAccount()
 
-                if data is None:
-                    fail("Google Sign-In returned no data.")
-                    return True
+            token = str(account.getIdToken() or "").strip()
+            if not token:
+                fail("Google Sign-In did not return an ID token.")
+                return True
 
-                _log("Parsing Google Sign-In intent.")
+            profile = {
+                "email": str(account.getEmail() or "").strip(),
+                "name": str(account.getDisplayName() or "").strip(),
+            }
 
-                # Try modern API first
-                try:
-                    GoogleSignIn = autoclass(
-                        "com.google.android.gms.auth.api.signin.GoogleSignIn"
-                    )
-                    task = GoogleSignIn.getSignedInAccountFromIntent(data)
-                    account = task.getResult()
-                except Exception:
-                    # Fallback legacy API
-                    Auth = autoclass("com.google.android.gms.auth.api.Auth")
-                    result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
-                    if (
-                        result is None
-                        or hasattr(result, "isSuccess")
-                        and not bool(result.isSuccess())
-                    ):
-                        fail("Google Sign-In failed.")
-                        return True
-                    account = result.getSignInAccount()
+            cb = _pending.get("on_success")
+            if cb:
+                Clock.schedule_once(lambda *_: cb(token, profile), 0)
 
-                token = str(account.getIdToken() or "").strip()
-                if not token:
-                    fail("Google Sign-In did not return an ID token.")
-                    return True
+        except Exception as e:
+            fail(str(e) or "Google Sign-In failed.")
 
-                profile = {
-                    "email": str(account.getEmail() or "").strip(),
-                    "name": str(account.getDisplayName() or "").strip(),
-                }
+        return True
 
-                cb = _pending.get("on_success")
-                if cb:
-                    Clock.schedule_once(lambda *_: cb(token, profile), 0)
-
-            except Exception as e:
-                fail(str(e) or "Google Sign-In failed.")
-
-            return True
-
-        activity.bind(on_activity_result=_on_activity_result)
+    activity.bind(on_activity_result=_on_activity_result)
 
     # ---------------------------------------------------------
     # Start sign-in on UI thread (LEGACY ONLY)
