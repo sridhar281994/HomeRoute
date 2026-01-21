@@ -208,6 +208,7 @@ class RegisterScreen(Screen):
             or os.environ.get("GOOGLE_WEB_CLIENT_ID")
             or DEFAULT_GOOGLE_OAUTH_CLIENT_ID
         ).strip()
+        print("USING GOOGLE CLIENT ID:", server_client_id)
 
         def on_error(msg: str) -> None:
             self._popup("Google Login", msg or "Google login failed.")
