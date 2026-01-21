@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "333176294914",
+    "project_id": "quickrent4u",
+    "storage_bucket": "quickrent4u.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:333176294914:android:9bdcaa86f31f0b4e52611b",
+        "android_client_info": {
+          "package_name": "in.flatnow.flatnow"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "333176294914-t7b1h2ams20nn0dvf2k4n5cedq71q8dm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "in.flatnow.flatnow",
+            "certificate_hash": "1b34893b9346a1cbb9b6e933ef0fed503248b82c"
+          }
+        },
+        {
+          "client_id": "333176294914-nusbltfj219k3ou30dnqluvcqsvsr93d.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBuXzETiTTuexYTAxPdEJn2zjs4rOFH8vM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "333176294914-nusbltfj219k3ou30dnqluvcqsvsr93d.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
