@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+import os
 from typing import Any, Callable
 
 from kivy.clock import Clock
+from kivy.resources import resource_find
 from kivy.utils import platform
 
 # ------------------------------------------------------------
@@ -42,6 +45,80 @@ def _log(message: str) -> None:
 
 
 # ------------------------------------------------------------
+# CLIENT ID RESOLUTION (google-services.json integration)
+# ------------------------------------------------------------
+def _extract_web_client_id_from_google_services(path: str) -> str:
+    """
+    Extract the "web" OAuth client id (client_type == 3) from google-services.json.
+    This is the value expected by requestIdToken(<web-client-id>).
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return ""
+
+    try:
+        clients = data.get("client") or []
+        if not isinstance(clients, list):
+            return ""
+        for c in clients:
+            oauth = (c or {}).get("oauth_client") or []
+            if not isinstance(oauth, list):
+                continue
+            for entry in oauth:
+                if (entry or {}).get("client_type") == 3 and (entry or {}).get("client_id"):
+                    return str(entry.get("client_id") or "").strip()
+            # Some files nest the web client id here instead.
+            services = (c or {}).get("services") or {}
+            inv = (services or {}).get("appinvite_service") or {}
+            other = (inv or {}).get("other_platform_oauth_client") or []
+            if isinstance(other, list):
+                for entry in other:
+                    if (entry or {}).get("client_type") == 3 and (entry or {}).get("client_id"):
+                        return str(entry.get("client_id") or "").strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _resolve_server_client_id(server_client_id: str) -> str:
+    """
+    Prefer explicitly provided client id, then environment variables,
+    then attempt to read from packaged google-services.json.
+    """
+    cid = (server_client_id or "").strip()
+    if cid:
+        return cid
+
+    env_cid = (os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or os.environ.get("GOOGLE_WEB_CLIENT_ID") or "").strip()
+    if env_cid:
+        return env_cid
+
+    # In this project the file is checked in as mobile/google-services.json and is included
+    # in the packaged app sources. resource_find() works on both desktop and Android.
+    path = resource_find("google-services.json") or ""
+    if path and os.path.exists(path):
+        extracted = _extract_web_client_id_from_google_services(path)
+        if extracted:
+            _log("Resolved Google web client id from google-services.json.")
+            return extracted
+
+    # Fallback: try the repo-relative path for local/dev runs.
+    # Expected layout: mobile/google-services.json (this file is in mobile/frontend_app/utils/)
+    repo_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "google-services.json")
+    )
+    if os.path.exists(repo_path):
+        extracted = _extract_web_client_id_from_google_services(repo_path)
+        if extracted:
+            _log("Resolved Google web client id from repo google-services.json.")
+            return extracted
+
+    return ""
+
+
+# ------------------------------------------------------------
 # LEGACY SIGN-IN STARTER (NO LISTENERS — ANDROID SAFE)
 # ------------------------------------------------------------
 def _legacy_start_sign_in(
@@ -78,6 +155,24 @@ def _legacy_start_sign_in(
 
 
 # ------------------------------------------------------------
+# MODERN SIGN-IN STARTER (PREFERRED)
+# ------------------------------------------------------------
+def _modern_start_sign_in(
+    *,
+    act,
+    gso,
+    request_code: int,
+    autoclass,
+) -> None:
+    GoogleSignIn = autoclass("com.google.android.gms.auth.api.signin.GoogleSignIn")
+    client = GoogleSignIn.getClient(act, gso)
+    _pending["modern_client"] = client  # keep alive
+    _log("Launching modern Google Sign-In intent.")
+    intent = client.getSignInIntent()
+    act.startActivityForResult(intent, request_code)
+
+
+# ------------------------------------------------------------
 # PUBLIC ENTRY POINT
 # ------------------------------------------------------------
 def google_sign_in(
@@ -95,7 +190,7 @@ def google_sign_in(
         )
         return
 
-    cid = (server_client_id or "").strip()
+    cid = _resolve_server_client_id(server_client_id)
     if not cid:
         Clock.schedule_once(
             lambda *_: on_error(
@@ -148,12 +243,37 @@ def google_sign_in(
 
                 _log("Parsing Google Sign-In intent.")
 
-                # Try modern API first
+                # Try modern API first (Task-based)
                 try:
                     GoogleSignIn = autoclass(
                         "com.google.android.gms.auth.api.signin.GoogleSignIn"
                     )
                     task = GoogleSignIn.getSignedInAccountFromIntent(data)
+                    if hasattr(task, "isSuccessful") and not bool(task.isSuccessful()):
+                        exc = None
+                        try:
+                            exc = task.getException()
+                        except Exception:
+                            exc = None
+                        status_msg = "Google Sign-In failed."
+                        try:
+                            # ApiException has getStatusCode(). Surface it to make misconfig obvious.
+                            code = int(exc.getStatusCode()) if exc is not None and hasattr(exc, "getStatusCode") else None
+                            if code is not None:
+                                status_str = ""
+                                try:
+                                    GoogleSignInStatusCodes = autoclass(
+                                        "com.google.android.gms.auth.api.signin.GoogleSignInStatusCodes"
+                                    )
+                                    status_str = str(GoogleSignInStatusCodes.getStatusCodeString(code) or "")
+                                except Exception:
+                                    status_str = ""
+                                status_msg = f"Google Sign-In failed (status={code}{': ' + status_str if status_str else ''})."
+                        except Exception:
+                            pass
+                        fail(status_msg)
+                        return True
+
                     account = task.getResult()
                 except Exception:
                     # Fallback legacy API
@@ -164,7 +284,22 @@ def google_sign_in(
                         or hasattr(result, "isSuccess")
                         and not bool(result.isSuccess())
                     ):
-                        fail("Google Sign-In failed.")
+                        # Try to pull a Status code (e.g. DEVELOPER_ERROR=10) for better debugging.
+                        msg = "Google Sign-In failed."
+                        try:
+                            status = result.getStatus() if result is not None and hasattr(result, "getStatus") else None
+                            code = int(status.getStatusCode()) if status is not None and hasattr(status, "getStatusCode") else None
+                            if code is not None:
+                                status_str = ""
+                                try:
+                                    CommonStatusCodes = autoclass("com.google.android.gms.common.api.CommonStatusCodes")
+                                    status_str = str(CommonStatusCodes.getStatusCodeString(code) or "")
+                                except Exception:
+                                    status_str = ""
+                                msg = f"Google Sign-In failed (status={code}{': ' + status_str if status_str else ''})."
+                        except Exception:
+                            pass
+                        fail(msg)
                         return True
                     account = result.getSignInAccount()
 
@@ -208,16 +343,25 @@ def google_sign_in(
             builder = GoogleSignInOptionsBuilder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             gso = builder.requestEmail().requestIdToken(cid).build()
 
-            # 🚫 NO getClient(), NO listeners
-            _legacy_start_sign_in(
-                act=act,
-                gso=gso,
-                request_code=REQUEST_CODE_GOOGLE_SIGN_IN,
-                autoclass=autoclass,
-                on_error=lambda msg: Clock.schedule_once(
-                    lambda *_dt, msg=msg: on_error(msg), 0
-                ),
-            )
+            # Prefer modern flow; fallback to legacy if needed.
+            try:
+                _modern_start_sign_in(
+                    act=act,
+                    gso=gso,
+                    request_code=REQUEST_CODE_GOOGLE_SIGN_IN,
+                    autoclass=autoclass,
+                )
+            except Exception as e:
+                _log(f"Modern sign-in unavailable, falling back: {e}")
+                _legacy_start_sign_in(
+                    act=act,
+                    gso=gso,
+                    request_code=REQUEST_CODE_GOOGLE_SIGN_IN,
+                    autoclass=autoclass,
+                    on_error=lambda msg: Clock.schedule_once(
+                        lambda *_dt, msg=msg: on_error(msg), 0
+                    ),
+                )
 
         except Exception as e:
             cb = _pending.get("on_error")
