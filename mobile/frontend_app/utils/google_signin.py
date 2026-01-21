@@ -249,15 +249,17 @@ def google_sign_in(
                         "com.google.android.gms.auth.api.signin.GoogleSignIn"
                     )
                     task = GoogleSignIn.getSignedInAccountFromIntent(data)
-                    if hasattr(task, "isSuccessful") and not bool(task.isSuccessful()):
+                    ApiException = autoclass("com.google.android.gms.common.api.ApiException")
+
+                    def fail_from_task(default_msg: str = "Google Sign-In failed.") -> None:
                         exc = None
                         try:
                             exc = task.getException()
                         except Exception:
                             exc = None
-                        status_msg = "Google Sign-In failed."
+
+                        msg = default_msg
                         try:
-                            # ApiException has getStatusCode(). Surface it to make misconfig obvious.
                             code = int(exc.getStatusCode()) if exc is not None and hasattr(exc, "getStatusCode") else None
                             if code is not None:
                                 status_str = ""
@@ -268,13 +270,22 @@ def google_sign_in(
                                     status_str = str(GoogleSignInStatusCodes.getStatusCodeString(code) or "")
                                 except Exception:
                                     status_str = ""
-                                status_msg = f"Google Sign-In failed (status={code}{': ' + status_str if status_str else ''})."
+                                msg = f"Google Sign-In failed (status={code}{': ' + status_str if status_str else ''})."
                         except Exception:
                             pass
-                        fail(status_msg)
-                        return True
+                        fail(msg)
 
-                    account = task.getResult()
+                    # Prefer the explicit ApiException path so we always get the real status code.
+                    try:
+                        account = task.getResult(ApiException)
+                    except Exception:
+                        # Some environments expose isSuccessful(); use it when present, but
+                        # always prefer surfacing the ApiException status code above.
+                        if hasattr(task, "isSuccessful") and bool(task.isSuccessful()):
+                            account = task.getResult()
+                        else:
+                            fail_from_task()
+                            return True
                 except Exception:
                     # Fallback legacy API
                     Auth = autoclass("com.google.android.gms.auth.api.Auth")
