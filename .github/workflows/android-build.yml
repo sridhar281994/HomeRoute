@@ -41,7 +41,7 @@ jobs:
               set -euo pipefail
 
               # Let buildozer create SDK/NDK folders first (it may exit early on missing licenses).
-              printf "y\n" | buildozer android update || true
+              yes | buildozer android update || true
 
               SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
               LICENSE_DIR="${SDKROOT}/licenses"
@@ -71,7 +71,9 @@ jobs:
                 yes | "${SDKMANAGER}" --sdk_root="${SDKROOT}" --licenses || true
               fi
 
-              printf "y\n" | buildozer android debug
+              # Buildozer (and underlying sdkmanager) may prompt for additional SDK licenses.
+              # Pipe `yes` to avoid CI hanging on interactive prompts.
+              yes | buildozer android debug
             '
 
       - name: Upload APK artifact
