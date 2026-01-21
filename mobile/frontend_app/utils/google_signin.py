@@ -104,15 +104,23 @@ def _resolve_server_client_id(server_client_id: str) -> str:
             _log("Resolved Google web client id from google-services.json.")
             return extracted
 
+    # New preferred location for Android builds (matches buildozer android.add_src layout)
+    path = resource_find(os.path.join("android", "google-services.json")) or ""
+    if path and os.path.exists(path):
+        extracted = _extract_web_client_id_from_google_services(path)
+        if extracted:
+            _log("Resolved Google web client id from android/google-services.json.")
+            return extracted
+
     # Fallback: try the repo-relative path for local/dev runs.
     # Expected layout: mobile/google-services.json (this file is in mobile/frontend_app/utils/)
     repo_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "google-services.json")
+        os.path.join(os.path.dirname(__file__), "..", "..", "android", "google-services.json")
     )
     if os.path.exists(repo_path):
         extracted = _extract_web_client_id_from_google_services(repo_path)
         if extracted:
-            _log("Resolved Google web client id from repo google-services.json.")
+            _log("Resolved Google web client id from repo android/google-services.json.")
             return extracted
 
     return ""

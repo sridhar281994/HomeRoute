@@ -30,6 +30,7 @@ android.gradle_dependencies = \
     com.google.android.gms:play-services-auth:21.0.0, \
     com.google.android.gms:play-services-base:18.5.0
 android.gradle_options = -Dorg.gradle.jvmargs=-Xmx4096m
+android.add_src = android
 android.release_artifact = aab
 android.api = 34
 android.minapi = 21
