@@ -15,3 +15,6 @@ backend/google_service_account.json
 # Node build artifacts (kept in this repo, but ignore accidental extras)
 web/node_modules/
 
+# Android signing material (local + CI-injected)
+mobile/.android/
+
