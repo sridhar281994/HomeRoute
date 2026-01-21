@@ -41,7 +41,11 @@ jobs:
               set -euo pipefail
 
               # Let buildozer create SDK/NDK folders first (it may exit early on missing licenses).
+              # When piping `yes`, `yes` will often exit with SIGPIPE once buildozer is done.
+              # With `pipefail` enabled this would fail the step, so temporarily disable it.
+              set +o pipefail
               yes | buildozer android update || true
+              set -o pipefail
 
               SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
               LICENSE_DIR="${SDKROOT}/licenses"
@@ -73,7 +77,9 @@ jobs:
 
               # Buildozer (and underlying sdkmanager) may prompt for additional SDK licenses.
               # Pipe `yes` to avoid CI hanging on interactive prompts.
+              set +o pipefail
               yes | buildozer android debug
+              set -o pipefail
             '
 
       - name: Upload APK artifact
