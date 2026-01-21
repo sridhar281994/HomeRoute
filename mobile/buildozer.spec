@@ -1,5 +1,5 @@
 [app]
-title = Quickrent4u
+title = Flatnow.in
 package.name = quickrent
 package.domain = org.quickrent
 
