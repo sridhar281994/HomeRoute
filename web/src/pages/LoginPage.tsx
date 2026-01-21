@@ -19,7 +19,7 @@ export default function LoginPage() {
 
   const googleClientId =
     String((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || "").trim() ||
-    "634110997767-juj3od861h6po1udb0huea59hog0931l.apps.googleusercontent.com";
+    "333176294914-nusbltfj219k3ou30dnqluvcqsvsr93d.apps.googleusercontent.com";
 
   useEffect(() => {
     let cancelled = false;
