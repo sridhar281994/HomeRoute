@@ -249,8 +249,10 @@ def google_sign_in(
                         "com.google.android.gms.auth.api.signin.GoogleSignIn"
                     )
                     task = GoogleSignIn.getSignedInAccountFromIntent(data)
-                    if hasattr(task, "isSuccessful") and not bool(task.isSuccessful()):
-                        exc = None
+                    ApiException = autoclass("com.google.android.gms.common.api.ApiException")
+
+                    def fail_from_task(default_msg: str = "Google Sign-In failed.") -> None:
+                        exc = None    
                         try:
                             exc = task.getException()
                         except Exception:
