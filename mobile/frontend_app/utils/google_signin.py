@@ -247,6 +247,17 @@ def _get_runtime_signing_sha1s(*, act, autoclass) -> list[str]:
     return uniq
 
 
+def _sha1_colon_hex_to_google_services_cert_hash(fp: str) -> str:
+    """
+    Convert colon-separated SHA-1 hex (AA:BB:..) to the google-services.json
+    'certificate_hash' format (lowercase hex without colons).
+    """
+    try:
+        return fp.replace(":", "").strip().lower()
+    except Exception:
+        return ""
+
+
 def _log_developer_error_help(*, act, autoclass) -> None:
     """
     Log high-signal hints for status=10 (DEVELOPER_ERROR), including the
@@ -265,6 +276,11 @@ def _log_developer_error_help(*, act, autoclass) -> None:
         _log("- runtime signing SHA-1:")
         for fp in sha1s:
             _log(f"  - {fp}")
+        _log("- runtime signing SHA-1 (google-services.json certificate_hash format):")
+        for fp in sha1s:
+            h = _sha1_colon_hex_to_google_services_cert_hash(fp)
+            if h:
+                _log(f"  - {h}")
     else:
         _log("- runtime signing SHA-1: unavailable (could not read signing certs)")
 
@@ -275,6 +291,21 @@ def _log_developer_error_help(*, act, autoclass) -> None:
             _log("- google-services.json Android certificate_hash entries:")
             for h in cert_hashes:
                 _log(f"  - {h}")
+            # Quick mismatch hint.
+            if sha1s:
+                runtime_hashes = {
+                    _sha1_colon_hex_to_google_services_cert_hash(fp) for fp in sha1s
+                }
+                runtime_hashes = {h for h in runtime_hashes if h}
+                if runtime_hashes and not any(h in runtime_hashes for h in cert_hashes):
+                    _log(
+                        "- mismatch: none of the google-services.json certificate_hash values "
+                        "match the runtime signing certificate."
+                    )
+                    _log(
+                        "  This usually means you downloaded the wrong google-services.json, "
+                        "or you need to add the correct SHA-1 in Firebase/Google Cloud and re-download."
+                    )
         else:
             _log(
                 "- google-services.json contains no Android OAuth client (client_type=1) "
@@ -521,6 +552,16 @@ def google_sign_in(
                                 "Warning: google-services.json has no Android OAuth client "
                                 "(client_type=1 with certificate_hash). This commonly causes "
                                 "Google Sign-In status=10 (DEVELOPER_ERROR)."
+                            )
+                            # Print actionable details (package + runtime SHA-1) up-front so the
+                            # fix is obvious even if the sign-in flow never returns a rich error.
+                            _log_developer_error_help(act=act, autoclass=autoclass)
+                            # Fail fast: without an Android OAuth client configured, Play Services
+                            # sign-in will reliably return DEVELOPER_ERROR (10).
+                            raise RuntimeError(
+                                "Google Sign-In is misconfigured: missing Android OAuth client "
+                                "(package + SHA-1) in Firebase/Google Cloud. Re-download google-services.json "
+                                "after adding the correct SHA-1."
                             )
                 except Exception:
                     pass
