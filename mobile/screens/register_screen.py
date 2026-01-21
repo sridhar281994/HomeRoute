@@ -14,7 +14,6 @@ from frontend_app.utils.storage import get_session, set_session
 
 # Email regex
 EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
-DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "333176294914-nusbltfj219k3ou30dnqluvcqsvsr93d.apps.googleusercontent.com"
 
 
 class RegisterScreen(Screen):
@@ -203,12 +202,10 @@ class RegisterScreen(Screen):
         - Send ID token to backend (/auth/google)
         - Store session and navigate to home
         """
-        server_client_id = (
-            os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
-            or os.environ.get("GOOGLE_WEB_CLIENT_ID")
-            or DEFAULT_GOOGLE_OAUTH_CLIENT_ID
-        ).strip()
-        print("USING GOOGLE CLIENT ID:", server_client_id)
+        # Let the Android sign-in helper resolve the correct web client id from
+        # the packaged `google-services.json` (most reliable for release builds).
+        # Avoid hardcoding a client id here to prevent mismatches between builds.
+        server_client_id = ""
 
         def on_error(msg: str) -> None:
             self._popup("Google Login", msg or "Google login failed.")

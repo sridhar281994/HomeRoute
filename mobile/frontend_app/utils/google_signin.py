@@ -84,16 +84,12 @@ def _extract_web_client_id_from_google_services(path: str) -> str:
 
 def _resolve_server_client_id(server_client_id: str) -> str:
     """
-    Prefer explicitly provided client id, then environment variables,
-    then attempt to read from packaged google-services.json.
+    Prefer explicitly provided client id, then attempt to read from packaged
+    google-services.json (Android-safe default), then environment variables.
     """
     cid = (server_client_id or "").strip()
     if cid:
         return cid
-
-    env_cid = (os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or os.environ.get("GOOGLE_WEB_CLIENT_ID") or "").strip()
-    if env_cid:
-        return env_cid
 
     # In this project the file is checked in as mobile/google-services.json and is included
     # in the packaged app sources. resource_find() works on both desktop and Android.
@@ -103,6 +99,10 @@ def _resolve_server_client_id(server_client_id: str) -> str:
         if extracted:
             _log("Resolved Google web client id from google-services.json.")
             return extracted
+
+    env_cid = (os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or os.environ.get("GOOGLE_WEB_CLIENT_ID") or "").strip()
+    if env_cid:
+        return env_cid
 
     # Fallback: try the repo-relative path for local/dev runs.
     # Expected layout: mobile/google-services.json (this file is in mobile/frontend_app/utils/)
@@ -251,33 +251,30 @@ def google_sign_in(
                     task = GoogleSignIn.getSignedInAccountFromIntent(data)
                     ApiException = autoclass("com.google.android.gms.common.api.ApiException")
 
-                    def fail_from_task(default_msg: str = "Google Sign-In failed.") -> None:
-                        exc = None    
+                    # Prefer the typed getResult(ApiException.class) to surface status codes
+                    # like DEVELOPER_ERROR (10) reliably across Play Services versions.
+                    account = task.getResult(ApiException)
+                except Exception as exc:
+                    # If this is an ApiException, surface the status code string.
+                    try:
+                        code = int(exc.getStatusCode()) if hasattr(exc, "getStatusCode") else None
+                    except Exception:
+                        code = None
+                    if code is not None:
+                        status_str = ""
                         try:
-                            exc = task.getException()
+                            GoogleSignInStatusCodes = autoclass(
+                                "com.google.android.gms.auth.api.signin.GoogleSignInStatusCodes"
+                            )
+                            status_str = str(GoogleSignInStatusCodes.getStatusCodeString(code) or "")
                         except Exception:
-                            exc = None
-                        status_msg = "Google Sign-In failed."
-                        try:
-                            # ApiException has getStatusCode(). Surface it to make misconfig obvious.
-                            code = int(exc.getStatusCode()) if exc is not None and hasattr(exc, "getStatusCode") else None
-                            if code is not None:
-                                status_str = ""
-                                try:
-                                    GoogleSignInStatusCodes = autoclass(
-                                        "com.google.android.gms.auth.api.signin.GoogleSignInStatusCodes"
-                                    )
-                                    status_str = str(GoogleSignInStatusCodes.getStatusCodeString(code) or "")
-                                except Exception:
-                                    status_str = ""
-                                status_msg = f"Google Sign-In failed (status={code}{': ' + status_str if status_str else ''})."
-                        except Exception:
-                            pass
-                        fail(status_msg)
+                            status_str = ""
+                        msg = f"Google Sign-In failed (status={code}{': ' + status_str if status_str else ''})."
+                        # Make the most common misconfig extra explicit.
+                        if code == 10:
+                            msg += " (DEVELOPER_ERROR: check package name + SHA-1 / app signing in Google/Firebase config)"
+                        fail(msg)
                         return True
-
-                    account = task.getResult()
-                except Exception:
                     # Fallback legacy API
                     Auth = autoclass("com.google.android.gms.auth.api.Auth")
                     result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
