@@ -5,6 +5,8 @@ __pycache__/
 # Local env files / secrets
 .env
 .env.*
+!.env.example
+!**/.env.example
 
 # Google Play service account key (DO NOT COMMIT)
 google_service_account.json

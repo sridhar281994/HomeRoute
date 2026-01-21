@@ -24,7 +24,7 @@ export default function App() {
       <div className="app-bg" aria-hidden="true" />
       <div className="panel topbar" style={{ marginBottom: 14 }}>
         <div className="topbar-brand">
-          <div className="h2">Quickrent4u</div>
+          <div className="h2">Flatnow.in</div>
           {isGuest ? <div className="guest-pill">Guest mode</div> : null}
         </div>
         <div className="spacer" />
