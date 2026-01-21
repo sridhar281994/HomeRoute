@@ -42,7 +42,7 @@ def _log(message: str) -> None:
 
 
 # ------------------------------------------------------------
-# LEGACY SIGN-IN STARTER (STABLE IN PYJNIUS)
+# LEGACY SIGN-IN STARTER (NO LISTENERS — ANDROID SAFE)
 # ------------------------------------------------------------
 def _legacy_start_sign_in(
     *,
@@ -52,38 +52,15 @@ def _legacy_start_sign_in(
     autoclass,
     on_error: Callable[[str], None],
 ) -> None:
-    try:
-        from jnius import PythonJavaClass, java_method  # type: ignore
-    except Exception as e:
-        raise RuntimeError(f"Legacy Google Sign-In unavailable: {e}") from e
-
-    class _OnConnectionFailedListener(PythonJavaClass):  # type: ignore[misc]
-        __javainterfaces__ = [
-            "com/google/android/gms/common/api/GoogleApiClient$OnConnectionFailedListener"
-        ]
-
-        def __init__(self, cb: Callable[[str], None]):
-            super().__init__()
-            self._cb = cb
-
-        @java_method("(Lcom/google/android/gms/common/ConnectionResult;)V")
-        def onConnectionFailed(self, connection_result) -> None:
-            try:
-                msg = str(connection_result) if connection_result is not None else "Connection failed."
-            except Exception:
-                msg = "Connection failed."
-            self._cb(msg)
-
     Auth = autoclass("com.google.android.gms.auth.api.Auth")
     GoogleApiClientBuilder = autoclass(
         "com.google.android.gms.common.api.GoogleApiClient$Builder"
     )
 
-    listener = _OnConnectionFailedListener(on_error)
+    # Build client WITHOUT listener (avoids classloader crash)
     client = (
         GoogleApiClientBuilder(act)
         .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
-        .addOnConnectionFailedListener(listener)
         .build()
     )
 
@@ -92,9 +69,8 @@ def _legacy_start_sign_in(
     except Exception:
         pass
 
-    # Keep references alive
+    # Keep reference alive
     _pending["legacy_client"] = client
-    _pending["legacy_listener"] = listener
 
     _log("Launching legacy Google Sign-In intent.")
     intent = Auth.GoogleSignInApi.getSignInIntent(client)
@@ -236,7 +212,7 @@ def google_sign_in(
             )
             gso = builder.requestEmail().requestIdToken(cid).build()
 
-            # 🚫 NO getClient() ANYWHERE
+            # 🚫 NO getClient(), NO listeners
             _legacy_start_sign_in(
                 act=act,
                 gso=gso,
