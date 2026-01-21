@@ -39,6 +39,10 @@ android.strip = True
 android.archs = arm64-v8a,armeabi-v7a
 android.allow_backup = True
 android.accept_sdk_license = True
+android.keystore = flatnow-debug.keystore
+android.keyalias = flatnowdebug
+android.keystore_password = android
+android.keyalias_password = android
 
 [buildozer]
 log_level = 2
