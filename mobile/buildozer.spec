@@ -1,7 +1,7 @@
 [app]
 title = Flatnow.in
-package.name = quickrent
-package.domain = org.quickrent
+package.name = flatnow
+package.domain = in.flatnow
 
 # Use the same PNG for app icon and presplash.
 icon.filename = assets/Quickrent.png
