@@ -14,12 +14,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare stable Android debug keystore
+      # ------------------------------------------------------------
+      # Restore stable keystore used by buildozer.spec
+      # buildozer.spec expects: flatnow-debug.keystore (project root)
+      # ------------------------------------------------------------
+      - name: Restore Android debug keystore
         env:
           ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          mkdir -p mobile/.android
 
           if [ -z "${ANDROID_DEBUG_KEYSTORE_BASE64}" ]; then
             echo "Missing required secret ANDROID_DEBUG_KEYSTORE_BASE64."
@@ -28,8 +31,11 @@ jobs:
             exit 1
           fi
 
-          echo "${ANDROID_DEBUG_KEYSTORE_BASE64}" | base64 -d > mobile/.android/debug.keystore
-          chmod 600 mobile/.android/debug.keystore
+          echo "${ANDROID_DEBUG_KEYSTORE_BASE64}" | base64 --decode > flatnow-debug.keystore
+          chmod 600 flatnow-debug.keystore
+
+          echo "Keystore restored:"
+          ls -l flatnow-debug.keystore
 
       - name: Build debug APK (docker)
         run: |
@@ -52,7 +58,6 @@ jobs:
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
-            -v "$GITHUB_WORKSPACE/mobile/.android":/home/user/.android \
             -w /home/user/hostcwd/mobile \
             "${IMAGE}" \
             -lc '
@@ -106,4 +111,3 @@ jobs:
           name: quickrent-apk
           path: mobile/bin/*.apk
           if-no-files-found: error
-
