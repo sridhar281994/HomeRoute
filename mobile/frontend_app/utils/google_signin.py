@@ -81,7 +81,7 @@ def google_sign_in(
     try:
         from android import activity  # type: ignore
         from android.runnable import run_on_ui_thread  # type: ignore
-        from jnius import JavaClass, autoclass  # type: ignore
+        from jnius import JavaClass, MetaJavaClass, autoclass  # type: ignore
     except Exception as e:
         msg = f"Google Sign-In is unavailable in this build: {e}"
         _log(msg)
@@ -90,7 +90,7 @@ def google_sign_in(
 
     # Explicit PyJNIus bindings for overloaded static methods.
     # Use full JNI signatures to avoid "GoogleSignIn has no attribute" errors.
-    class _GoogleSignIn(JavaClass):  # type: ignore[misc]
+    class _GoogleSignIn(JavaClass, metaclass=MetaJavaClass):  # type: ignore[misc]
         __javaclass__ = "com/google/android/gms/auth/api/signin/GoogleSignIn"
         __javastaticmethods__ = [
             "getClient(Landroid/content/Context;Lcom/google/android/gms/auth/api/signin/GoogleSignInOptions;)"
