@@ -428,7 +428,9 @@ export default function AdminReviewPage() {
                         ]
                           .filter(Boolean)
                           .join(" • ");
-                        await sharePost({ title, text: meta ? `${title}\n${meta}` : title, url: shareUrl });
+                        const img = p.images?.length ? toApiUrl(p.images[0].url) : "";
+                        const text = [title, meta, img ? `Image: ${img}` : ""].filter(Boolean).join("\n");
+                        await sharePost({ title, text, url: shareUrl });
                       }}
                       style={{ padding: "8px 10px", minWidth: 44 }}
                     >
@@ -876,7 +878,9 @@ export default function AdminReviewPage() {
                     ]
                       .filter(Boolean)
                       .join(" • ");
-                    await sharePost({ title, text: meta ? `${title}\n${meta}` : title, url });
+                  const img = p.images?.length ? toApiUrl(p.images[0].url) : "";
+                  const text = [title, meta, img ? `Image: ${img}` : ""].filter(Boolean).join("\n");
+                  await sharePost({ title, text, url });
                   }}
                   style={{ padding: "8px 10px", minWidth: 44 }}
                 >

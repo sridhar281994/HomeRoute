@@ -588,7 +588,9 @@ export default function HomePage() {
                       ]
                         .filter(Boolean)
                         .join(" • ");
-                      const res = await sharePost({ title, text: meta ? `${title}\n${meta}` : title, url: shareUrl });
+                      const img = p.images?.length ? toApiUrl(p.images[0].url) : "";
+                      const text = [title, meta, img ? `Image: ${img}` : ""].filter(Boolean).join("\n");
+                      const res = await sharePost({ title, text, url: shareUrl });
                       if (res === "copied") setErr("Copied share text to clipboard.");
                     }}
                     style={{ padding: "8px 10px", minWidth: 44 }}
