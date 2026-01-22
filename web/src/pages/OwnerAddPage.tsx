@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getCategoryCatalog,
   getMe,
@@ -193,6 +193,20 @@ export default function OwnerAddPage() {
       .filter((g) => g.group && g.items.length);
     return grouped;
   })();
+  const needOptionsFlat = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const g of needGroups) {
+      for (const it of g.items) {
+        const v = String(it || "").trim();
+        const k = v.toLowerCase();
+        if (!v || seen.has(k)) continue;
+        seen.add(k);
+        out.push(v);
+      }
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }, [needGroups]);
 
   if (isLocked) {
     return (
@@ -274,18 +288,17 @@ export default function OwnerAddPage() {
         </div>
         <div className="col-6">
           <label className="muted">Need category (materials / services / property)</label>
-          <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
-            <option value="">{needGroups.length ? "Select category…" : "Loading…"}</option>
-            {needGroups.map((g) => (
-              <optgroup key={g.group} label={g.group}>
-                {g.items.map((it) => (
-                  <option key={`${g.group}:${it}`} value={it}>
-                    {it}
-                  </option>
-                ))}
-              </optgroup>
+          <input
+            value={propertyType}
+            onChange={(e) => setPropertyType(e.target.value)}
+            placeholder={needGroups.length ? "Select / type to search…" : "Loading…"}
+            list="need-category-list-owner-add"
+          />
+          <datalist id="need-category-list-owner-add">
+            {needOptionsFlat.map((it) => (
+              <option key={it} value={it} />
             ))}
-          </select>
+          </datalist>
           {categoryMsg ? <div className="muted" style={{ marginTop: 6 }}>{categoryMsg}</div> : null}
         </div>
         <div className="col-6">

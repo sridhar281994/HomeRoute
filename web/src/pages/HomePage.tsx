@@ -20,7 +20,6 @@ export default function HomePage() {
   const nav = useNavigate();
   const session = getSession();
   const [need, setNeed] = useState<string>("");
-  const [needSearch, setNeedSearch] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
   const [state, setState] = useState<string>("");
@@ -101,13 +100,20 @@ export default function HomePage() {
     }
     return Object.entries(byGroup).map(([group, items]) => ({ group, items }));
   }, [catalog]);
-  const filteredNeedGroups = useMemo(() => {
-    const q = String(needSearch || "").trim().toLowerCase();
-    if (!q) return needGroups;
-    return needGroups
-      .map((g) => ({ group: g.group, items: g.items.filter((it) => it.toLowerCase().includes(q)) }))
-      .filter((g) => g.items.length);
-  }, [needGroups, needSearch]);
+  const needOptionsFlat = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const g of needGroups) {
+      for (const it of g.items) {
+        const v = String(it || "").trim();
+        const k = v.toLowerCase();
+        if (!v || seen.has(k)) continue;
+        seen.add(k);
+        out.push(v);
+      }
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }, [needGroups]);
   const categoryHint = categoryMsg || (needGroups.length ? "" : "Categories unavailable.");
 
   async function load() {
@@ -424,22 +430,32 @@ export default function HomePage() {
               .slice(0, 80)
               .map((a) => {
                 const checked = areas.includes(a);
+                const toggle = () =>
+                  setAreas((prev) => {
+                    const has = prev.includes(a);
+                    if (has) return prev.filter((x) => x !== a);
+                    return [...prev, a];
+                  });
                 return (
-                  <label key={a} className={`multi-row ${checked ? "multi-on" : ""}`}>
+                  <div
+                    key={a}
+                    className={`multi-row ${checked ? "multi-on" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={toggle}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") toggle();
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => {
-                        setAreas((prev) => {
-                          const has = prev.includes(a);
-                          if (has) return prev.filter((x) => x !== a);
-                          return [...prev, a];
-                        });
-                      }}
+                      onChange={() => toggle()}
+                      onClick={(e) => e.stopPropagation()}
                       disabled={!state || !district}
                     />
                     <span>{a}</span>
-                  </label>
+                  </div>
                 );
               })}
             {!state || !district ? <div className="muted">Select State + District to load Areas.</div> : null}
@@ -481,19 +497,17 @@ export default function HomePage() {
         </div>
         <div className="col-6">
           <label className="muted">Need category (materials / services / property)</label>
-          <input value={needSearch} onChange={(e) => setNeedSearch(e.target.value)} placeholder="Search category…" />
-          <select value={need} onChange={(e) => setNeed(e.target.value)}>
-            <option value="">Any</option>
-            {filteredNeedGroups.map((g) => (
-              <optgroup key={g.group} label={g.group}>
-                {g.items.map((it) => (
-                  <option key={`${g.group}:${it}`} value={it}>
-                    {it}
-                  </option>
-                ))}
-              </optgroup>
+          <input
+            value={need}
+            onChange={(e) => setNeed(e.target.value)}
+            placeholder="Any / type to search…"
+            list="need-category-list"
+          />
+          <datalist id="need-category-list">
+            {needOptionsFlat.map((it) => (
+              <option key={it} value={it} />
             ))}
-          </select>
+          </datalist>
           {categoryHint ? <div className="muted" style={{ marginTop: 6 }}>{categoryHint}</div> : null}
         </div>
         <div className="col-6">

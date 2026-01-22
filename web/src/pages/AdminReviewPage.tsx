@@ -279,22 +279,32 @@ export default function AdminReviewPage() {
                 .slice(0, 80)
                 .map((a) => {
                   const checked = areas.includes(a);
+                  const toggle = () =>
+                    setAreas((prev) => {
+                      const has = prev.includes(a);
+                      if (has) return prev.filter((x) => x !== a);
+                      return [...prev, a];
+                    });
                   return (
-                    <label key={a} className={`multi-row ${checked ? "multi-on" : ""}`}>
+                    <div
+                      key={a}
+                      className={`multi-row ${checked ? "multi-on" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={toggle}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") toggle();
+                      }}
+                    >
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={() => {
-                          setAreas((prev) => {
-                            const has = prev.includes(a);
-                            if (has) return prev.filter((x) => x !== a);
-                            return [...prev, a];
-                          });
-                        }}
+                        onChange={() => toggle()}
+                        onClick={(e) => e.stopPropagation()}
                         disabled={!state || !district}
                       />
                       <span>{a}</span>
-                    </label>
+                    </div>
                   );
                 })}
               {!state || !district ? <div className="muted">Select State + District to load Areas.</div> : null}
