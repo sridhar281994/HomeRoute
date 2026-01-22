@@ -4,8 +4,8 @@ package.name = flatnow
 package.domain = in.flatnow
 
 # Use the same PNG for app icon and presplash.
-icon.filename = assets/Quickrent.png
-presplash.filename = assets/Quickrent.png
+icon.filename = assets/flatnow_icon.png
+presplash.filename = assets/flatnow_all.png
 
 # Your main.py lives inside the mobile/ folder.
 source.dir = .
