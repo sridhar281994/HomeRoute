@@ -7,6 +7,7 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 
+from screens.gestures import GestureNavigationMixin
 from frontend_app.utils.api import ApiError, api_login_google, api_login_request_otp, api_login_verify_otp
 from frontend_app.utils.google_signin import google_sign_in
 from frontend_app.utils.storage import get_remember_me, get_session, set_remember_me, set_session
@@ -31,7 +32,7 @@ def _popup(title: str, msg: str) -> None:
     Clock.schedule_once(_open, 0)
 
 
-class LoginScreen(Screen):
+class LoginScreen(GestureNavigationMixin, Screen):
     font_scale = NumericProperty(1.0)
     remember_me = BooleanProperty(False)
     is_processing = BooleanProperty(False)

@@ -11,6 +11,7 @@ from kivy.uix.screenmanager import Screen
 
 from frontend_app.utils.api import ApiError, api_forgot_password_request_otp, api_forgot_password_reset
 from frontend_app.utils.storage import get_user
+from screens.gestures import GestureNavigationMixin
 
 
 def _safe_text(screen: Screen, wid: str) -> str:
@@ -32,7 +33,7 @@ def _popup(title: str, msg: str) -> None:
     Clock.schedule_once(_open, 0)
 
 
-class ForgotPasswordScreen(Screen):
+class ForgotPasswordScreen(GestureNavigationMixin, Screen):
     """
     Step 1: Enter email/phone.
     Step 2: Enter OTP.
@@ -108,7 +109,7 @@ class ForgotPasswordScreen(Screen):
             self.manager.current = "reset_password"
 
 
-class ResetPasswordScreen(Screen):
+class ResetPasswordScreen(GestureNavigationMixin, Screen):
     """Step 3: Enter new password."""
     current_identifier = StringProperty("")
     current_otp = StringProperty("")

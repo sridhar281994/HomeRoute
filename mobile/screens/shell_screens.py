@@ -13,6 +13,7 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 
+from screens.gestures import GestureNavigationMixin
 from frontend_app.utils.api import (
     ApiError,
     api_location_areas,
@@ -110,7 +111,7 @@ def _default_media_dir() -> str:
     return os.path.expanduser("~")
 
 
-class SplashScreen(Screen):
+class SplashScreen(GestureNavigationMixin, Screen):
     def on_enter(self, *args):
         # Small delay then continue to Welcome or Home (if already logged in).
         Clock.schedule_once(lambda _dt: self._go_next(), 0.9)
@@ -127,7 +128,7 @@ class SplashScreen(Screen):
             self.manager.current = "welcome"
 
 
-class WelcomeScreen(Screen):
+class WelcomeScreen(GestureNavigationMixin, Screen):
     def on_pre_enter(self, *args):
         # If user is already authenticated, skip Welcome.
         if not self.manager:
@@ -150,7 +151,7 @@ class WelcomeScreen(Screen):
             self.manager.current = "home"
 
 
-class PropertyDetailScreen(Screen):
+class PropertyDetailScreen(GestureNavigationMixin, Screen):
     property_id = NumericProperty(0)
     property_data = DictProperty({})
 
@@ -208,7 +209,7 @@ class PropertyDetailScreen(Screen):
         Thread(target=work, daemon=True).start()
 
 
-class MyPostsScreen(Screen):
+class MyPostsScreen(GestureNavigationMixin, Screen):
     """
     Owner/User posts list (server-backed).
     """
@@ -299,7 +300,7 @@ class MyPostsScreen(Screen):
             _popup("Error", "Unable to open edit screen.")
 
 
-class SettingsScreen(Screen):
+class SettingsScreen(GestureNavigationMixin, Screen):
     user_summary = StringProperty("")
     name_value = StringProperty("")
     phone_value = StringProperty("")
@@ -577,7 +578,7 @@ class SettingsScreen(Screen):
             self.manager.current = "home"
 
 
-class SubscriptionScreen(Screen):
+class SubscriptionScreen(GestureNavigationMixin, Screen):
     status_text = StringProperty("Status: loading…")
     provider_text = StringProperty("")
     expires_text = StringProperty("")
@@ -632,7 +633,7 @@ class SubscriptionScreen(Screen):
             self.manager.current = "home"
 
 
-class OwnerAddPropertyScreen(Screen):
+class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._edit_data: dict[str, Any] | None = None

@@ -11,12 +11,13 @@ from kivy.uix.screenmanager import Screen
 from frontend_app.utils.api import ApiError, api_location_districts, api_location_states, api_register, api_login_google
 from frontend_app.utils.google_signin import google_sign_in
 from frontend_app.utils.storage import get_session, set_session
+from screens.gestures import GestureNavigationMixin
 
 # Email regex
 EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
 
 
-class RegisterScreen(Screen):
+class RegisterScreen(GestureNavigationMixin, Screen):
     # Source of truth for the segmented control (Owner/Customer).
     # KV binds the toggle button "state" to this property so the active styling
     # cannot drift to the wrong button.

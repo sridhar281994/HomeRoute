@@ -36,6 +36,7 @@ from frontend_app.utils.api import (
 )
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 
+from screens.gestures import GestureNavigationMixin
 
 def _popup(title: str, message: str) -> None:
     def _open(*_):
@@ -71,7 +72,7 @@ class FilterPopup(Popup):
     home = ObjectProperty(None)
 
 
-class HomeScreen(Screen):
+class HomeScreen(GestureNavigationMixin, Screen):
     """
     Home / Property Feed + Search & Filters.
     """
@@ -162,6 +163,17 @@ class HomeScreen(Screen):
             return
         if self.manager:
             self.manager.current = "welcome"
+
+    def go_back(self):
+        """
+        Swipe-back handler.
+        Home is the root screen for logged-in users; for guests we go back to Welcome.
+        """
+        if not self.manager:
+            return
+        if self.is_logged_in:
+            return
+        self.manager.current = "welcome"
 
     def go_my_posts(self):
         if not self.is_logged_in:
@@ -804,6 +816,32 @@ class HomeScreen(Screen):
         from threading import Thread
 
         Thread(target=work, daemon=True).start()
+
+    # -----------------------
+    # Gestures (pull-to-refresh)
+    # -----------------------
+    def gesture_can_refresh(self) -> bool:
+        """
+        Only allow pull-to-refresh if the feed scroll view is already at the top.
+        """
+        try:
+            if self.is_loading:
+                return False
+            sv = self.ids.get("feed_scroll")
+            if sv is None:
+                return False
+            # Kivy ScrollView: scroll_y == 1 means top.
+            return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.99
+        except Exception:
+            return False
+
+    def gesture_refresh(self) -> None:
+        # Mirror the explicit Refresh button behavior.
+        try:
+            print("[GESTURE] pull-to-refresh")
+        except Exception:
+            pass
+        self.refresh()
 
     def go_profile(self):
         if not self.is_logged_in:
