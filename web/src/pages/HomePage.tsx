@@ -19,11 +19,27 @@ export default function HomePage() {
   const nav = useNavigate();
   const session = getSession();
   const [need, setNeed] = useState<string>("");
+  const [needSearch, setNeedSearch] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
   const [state, setState] = useState<string>("");
   const [district, setDistrict] = useState<string>("");
-  const [area, setArea] = useState<string>("");
+  const [areas, setAreas] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem("pd_areas") || "";
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.map((x) => String(x || "").trim()).filter(Boolean);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    const legacy = String(localStorage.getItem("pd_area") || "").trim();
+    return legacy ? [legacy] : [];
+  });
+  const [areaSearch, setAreaSearch] = useState<string>("");
   const [radiusKm, setRadiusKm] = useState<string>(() => localStorage.getItem("pd_radius_km") || "20");
   const [sortBudget, setSortBudget] = useState<string>("");
   const [postedWithinDays, setPostedWithinDays] = useState<string>("");
@@ -84,6 +100,13 @@ export default function HomePage() {
     }
     return Object.entries(byGroup).map(([group, items]) => ({ group, items }));
   }, [catalog]);
+  const filteredNeedGroups = useMemo(() => {
+    const q = String(needSearch || "").trim().toLowerCase();
+    if (!q) return needGroups;
+    return needGroups
+      .map((g) => ({ group: g.group, items: g.items.filter((it) => it.toLowerCase().includes(q)) }))
+      .filter((g) => g.items.length);
+  }, [needGroups, needSearch]);
   const categoryHint = categoryMsg || (needGroups.length ? "" : "Categories unavailable.");
 
   async function load() {
@@ -104,13 +127,13 @@ export default function HomePage() {
             radius_km: radius,
             district: district || undefined,
             state: state || undefined,
-            area: area || undefined,
+            area: areas.length ? areas.join(",") : undefined,
             q,
             max_price: maxPriceParam,
             rent_sale: rentSale || undefined,
             property_type: undefined,
             posted_within_days: postedWithinDays || undefined,
-            limit: 60,
+            limit: 20,
           })
         : await listProperties({
             q,
@@ -118,9 +141,10 @@ export default function HomePage() {
             rent_sale: rentSale || undefined,
             district: district || undefined,
             state: state || undefined,
-            area: area || undefined,
+            area: areas.length ? areas.join(",") : undefined,
             sort_budget: sortBudget || undefined,
             posted_within_days: postedWithinDays || undefined,
+            limit: 20,
           });
       const nextItems = res.items || [];
       setItems(nextItems);
@@ -216,9 +240,10 @@ export default function HomePage() {
           localStorage.removeItem("pd_state");
           localStorage.removeItem("pd_district");
           localStorage.removeItem("pd_area");
+          localStorage.removeItem("pd_areas");
           setState("");
           setDistrict("");
-          setArea("");
+          setAreas([]);
         }
       } catch {
         // ignore
@@ -232,7 +257,7 @@ export default function HomePage() {
       setDistrictOptions([]);
       setDistrict("");
       setAreaOptions([]);
-      setArea("");
+      setAreas([]);
       return;
     }
     (async () => {
@@ -258,7 +283,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!state || !district) {
       setAreaOptions([]);
-      setArea("");
+      setAreas([]);
       return;
     }
     (async () => {
@@ -303,8 +328,14 @@ export default function HomePage() {
   }, [district]);
 
   useEffect(() => {
-    localStorage.setItem("pd_area", area || "");
-  }, [area]);
+    try {
+      localStorage.setItem("pd_areas", JSON.stringify(areas || []));
+      // Keep legacy single-value key for backward compatibility.
+      localStorage.setItem("pd_area", String(areas?.[0] || ""));
+    } catch {
+      // ignore
+    }
+  }, [areas]);
 
   useEffect(() => {
     localStorage.setItem("pd_radius_km", radiusKm || "");
@@ -342,7 +373,8 @@ export default function HomePage() {
             onChange={(e) => {
               setState(e.target.value);
               setDistrict("");
-              setArea("");
+              setAreas([]);
+              setAreaSearch("");
             }}
           >
             <option value="">Any</option>
@@ -360,7 +392,8 @@ export default function HomePage() {
             value={district}
             onChange={(e) => {
               setDistrict(e.target.value);
-              setArea("");
+              setAreas([]);
+              setAreaSearch("");
             }}
             disabled={!state}
           >
@@ -374,15 +407,65 @@ export default function HomePage() {
         </div>
         <div className="col-6">
           <label className="muted">Area (optional)</label>
-          <select value={area} onChange={(e) => setArea(e.target.value)} disabled={!state || !district}>
-            <option value="">{state && district ? "Any" : "Any"}</option>
-            {areaOptions.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-          {area && areaOptions.length && !areaOptions.includes(area) ? <div className="muted" style={{ marginTop: 6 }}>Invalid area selection.</div> : null}
+          <input
+            value={areaSearch}
+            onChange={(e) => setAreaSearch(e.target.value)}
+            disabled={!state || !district}
+            placeholder={state && district ? "Search areas…" : "Select State + District first"}
+          />
+          <div className="multi-select" style={{ marginTop: 8, opacity: !state || !district ? 0.6 : 1 }}>
+            {(areaOptions || [])
+              .filter((a) => a && a !== "Any")
+              .filter((a) => {
+                const q = String(areaSearch || "").trim().toLowerCase();
+                return !q || a.toLowerCase().includes(q);
+              })
+              .slice(0, 80)
+              .map((a) => {
+                const checked = areas.includes(a);
+                return (
+                  <label key={a} className={`multi-row ${checked ? "multi-on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setAreas((prev) => {
+                          const has = prev.includes(a);
+                          if (has) return prev.filter((x) => x !== a);
+                          return [...prev, a];
+                        });
+                      }}
+                      disabled={!state || !district}
+                    />
+                    <span>{a}</span>
+                  </label>
+                );
+              })}
+            {!state || !district ? <div className="muted">Select State + District to load Areas.</div> : null}
+            {state && district && !areaOptions.length ? <div className="muted">No areas found.</div> : null}
+          </div>
+          <div className="row" style={{ marginTop: 8, gap: 10, alignItems: "center" }}>
+            <button
+              onClick={() => {
+                setAreas([]);
+                setAreaSearch("");
+              }}
+              disabled={!areas.length}
+            >
+              Clear Areas
+            </button>
+            <div className="muted">{areas.length ? `${areas.length} selected` : "Any"}</div>
+          </div>
+          {areas.length ? (
+            <div className="chips" style={{ marginTop: 8 }}>
+              {areas.slice(0, 12).map((a) => (
+                <button key={a} className="chipx" onClick={() => setAreas((prev) => prev.filter((x) => x !== a))}>
+                  {a} ✕
+                </button>
+              ))}
+              {areas.length > 12 ? <span className="muted">+{areas.length - 12} more</span> : null}
+            </div>
+          ) : null}
         </div>
         <div className="col-6">
           <label className="muted">Nearby radius (km)</label>
@@ -397,9 +480,10 @@ export default function HomePage() {
         </div>
         <div className="col-6">
           <label className="muted">Need category (materials / services / property)</label>
+          <input value={needSearch} onChange={(e) => setNeedSearch(e.target.value)} placeholder="Search category…" />
           <select value={need} onChange={(e) => setNeed(e.target.value)}>
             <option value="">Any</option>
-            {needGroups.map((g) => (
+            {filteredNeedGroups.map((g) => (
               <optgroup key={g.group} label={g.group}>
                 {g.items.map((it) => (
                   <option key={`${g.group}:${it}`} value={it}>
@@ -554,6 +638,15 @@ export default function HomePage() {
           </div>
         ) : null}
       </div>
+
+      <button
+        className="fab-arrow"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        aria-label="Scroll to top"
+        title="Top"
+      >
+        ↑
+      </button>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 :root{
-  --bg:#2a0a5e;
+  --bg:#3b0c7a;
   --panel:rgba(255,255,255,.14);
   --text:rgba(255,255,255,.92);
   --muted:rgba(255,255,255,.68);
@@ -27,7 +27,7 @@ body{
     radial-gradient(900px 600px at 10% -10%, rgba(255,255,255,.26), transparent 60%),
     radial-gradient(700px 520px at 90% 110%, rgba(255,255,255,.20), transparent 55%),
     radial-gradient(800px 600px at 75% 15%, rgba(168,85,247,.26), transparent 58%),
-    linear-gradient(180deg, #1b053b, #2a0a5e 55%, #12022b);
+    linear-gradient(180deg, #24084d, #3b0c7a 55%, #1a0540);
 }
 
 a{color:inherit}
@@ -125,13 +125,13 @@ a{color:inherit}
     radial-gradient(820px 640px at 86% 72%, rgba(168,85,247,.22), transparent 60%),
     radial-gradient(740px 560px at 60% 10%, rgba(255,255,255,.16), transparent 58%),
     linear-gradient(135deg, rgba(255,255,255,.10), rgba(168,85,247,.10)),
-    linear-gradient(180deg, #1b053b, #2a0a5e 55%, #12022b);
+    linear-gradient(180deg, #24084d, #3b0c7a 55%, #1a0540);
   background-size: 140% 140%, 140% 140%, 120% 120%, 200% 200%, auto;
   background-position: 10% 10%, 90% 70%, 60% 5%, 0% 0%, center;
   animation: aurora 12s ease-in-out infinite;
   transform: translate3d(0,0,0);
   will-change: background-position, filter;
-  filter: saturate(1.12) contrast(1.05);
+  filter: saturate(1.06) contrast(1.0);
 }
 .app-bg::after{
   content:"";
@@ -313,10 +313,10 @@ button:focus-visible{
     radial-gradient(900px 600px at 10% -10%, rgba(168,85,247,.22), transparent 60%),
     radial-gradient(760px 520px at 90% 110%, rgba(255,255,255,.10), transparent 55%),
     radial-gradient(820px 620px at 75% 15%, rgba(96,165,250,.14), transparent 58%),
-    linear-gradient(180deg, #0b0422, var(--bg));
+    linear-gradient(180deg, #16063a, var(--bg));
   background-size: auto, auto, auto, auto;
   background-position: center, center, center, center;
-  filter: saturate(1.08) contrast(1.04);
+  filter: saturate(1.03) contrast(1.0);
 }
 .home-bg::after{
   content:"";
@@ -424,4 +424,82 @@ button.chip-on{
 }
 .post-body .post-text{
   white-space: pre-wrap;
+}
+
+/* Multi-select checkbox list (HomePage filters) */
+.multi-select{
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(0,0,0,.16);
+  padding: 8px;
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.multi-row{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  padding: 6px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.multi-row:hover{
+  background: rgba(255,255,255,.06);
+}
+.multi-row input[type="checkbox"]{
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.multi-row.multi-on{
+  background: rgba(96,165,250,.16);
+  border: 1px solid rgba(96,165,250,.20);
+}
+.chips{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chipx{
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,.94);
+  color: var(--accent);
+  border: 1px solid rgba(255,255,255,.92);
+  font-weight: 700;
+}
+.chipx:hover{
+  background: #fff7ed;
+}
+.chipx:active{
+  transform: translateY(0px) scale(0.98);
+}
+
+/* Bottom-right floating arrow (scroll-to-top) */
+.fab-arrow{
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index: 20;
+  background: rgba(255,255,255,.96);
+  color: var(--accent);
+  border: 1px solid rgba(255,255,255,.92);
+  box-shadow: 0 12px 30px rgba(0,0,0,.24);
+}
+.fab-arrow:hover{
+  background: #fff7ed;
+}
+.fab-arrow:active{
+  transform: scale(0.98);
+  background: #ffedd5;
 }
