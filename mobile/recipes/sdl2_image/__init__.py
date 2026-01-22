@@ -38,6 +38,20 @@ def _get_upstream_recipe_class():
 
 
 class SDL2ImageRecipe(_get_upstream_recipe_class()):
+    def apply_patches(self, arch):
+        # This repo overrides the upstream recipe but doesn't necessarily carry
+        # all upstream patch files. Newer p4a versions include e.g.
+        # `enable-webp.patch`; if it's not present locally, skip it rather than
+        # failing the whole build.
+        patches = list(getattr(self, "patches", []) or [])
+        if patches:
+            existing = [p for p in patches if exists(join(self.recipe_dir, p))]
+            missing = [p for p in patches if p not in set(existing)]
+            if missing:
+                info(f"sdl2_image: skipping missing patches: {', '.join(missing)}")
+            self.patches = existing
+        return super().apply_patches(arch)
+
     def prebuild_arch(self, arch):
         build_dir = self.get_build_dir(arch.arch)
         external_dir = join(build_dir, "external")
