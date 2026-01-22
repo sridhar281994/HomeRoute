@@ -74,7 +74,7 @@ export default function PropertyPage() {
           }}
           style={{ padding: "8px 10px", minWidth: 44 }}
         >
-          📤
+          Share post
         </button>
         <Link to="/home">Back</Link>
       </div>

@@ -402,6 +402,51 @@ def _public_image_url(file_path: str) -> str:
     return f"/uploads/{fp}"
 
 
+def _public_image_url_if_exists(file_path: str) -> str:
+    """
+    Like _public_image_url, but tries to avoid returning URLs for missing local files.
+
+    This prevents clients from requesting stale uploads (which show as broken images).
+    For historical deployments, some rows may include an extra "uploads/" prefix or
+    files may have been stored under a nested "uploads/" folder. This function tries
+    both layouts and returns the first URL that maps to an existing file.
+    """
+    fp = (file_path or "").strip()
+    if not fp:
+        return ""
+    fp = fp.replace("\\", "/")
+    if fp.startswith("http://") or fp.startswith("https://") or fp.startswith("//"):
+        return fp
+    if fp.startswith("/uploads/"):
+        # Already a public path (can't reliably validate disk path here).
+        return fp
+
+    rel = fp.lstrip("/")
+    uploads_dir = _uploads_dir()
+    try:
+        # Try direct path first.
+        direct_path = os.path.join(uploads_dir, rel)
+        if os.path.exists(direct_path):
+            return f"/uploads/{rel}"
+
+        # Historical values may include "uploads/" prefix but files were stored without it.
+        if rel.startswith("uploads/"):
+            rel2 = rel[len("uploads/") :]
+            direct2 = os.path.join(uploads_dir, rel2)
+            if os.path.exists(direct2):
+                return f"/uploads/{rel2}"
+
+        # Some deployments stored files under a nested "uploads/" folder.
+        nested = os.path.join(uploads_dir, "uploads", rel)
+        if os.path.exists(nested):
+            return f"/uploads/uploads/{rel}"
+    except Exception:
+        pass
+
+    # Fallback to legacy behavior (may 404 if the file is missing).
+    return _public_image_url(rel)
+
+
 def _locations_json_path() -> str:
     # Backend-owned location dataset (single source of truth).
     default = os.path.abspath(os.path.join(os.path.dirname(__file__), "locations.json"))
@@ -1603,6 +1648,10 @@ def me_delete(
 
     prop_ids = [int(x) for x in db.execute(select(Property.id).where(Property.owner_id == me.id)).scalars().all()]
     if prop_ids:
+        # Delete dependent rows first to avoid FK errors (e.g. contact usage referencing properties).
+        db.execute(delete(FreeContactUsage).where(FreeContactUsage.property_id.in_(prop_ids)))
+        db.execute(delete(ContactUsage).where(ContactUsage.property_id.in_(prop_ids)))
+        db.execute(delete(SavedProperty).where(SavedProperty.property_id.in_(prop_ids)))
         db.execute(delete(PropertyImage).where(PropertyImage.property_id.in_(prop_ids)))
         db.execute(delete(Property).where(Property.id.in_(prop_ids)))
 
@@ -1631,9 +1680,12 @@ def _property_out(
         for i in sorted((p.images or []), key=lambda x: (int(getattr(x, "sort_order", 0) or 0), int(getattr(x, "id", 0) or 0))):
             if not include_unapproved_images and (i.status or "") != "approved":
                 continue
+            url = _public_image_url_if_exists(i.file_path)
+            if not url:
+                continue
             img_out: dict[str, Any] = {
                 "id": i.id,
-                "url": _public_image_url(i.file_path),
+                "url": url,
                 "sort_order": i.sort_order,
                 "content_type": (i.content_type or "").strip(),
                 "size_bytes": int(i.size_bytes or 0),
@@ -2255,7 +2307,12 @@ def owner_delete_property(
     except Exception:
         pass
 
-    db.delete(p)
+    # Remove dependent rows first (avoid FK issues).
+    db.execute(delete(FreeContactUsage).where(FreeContactUsage.property_id == int(property_id)))
+    db.execute(delete(ContactUsage).where(ContactUsage.property_id == int(property_id)))
+    db.execute(delete(SavedProperty).where(SavedProperty.property_id == int(property_id)))
+    db.execute(delete(PropertyImage).where(PropertyImage.property_id == int(property_id)))
+    db.execute(delete(Property).where(Property.id == int(property_id)))
     _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=int(property_id), action="delete", reason="")
     return {"ok": True}
 
@@ -2592,7 +2649,23 @@ def admin_delete_property(
     if not p:
         raise HTTPException(status_code=404, detail="Property not found")
 
+    # Best-effort: delete uploaded image files from disk.
+    try:
+        for img in (p.images or []):
+            fp = (img.file_path or "").strip().lstrip("/")
+            if fp and not fp.startswith("http"):
+                disk_path = os.path.join(_uploads_dir(), fp)
+                try:
+                    if os.path.exists(disk_path):
+                        os.remove(disk_path)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     # Remove dependent rows first (avoid FK issues).
+    db.execute(delete(FreeContactUsage).where(FreeContactUsage.property_id == int(property_id)))
+    db.execute(delete(ContactUsage).where(ContactUsage.property_id == int(property_id)))
     db.execute(delete(PropertyImage).where(PropertyImage.property_id == int(property_id)))
     db.execute(delete(SavedProperty).where(SavedProperty.property_id == int(property_id)))
     db.execute(delete(Property).where(Property.id == int(property_id)))
@@ -3214,7 +3287,6 @@ async def spa_fallback_404(request, exc: StarletteHTTPException):
                     "/locations",
                     "/properties",
                     "/owner",
-                    "/admin",
                     "/uploads",
                     "/health",
                     "/docs",

@@ -1697,7 +1697,7 @@
                             text_size: self.width, None
                         TextInput:
                             text: ("" if (root.home and root.home.need_category == "Any") else (root.home.need_category if root.home else ""))
-                            hint_text: "Type to search…"
+                            hint_text: "Any / type to search…"
                             multiline: False
                             on_text:
                                 if root.home: root.home.on_need_input_changed(self)
@@ -1942,7 +1942,7 @@
                 on_release: root.unlock_contact()
 
             AppButton:
-                text: "Share  [font=EmojiFont]📤[/font]"
+                text: "Share post"
                 size_hint_y: None
                 height: dp(44)
                 on_release: root.share_current()

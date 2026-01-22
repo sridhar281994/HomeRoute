@@ -640,13 +640,14 @@ class HomeScreen(GestureNavigationMixin, Screen):
             for it in media:
                 it = it or {}
                 ctype = str(it.get("content_type") or "").lower()
-                if ctype.startswith("image/"):
+                # Older rows may not have content_type set. Treat unknown/blank types as images.
+                if ctype.startswith("video/"):
+                    grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
+                else:
                     img = AsyncImage(source=to_api_url(it.get("url") or ""), allow_stretch=True, keep_ratio=False)
                     img.size_hint_y = None
                     img.height = thumb_h
                     grid.add_widget(img)
-                else:
-                    grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
 
             card.add_widget(grid)
         else:
@@ -739,9 +740,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
         )
         btn_contact.disabled = already_contacted
         btn_share = Factory.AppButton(
-            text="[font=EmojiFont]📤[/font]",
+            text="Share post",
             size_hint=(None, None),
-            width=dp(56),
+            width=dp(140),
             height=44,
         )
         lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
