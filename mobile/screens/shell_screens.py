@@ -223,9 +223,19 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         ]:
             if x:
                 meta_lines.append(x)
-        api_link = to_api_url(f"/properties/{pid}") if pid else ""
+        # Prefer linking to the web UI route if hosted on the same domain.
+        api_link = to_api_url(f"/property/{pid}") if pid else ""
+        img_link = ""
+        try:
+            imgs = p.get("images") or []
+            if imgs:
+                img_link = to_api_url(str((imgs[0] or {}).get("url") or "").strip())
+        except Exception:
+            img_link = ""
         subject = f"{title_s} (Ad #{adv})" if adv else title_s
-        body = "\n".join([x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link] if x])
+        body = "\n".join(
+            [x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link, (f"Image: {img_link}" if img_link else "")] if x]
+        )
 
         launched = share_text(subject=subject, text=body)
         if launched:
