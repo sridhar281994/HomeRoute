@@ -8,6 +8,8 @@ from pythonforandroid.logger import info
 # `recipe = ...` instance. This local override needs to work with both.
 import pythonforandroid.recipes.sdl2_image as _upstream_sdl2_image
 
+_LOCAL_RECIPE_DIR = __import__("os").path.dirname(__file__)
+
 
 def _get_upstream_recipe_class():
     # Old p4a versions.
@@ -45,7 +47,10 @@ class SDL2ImageRecipe(_get_upstream_recipe_class()):
         # failing the whole build.
         patches = list(getattr(self, "patches", []) or [])
         if patches:
-            existing = [p for p in patches if exists(join(self.recipe_dir, p))]
+            # Newer python-for-android versions removed `recipe_dir` in favor of
+            # `recipe_dirs`. Since this is a local override, patch files (if any)
+            # live next to this module.
+            existing = [p for p in patches if exists(join(_LOCAL_RECIPE_DIR, p))]
             missing = [p for p in patches if p not in set(existing)]
             if missing:
                 info(f"sdl2_image: skipping missing patches: {', '.join(missing)}")

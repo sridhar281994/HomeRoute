@@ -37,6 +37,29 @@ jobs:
           echo "Keystore restored:"
           ls -l mobile/flatnow-debug.keystore
 
+      - name: Print keystore SHA-1 (before build)
+        run: |
+          set -euo pipefail
+          IMAGE="kivy/buildozer:latest"
+          docker run --rm \
+            --entrypoint bash \
+            -e HOME=/home/user \
+            -e USER=user \
+            -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
+            -w /home/user/hostcwd \
+            "${IMAGE}" \
+            -lc '
+              set -euo pipefail
+              echo "Keystore certificate fingerprints (register SHA-1 in Firebase + Google OAuth Android client):"
+              keytool -list -v \
+                -keystore mobile/flatnow-debug.keystore \
+                -alias flatnowdebug \
+                -storepass android \
+                -keypass android \
+              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p; s/^[[:space:]]*SHA256:[[:space:]]*//p" \
+              | sed -e "s/^/  /"
+            '
+
       - name: Build debug APK (docker)
         run: |
           mkdir -p mobile/.buildozer mobile/.gradle mobile/bin
@@ -63,10 +86,29 @@ jobs:
             -lc '
               set -euo pipefail
 
-              # Work around transient GitHub 5xx errors when SDL2 tries to fetch libwebp.
-              # SDL2 may attempt: https://github.com/libsdl-org/libwebp.git
-              # Redirect it to the stable upstream mirror.
-              git config --global url."https://github.com/webmproject/libwebp.git".insteadOf https://github.com/libsdl-org/libwebp.git
+              # Ensure the debug build is signed with a stable keystore.
+              # Some toolchains ignore buildozer.spec `android.keystore` for debug builds
+              # and use ~/.android/debug.keystore (alias androiddebugkey) instead.
+              mkdir -p /home/user/.android
+              keytool -importkeystore -noprompt \
+                -srckeystore "/home/user/hostcwd/mobile/flatnow-debug.keystore" \
+                -srcalias flatnowdebug \
+                -srcstorepass android \
+                -srckeypass android \
+                -destkeystore "/home/user/.android/debug.keystore" \
+                -deststorepass android \
+                -destkeypass android \
+                -destalias androiddebugkey
+              chmod 600 /home/user/.android/debug.keystore
+              echo ""
+              echo "Debug keystore SHA-1 (expected to match APK signing cert SHA-1):"
+              keytool -list -v \
+                -keystore /home/user/.android/debug.keystore \
+                -alias androiddebugkey \
+                -storepass android \
+                -keypass android \
+              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p" \
+              | sed -e "s/^/  /"
 
               # Let buildozer create SDK/NDK folders first (it may exit early on missing licenses).
               # When piping `yes`, `yes` will often exit with SIGPIPE once buildozer is done.
@@ -124,11 +166,63 @@ jobs:
                 "${APKSIGNER}" verify --print-certs "${apk}" | sed -e "s/^/  /"
                 echo ""
                 echo "  Signing cert SHA-1 (extracted from APK):"
-                ANDROID_SDK_ROOT="${SDKROOT}" python "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
+                ANDROID_SDK_ROOT="${SDKROOT}" python3 "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
               done
             '
 
-      - name: Print keystore SHA-1 (after packaging)
+      - name: Inspect built APK (file SHA-1 + cert SHA-1)
+        if: always()
+        run: |
+          set -euo pipefail
+          IMAGE="kivy/buildozer:latest"
+          docker run --rm \
+            --entrypoint bash \
+            -e HOME=/home/user \
+            -e USER=user \
+            -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
+            -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
+            -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
+            -w /home/user/hostcwd/mobile \
+            "${IMAGE}" \
+            -lc '
+              set -euo pipefail
+              apks=(bin/*.apk)
+              if [ "${apks[0]}" = "bin/*.apk" ]; then
+                echo "No APKs found under mobile/bin/*.apk"
+                exit 0
+              fi
+
+              SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
+              # Note: do NOT enable `nullglob` before this; otherwise the glob can
+              # disappear and `ls -1` will list the current directory, producing
+              # a bogus APKSIGNER like "screens".
+              APKSIGNER="$(ls -1 "${SDKROOT}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1 || true)"
+              if [ -z "${APKSIGNER}" ] || [ ! -x "${APKSIGNER}" ]; then
+                echo "Could not locate apksigner under ${SDKROOT}/build-tools (will skip apksigner cert output)."
+                APKSIGNER=""
+              fi
+
+              for apk in "${apks[@]}"; do
+                echo ""
+                echo "== ${apk} =="
+                echo "  APK file SHA-1:"
+                sha1sum "${apk}" | sed -e "s/^/    /"
+                echo ""
+                if [ -n "${APKSIGNER}" ]; then
+                  echo "  Signing cert SHA-1 (from apksigner --print-certs):"
+                  "${APKSIGNER}" verify --print-certs "${apk}" | sed -n "s/^.*certificate SHA-1 digest:[[:space:]]*//p" | sed -e "s/^/    /"
+                  echo ""
+                fi
+                echo "  Signing cert SHA-1 (extracted from APK via tools/print_apk_sha1.py):"
+                ANDROID_SDK_ROOT="${SDKROOT}" python3 "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
+                echo ""
+                echo "  META-INF entries (for debugging):"
+                unzip -Z1 "${apk}" | sed -n "s#^META-INF/#META-INF/#p" | sed -e "s/^/    /" | head -n 50 || true
+              done
+            '
+
+      - name: Print keystore SHA-1 (after build)
+        if: always()
         run: |
           set -euo pipefail
           IMAGE="kivy/buildozer:latest"
