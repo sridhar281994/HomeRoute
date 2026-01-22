@@ -37,29 +37,6 @@ jobs:
           echo "Keystore restored:"
           ls -l mobile/flatnow-debug.keystore
 
-      - name: Print keystore SHA-1 (for Firebase)
-        run: |
-          set -euo pipefail
-          IMAGE="kivy/buildozer:latest"
-          docker run --rm \
-            --entrypoint bash \
-            -e HOME=/home/user \
-            -e USER=user \
-            -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
-            -w /home/user/hostcwd \
-            "${IMAGE}" \
-            -lc '
-              set -euo pipefail
-              echo "Keystore certificate fingerprints (register SHA-1 in Firebase + Google OAuth Android client):"
-              keytool -list -v \
-                -keystore mobile/flatnow-debug.keystore \
-                -alias flatnowdebug \
-                -storepass android \
-                -keypass android \
-              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p; s/^[[:space:]]*SHA256:[[:space:]]*//p" \
-              | sed -e "s/^/  /"
-            '
-
       - name: Build debug APK (docker)
         run: |
           mkdir -p mobile/.buildozer mobile/.gradle mobile/bin
@@ -141,6 +118,29 @@ jobs:
                 echo "== ${apk} =="
                 "${APKSIGNER}" verify --print-certs "${apk}" | sed -e "s/^/  /"
               done
+            '
+
+      - name: Print keystore SHA-1 (after packaging)
+        run: |
+          set -euo pipefail
+          IMAGE="kivy/buildozer:latest"
+          docker run --rm \
+            --entrypoint bash \
+            -e HOME=/home/user \
+            -e USER=user \
+            -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
+            -w /home/user/hostcwd \
+            "${IMAGE}" \
+            -lc '
+              set -euo pipefail
+              echo "Keystore certificate fingerprints (register SHA-1 in Firebase + Google OAuth Android client):"
+              keytool -list -v \
+                -keystore mobile/flatnow-debug.keystore \
+                -alias flatnowdebug \
+                -storepass android \
+                -keypass android \
+              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p; s/^[[:space:]]*SHA256:[[:space:]]*//p" \
+              | sed -e "s/^/  /"
             '
 
       - name: Upload APK artifact
