@@ -39,6 +39,7 @@ from frontend_app.utils.api import (
     api_upload_property_media,
     to_api_url,
 )
+from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
@@ -207,6 +208,36 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         from threading import Thread
 
         Thread(target=work, daemon=True).start()
+
+    def share_current(self) -> None:
+        p = dict(self.property_data or {})
+        title_s = str(p.get("title") or "Property").strip()
+        pid = int(self.property_id or 0)
+        adv = str(p.get("adv_number") or p.get("ad_number") or pid or "").strip()
+        meta_lines: list[str] = []
+        for x in [
+            str(p.get("rent_sale") or "").strip(),
+            str(p.get("property_type") or "").strip(),
+            str(p.get("price_display") or "").strip(),
+            str(p.get("location_display") or "").strip(),
+        ]:
+            if x:
+                meta_lines.append(x)
+        api_link = to_api_url(f"/properties/{pid}") if pid else ""
+        subject = f"{title_s} (Ad #{adv})" if adv else title_s
+        body = "\n".join([x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link] if x])
+
+        launched = share_text(subject=subject, text=body)
+        if launched:
+            _popup("Share", "Choose an app to share this post.")
+            return
+        try:
+            from kivy.core.clipboard import Clipboard
+
+            Clipboard.copy(body)
+            _popup("Share", "Copied share text to clipboard.")
+        except Exception:
+            _popup("Share", body)
 
 
 class MyPostsScreen(GestureNavigationMixin, Screen):
