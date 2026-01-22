@@ -63,6 +63,11 @@ jobs:
             -lc '
               set -euo pipefail
 
+              # Work around transient GitHub 5xx errors when SDL2 tries to fetch libwebp.
+              # SDL2 may attempt: https://github.com/libsdl-org/libwebp.git
+              # Redirect it to the stable upstream mirror.
+              git config --global url."https://github.com/webmproject/libwebp.git".insteadOf https://github.com/libsdl-org/libwebp.git
+
               # Let buildozer create SDK/NDK folders first (it may exit early on missing licenses).
               # When piping `yes`, `yes` will often exit with SIGPIPE once buildozer is done.
               # With `pipefail` enabled this would fail the step, so temporarily disable it.
@@ -117,6 +122,9 @@ jobs:
                 echo ""
                 echo "== ${apk} =="
                 "${APKSIGNER}" verify --print-certs "${apk}" | sed -e "s/^/  /"
+                echo ""
+                echo "  Signing cert SHA-1 (extracted from APK):"
+                ANDROID_SDK_ROOT="${SDKROOT}" python "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
               done
             '
 
