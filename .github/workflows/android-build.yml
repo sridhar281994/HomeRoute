@@ -165,15 +165,17 @@ jobs:
             "${IMAGE}" \
             -lc '
               set -euo pipefail
-              shopt -s nullglob
               apks=(bin/*.apk)
-              if [ ${#apks[@]} -eq 0 ]; then
+              if [ "${apks[0]}" = "bin/*.apk" ]; then
                 echo "No APKs found under mobile/bin/*.apk"
                 exit 0
               fi
 
               SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
-              APKSIGNER="$(ls -1 ${SDKROOT}/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1)"
+              # Note: do NOT enable `nullglob` before this; otherwise the glob can
+              # disappear and `ls -1` will list the current directory, producing
+              # a bogus APKSIGNER like "screens".
+              APKSIGNER="$(ls -1 "${SDKROOT}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1 || true)"
               if [ -z "${APKSIGNER}" ] || [ ! -x "${APKSIGNER}" ]; then
                 echo "Could not locate apksigner under ${SDKROOT}/build-tools."
                 exit 1
