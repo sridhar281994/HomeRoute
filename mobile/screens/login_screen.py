@@ -7,8 +7,9 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 
-from frontend_app.utils.api import ApiError, api_login_request_otp, api_login_verify_otp
-from frontend_app.utils.storage import get_remember_me, set_remember_me, set_session
+from frontend_app.utils.api import ApiError, api_login_google, api_login_request_otp, api_login_verify_otp
+from frontend_app.utils.google_signin import google_sign_in
+from frontend_app.utils.storage import get_remember_me, get_session, set_remember_me, set_session
 
 
 def _safe_text(screen: Screen, wid: str, default: str = "") -> str:
@@ -223,3 +224,49 @@ class LoginScreen(Screen):
         Thread(target=work, daemon=True).start()
 
     # Admin login is done via the same OTP flow.
+
+    # -----------------------
+    # Google Login
+    # -----------------------
+    def google_login(self) -> None:
+        """
+        Google Sign-In (Android):
+        - Launch Google account picker
+        - Send ID token to backend (/auth/google)
+        - Store session and navigate to home
+        """
+        server_client_id = ""
+
+        def on_error(msg: str) -> None:
+            _popup("Google Login", msg or "Google login failed.")
+
+        def on_success(id_token: str, profile: dict[str, str]) -> None:
+            def work():
+                try:
+                    data = api_login_google(id_token=id_token)
+                    token = data.get("access_token")
+                    user = data.get("user") or {}
+                    if not token:
+                        raise ApiError("Google login failed.")
+
+                    # Persist remember-me preference consistently across auth methods.
+                    set_remember_me(bool(self.remember_me))
+
+                    sess = get_session() or {}
+                    remember = bool(self.remember_me or sess.get("remember_me") or False)
+                    set_session(token=str(token), user=dict(user), remember=remember)
+
+                    def after(*_):
+                        if self.manager:
+                            self.manager.current = "home"
+                        _popup("Success", f"Logged in as {user.get('name') or profile.get('email') or 'Google user'}.")
+
+                    Clock.schedule_once(after, 0)
+                except ApiError as e:
+                    _popup("Google Login", str(e))
+                except Exception as e:
+                    _popup("Google Login", str(e) or "Network error. Please try again.")
+
+            Thread(target=work, daemon=True).start()
+
+        google_sign_in(server_client_id=server_client_id, on_success=on_success, on_error=on_error)
