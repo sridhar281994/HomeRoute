@@ -382,10 +382,23 @@ def _free_contact_limit() -> int:
 
 
 def _public_image_url(file_path: str) -> str:
+    """
+    Convert a stored DB file path into a public URL under /uploads.
+
+    Historical DB values may already include a leading "/uploads/" or "uploads/" prefix.
+    Avoid duplicating that prefix (which would break image rendering as /uploads/uploads/...).
+    """
     fp = (file_path or "").strip()
+    if not fp:
+        return ""
+    fp = fp.replace("\\", "/")
     if fp.startswith("http://") or fp.startswith("https://"):
         return fp
+    if fp.startswith("/uploads/"):
+        return fp
     fp = fp.lstrip("/")
+    if fp.startswith("uploads/"):
+        fp = fp[len("uploads/") :]
     return f"/uploads/{fp}"
 
 
@@ -487,10 +500,12 @@ def _user_out(u: User) -> dict[str, Any]:
     img_url = ""
     if img:
         try:
-            safe = img.lstrip("/")
-            disk_path = os.path.join(_uploads_dir(), safe)
+            safe = img.lstrip("/").replace("\\", "/")
+            # Historical values might already include "uploads/".
+            rel = safe[len("uploads/") :] if safe.startswith("uploads/") else safe
+            disk_path = os.path.join(_uploads_dir(), rel)
             if os.path.exists(disk_path):
-                img_url = _public_image_url(safe)
+                img_url = _public_image_url(rel)
         except Exception:
             img_url = ""
     return {
