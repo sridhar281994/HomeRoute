@@ -16,7 +16,7 @@ jobs:
 
       # ------------------------------------------------------------
       # Restore stable keystore used by buildozer.spec
-      # buildozer.spec expects: flatnow-debug.keystore (project root)
+      # buildozer.spec expects: mobile/flatnow-debug.keystore (in mobile/ working dir)
       # ------------------------------------------------------------
       - name: Restore Android debug keystore
         env:
@@ -31,11 +31,34 @@ jobs:
             exit 1
           fi
 
-          echo "${ANDROID_DEBUG_KEYSTORE_BASE64}" | base64 --decode > flatnow-debug.keystore
-          chmod 600 flatnow-debug.keystore
+          echo "${ANDROID_DEBUG_KEYSTORE_BASE64}" | base64 --decode > mobile/flatnow-debug.keystore
+          chmod 600 mobile/flatnow-debug.keystore
 
           echo "Keystore restored:"
-          ls -l flatnow-debug.keystore
+          ls -l mobile/flatnow-debug.keystore
+
+      - name: Print keystore SHA-1 (for Firebase)
+        run: |
+          set -euo pipefail
+          IMAGE="kivy/buildozer:latest"
+          docker run --rm \
+            --entrypoint bash \
+            -e HOME=/home/user \
+            -e USER=user \
+            -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
+            -w /home/user/hostcwd \
+            "${IMAGE}" \
+            -lc '
+              set -euo pipefail
+              echo "Keystore certificate fingerprints (register SHA-1 in Firebase + Google OAuth Android client):"
+              keytool -list -v \
+                -keystore mobile/flatnow-debug.keystore \
+                -alias flatnowdebug \
+                -storepass android \
+                -keypass android \
+              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p; s/^[[:space:]]*SHA256:[[:space:]]*//p" \
+              | sed -e "s/^/  /"
+            '
 
       - name: Build debug APK (docker)
         run: |
@@ -103,6 +126,21 @@ jobs:
               set +o pipefail
               yes | buildozer android debug
               set -o pipefail
+
+              echo ""
+              echo "APK signing certificate fingerprints (this is what matters for Google Sign-In):"
+              SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
+              APKSIGNER="$(ls -1 ${SDKROOT}/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1)"
+              if [ -z "${APKSIGNER}" ] || [ ! -x "${APKSIGNER}" ]; then
+                echo "Could not locate apksigner under ${SDKROOT}/build-tools."
+                exit 1
+              fi
+              shopt -s nullglob
+              for apk in bin/*.apk; do
+                echo ""
+                echo "== ${apk} =="
+                "${APKSIGNER}" verify --print-certs "${apk}" | sed -e "s/^/  /"
+              done
             '
 
       - name: Upload APK artifact

@@ -12,10 +12,10 @@ Run locally:
 
 ```bash
 keytool -genkeypair -v \
-  -keystore debug.keystore \
+  -keystore flatnow-debug.keystore \
   -storepass android \
   -keypass android \
-  -alias androiddebugkey \
+  -alias flatnowdebug \
   -keyalg RSA \
   -keysize 2048 \
   -validity 10000 \
@@ -26,8 +26,8 @@ keytool -genkeypair -v \
 
 ```bash
 keytool -list -v \
-  -keystore debug.keystore \
-  -alias androiddebugkey \
+  -keystore flatnow-debug.keystore \
+  -alias flatnowdebug \
   -storepass android \
   -keypass android
 ```
@@ -39,7 +39,7 @@ Copy the **SHA1** value.
 Encode the file as base64 (single line):
 
 ```bash
-base64 -w 0 debug.keystore
+base64 -w 0 flatnow-debug.keystore
 ```
 
 Create a GitHub Actions secret:
@@ -54,5 +54,6 @@ Create a GitHub Actions secret:
 
 ### Notes
 
-- The CI workflow mounts `mobile/.android/debug.keystore` into the build container at `~/.android/debug.keystore`, which is where Android debug signing expects it.
+- The build reads `mobile/flatnow-debug.keystore` and signs the APK with alias `flatnowdebug` (passwords are `android`/`android`).
 - Keeping the keystore stable makes the SHA-1 stable, which makes Google Sign-In stable.
+- The CI workflow prints the signing certificate SHA-1 from the built APK in the job logs; register **that** SHA-1 in Firebase.
