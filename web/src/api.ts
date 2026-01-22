@@ -339,12 +339,78 @@ export function adminPending() {
   return api<{ items: any[] }>(`/admin/properties/pending`);
 }
 
+export function adminListProperties(params?: {
+  q?: string;
+  rent_sale?: string;
+  property_type?: string;
+  max_price?: string;
+  state?: string;
+  district?: string;
+  area?: string;
+  status?: string;
+  sort_budget?: string;
+  posted_within_days?: string;
+  limit?: number;
+}) {
+  const sp = new URLSearchParams();
+  if (params?.q) sp.set("q", params.q);
+  if (params?.rent_sale) sp.set("rent_sale", params.rent_sale);
+  if (params?.property_type) sp.set("property_type", params.property_type);
+  if (params?.max_price) sp.set("max_price", params.max_price);
+  if (params?.state) sp.set("state", params.state);
+  if (params?.district) sp.set("district", params.district);
+  if (params?.area) sp.set("area", params.area);
+  if (params?.status) sp.set("status", params.status);
+  if (params?.sort_budget) sp.set("sort_budget", params.sort_budget);
+  if (params?.posted_within_days) sp.set("posted_within_days", params.posted_within_days);
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  const qs = sp.toString() ? `?${sp.toString()}` : "";
+  return api<{ items: any[] }>(`/admin/properties${qs}`);
+}
+
+export function adminUpdateProperty(
+  id: number,
+  input: {
+    title?: string | null;
+    description?: string | null;
+    property_type?: string | null;
+    rent_sale?: string | null;
+    price?: number | null;
+    location?: string | null;
+    state?: string | null;
+    district?: string | null;
+    area?: string | null;
+    address?: string | null;
+    amenities?: string[] | null;
+    availability?: string | null;
+    contact_phone?: string | null;
+    contact_email?: string | null;
+    company_name?: string | null;
+    gps_lat?: number | null;
+    gps_lng?: number | null;
+  },
+) {
+  return api<{ ok: boolean; property: any }>(`/admin/properties/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input || {}),
+  });
+}
+
+export function adminDeleteProperty(id: number) {
+  return api<{ ok: boolean }>(`/admin/properties/${id}`, { method: "DELETE" });
+}
+
 export function adminApprove(id: number) {
   return api<{ ok: boolean }>(`/admin/properties/${id}/approve`, { method: "POST" });
 }
 
-export function adminReject(id: number) {
-  return api<{ ok: boolean }>(`/admin/properties/${id}/reject`, { method: "POST" });
+export function adminReject(id: number, reason = "") {
+  return api<{ ok: boolean }>(`/admin/properties/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export function adminSuspend(id: number, reason = "") {

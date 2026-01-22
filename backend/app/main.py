@@ -994,7 +994,7 @@ def login_request_otp(data: LoginRequestOtpIn, db: Annotated[Session, Depends(ge
     if delivery == "console":
         return {"ok": True, "message": "OTP generated. Email service not configured; check server logs for the OTP."}
     if (user.role or "").lower() == "admin":
-        return {"ok": True, "message": f"Admin OTP sent to {_admin_otp_email()}."}
+        return {"ok": True, "message": "OTP sent to admin mail."}
     return {"ok": True, "message": "OTP sent to your registered email."}
 
 
@@ -2486,6 +2486,118 @@ def admin_pending_properties(
         .all()
     ]
     return {"items": items}
+
+
+@app.get("/admin/properties")
+def admin_list_properties(
+    db: Annotated[Session, Depends(get_db)],
+    me: Annotated[User, Depends(get_current_user)],
+    q: str | None = Query(default=None),
+    rent_sale: str | None = Query(default=None),
+    property_type: str | None = Query(default=None),
+    max_price: int | None = Query(default=None),
+    state: str | None = Query(default=None),
+    district: str | None = Query(default=None),
+    area: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    sort_budget: str | None = Query(default=None),  # top|bottom|asc|desc
+    posted_within_days: int | None = Query(default=None, ge=1, le=365),
+):
+    """
+    Admin-only listing endpoint with the same filters as the public `/properties`,
+    but without the "approved only" restriction.
+    """
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    state_in = (state or "").strip()
+    district_in = (district or "").strip()
+    area_in = (area or "").strip()
+    state_norm = _norm_key(state_in)
+    district_norm = _norm_key(district_in)
+    area_list = _split_csv_values(area_in)
+    area_norms = [_norm_key(x) for x in area_list]
+    area_norms = [x for x in area_norms if x]
+    area_norm = _norm_key(area_in)
+
+    stmt = (
+        select(Property, User)
+        .options(selectinload(Property.images))
+        .join(User, Property.owner_id == User.id)
+    )
+
+    st = (status or "").strip().lower()
+    if st and st != "any":
+        stmt = stmt.where(Property.status == st)
+
+    sb = (sort_budget or "").strip().lower()
+    if sb in {"top", "desc", "high"}:
+        stmt = stmt.order_by(Property.price.desc(), Property.id.desc())
+    elif sb in {"bottom", "asc", "low"}:
+        stmt = stmt.order_by(Property.price.asc(), Property.id.desc())
+    else:
+        stmt = stmt.order_by(Property.id.desc())
+
+    if state_norm:
+        stmt = stmt.where(Property.state_normalized == state_norm)
+    if district_norm:
+        stmt = stmt.where(Property.district_normalized == district_norm)
+    if area_norms:
+        stmt = stmt.where(Property.area_normalized.in_(area_norms))
+    elif area_norm:
+        stmt = stmt.where(Property.area_normalized == area_norm)
+    if q:
+        q_like = f"%{q.strip()}%"
+        stmt = stmt.where((Property.title.ilike(q_like)) | (Property.location.ilike(q_like)))
+    if rent_sale:
+        stmt = stmt.where(Property.rent_sale == rent_sale)
+    if property_type:
+        stmt = stmt.where(Property.property_type == property_type)
+    if max_price is not None:
+        stmt = stmt.where(Property.price <= int(max_price))
+    if posted_within_days:
+        now = dt.datetime.now(dt.timezone.utc)
+        stmt = stmt.where(Property.created_at >= (now - dt.timedelta(days=int(posted_within_days))))
+
+    rows = db.execute(stmt.limit(int(limit))).all()
+    items: list[dict[str, Any]] = []
+    for (p, u) in rows:
+        items.append(_property_out(p, owner=u, include_unapproved_images=True, include_internal=True))
+    return {"items": items}
+
+
+@app.patch("/admin/properties/{property_id:int}")
+def admin_update_property(
+    property_id: int,
+    data: PropertyUpdateIn,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    # Reuse owner/admin update logic (admin can edit any ad).
+    return owner_update_property(property_id=property_id, data=data, me=me, db=db)
+
+
+@app.delete("/admin/properties/{property_id:int}")
+def admin_delete_property(
+    property_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    p = db.get(Property, int(property_id))
+    if not p:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    # Remove dependent rows first (avoid FK issues).
+    db.execute(delete(PropertyImage).where(PropertyImage.property_id == int(property_id)))
+    db.execute(delete(SavedProperty).where(SavedProperty.property_id == int(property_id)))
+    db.execute(delete(Property).where(Property.id == int(property_id)))
+    _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=int(property_id), action="delete", reason="")
+    return {"ok": True}
 
 
 @app.post("/admin/properties/{property_id:int}/approve")
