@@ -20,7 +20,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 from kivy.graphics import Color, Line, RoundedRectangle
 
-from frontend_app.utils.android_location import get_last_known_location
+from frontend_app.utils.android_location import get_last_known_location, open_location_settings
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions
 from frontend_app.utils.api import (
     ApiError,
@@ -380,7 +380,40 @@ class HomeScreen(Screen):
         """
         Manual action from Home screen button.
         """
-        self._ensure_gps_best_effort()
+        def after(ok: bool) -> None:
+            # Always log so we can debug issues via `adb logcat` / console output.
+            try:
+                print("[GPS] Enable GPS pressed. permission_ok=", bool(ok))
+            except Exception:
+                pass
+
+            if not ok:
+                self._gps = None
+                self.gps_status = "GPS not available (showing non-nearby results)."
+                self.gps_msg = "Location permission denied."
+                return
+
+            loc = get_last_known_location()
+            try:
+                print("[GPS] last_known_location=", loc)
+            except Exception:
+                pass
+
+            if self._is_valid_gps(loc):
+                self._gps = (float(loc[0]), float(loc[1]))
+                self.gps_status = "GPS enabled (showing nearby results)."
+                self.gps_msg = ""
+                # Immediately refresh so the user sees nearby results.
+                Clock.schedule_once(lambda *_: self.refresh(), 0)
+                return
+
+            # Permissions are granted, but we have no fix yet (often because Location is OFF).
+            self._gps = None
+            self.gps_status = "GPS is off (showing non-nearby results)."
+            self.gps_msg = "Turn on Location/GPS in settings, then tap Enable GPS again."
+            open_location_settings()
+
+        ensure_permissions(required_location_permissions(), on_result=after)
 
     def feed_card(self, raw: dict[str, Any]) -> BoxLayout:
         """
