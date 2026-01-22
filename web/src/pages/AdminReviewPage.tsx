@@ -14,6 +14,7 @@ import {
   toApiUrl,
 } from "../api";
 import { useNavigate } from "react-router-dom";
+import { sharePost } from "../share";
 
 export default function AdminReviewPage() {
   const nav = useNavigate();
@@ -261,6 +262,31 @@ export default function AdminReviewPage() {
                   ) : null}
                 </div>
                 <div className="spacer" />
+                <button
+                  type="button"
+                  title="Share"
+                  aria-label="Share"
+                  onClick={async () => {
+                    const pid = Number(p.id);
+                    const url = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
+                    const title = String(p.title || "Property").trim() || "Property";
+                    const adv = String(p.adv_number || p.ad_number || p.id || "").trim();
+                    const meta = [
+                      adv ? `Ad #${adv}` : "",
+                      String(p.rent_sale || "").trim(),
+                      String(p.property_type || "").trim(),
+                      String(p.price_display || "").trim(),
+                      String(p.location_display || "").trim(),
+                      `status: ${String(p.status || "").trim() || "unknown"}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" • ");
+                    await sharePost({ title, text: meta ? `${title}\n${meta}` : title, url });
+                  }}
+                  style={{ padding: "8px 10px", minWidth: 44 }}
+                >
+                  📤
+                </button>
                 {p.images?.length ? (
                   String(p.images[0]?.content_type || "").toLowerCase().startsWith("video/") ? (
                     <video

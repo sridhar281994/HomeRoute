@@ -37,6 +37,7 @@ from frontend_app.utils.api import (
     api_meta_categories,
     to_api_url,
 )
+from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 
 from screens.gestures import GestureNavigationMixin
@@ -687,6 +688,39 @@ class HomeScreen(GestureNavigationMixin, Screen):
             )
         )
 
+        def do_share(*_):
+            try:
+                pid_raw = p.get("id")
+                pid = int(str(pid_raw).strip()) if pid_raw is not None else 0
+            except Exception:
+                pid = 0
+            title_s = str(p.get("title") or "Property").strip()
+            adv = str(p.get("adv_number") or p.get("ad_number") or pid or "").strip()
+            meta_lines = []
+            for x in [
+                str(p.get("rent_sale") or "").strip(),
+                str(p.get("property_type") or "").strip(),
+                str(p.get("price_display") or "").strip(),
+                str(p.get("location_display") or "").strip(),
+            ]:
+                if x:
+                    meta_lines.append(x)
+            api_link = to_api_url(f"/properties/{pid}") if pid else ""
+            subject = f"{title_s} (Ad #{adv})" if adv else title_s
+            body = "\n".join([x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link] if x])
+
+            launched = share_text(subject=subject, text=body)
+            if launched:
+                _popup("Share", "Choose an app to share this post.")
+                return
+            try:
+                from kivy.core.clipboard import Clipboard
+
+                Clipboard.copy(body)
+                _popup("Share", "Copied share text to clipboard.")
+            except Exception:
+                _popup("Share", body)
+
         btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
         btn_contact = Factory.AppButton(
             text="Contacted" if already_contacted else "Contact owner",
@@ -694,6 +728,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
             height=44,
         )
         btn_contact.disabled = already_contacted
+        btn_share = Factory.AppButton(
+            text="[font=EmojiFont]📤[/font]",
+            size_hint=(None, None),
+            width=dp(56),
+            height=44,
+        )
         lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
         if already_contacted:
             lbl_status.text = "Contact details already sent."
@@ -745,7 +785,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
             Thread(target=work, daemon=True).start()
 
         btn_contact.bind(on_release=do_contact)
+        btn_share.bind(on_release=do_share)
         btn_row.add_widget(btn_contact)
+        btn_row.add_widget(btn_share)
         card.add_widget(btn_row)
         card.add_widget(lbl_status)
 

@@ -57,3 +57,22 @@ Create a GitHub Actions secret:
 - The build reads `mobile/flatnow-debug.keystore` and signs the APK with alias `flatnowdebug` (passwords are `android`/`android`).
 - Keeping the keystore stable makes the SHA-1 stable, which makes Google Sign-In stable.
 - The CI workflow prints the signing certificate SHA-1 from the built APK in the job logs; register **that** SHA-1 in Firebase.
+- To print the signing certificate SHA-1 from an APK locally (extracting from inside the APK), use:
+
+```bash
+python tools/print_apk_sha1.py "mobile/bin/<your-debug-apk>.apk"
+```
+
+### Troubleshooting: `libsdl-org/libwebp` clone fails (HTTP 5xx)
+
+Sometimes Android builds fail while cloning SDL2’s `external/libwebp` dependency:
+
+```
+fatal: unable to access 'https://github.com/libsdl-org/libwebp.git/': The requested URL returned error: 500
+```
+
+CI automatically applies a git URL rewrite to a stable upstream mirror. For local builds, you can do the same before running buildozer:
+
+```bash
+git config --global url."https://github.com/webmproject/libwebp.git".insteadOf https://github.com/libsdl-org/libwebp.git
+```
