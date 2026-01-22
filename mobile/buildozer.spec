@@ -24,7 +24,8 @@ p4a.local_recipes = recipes
 
 # UI
 orientation = portrait
-fullscreen = 0
+# Fullscreen ensures the presplash covers the entire device screen.
+fullscreen = 1
 
 # Android specific
 android.enable_androidx = True

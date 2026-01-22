@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 
+from kivy.core.window import Window
 from kivy.metrics import dp
 
 
@@ -22,31 +23,71 @@ class GestureNavigationMixin:
     _PULL_TO_REFRESH_DY = dp(110)
     _PULL_TO_REFRESH_DX_MAX = dp(80)
 
-    def on_touch_down(self, touch):
+    def gesture_bind_window(self) -> None:
+        """
+        Bind gesture detection at Window level.
+
+        This makes gestures work even when child widgets (TextInput/ScrollView)
+        consume touch events before the Screen sees them.
+        """
+        try:
+            if getattr(self, "_g_window_bound", False):
+                return
+            Window.bind(on_touch_down=self._gesture_window_down, on_touch_move=self._gesture_window_move, on_touch_up=self._gesture_window_up)
+            self._g_window_bound = True
+        except Exception:
+            self._g_window_bound = False
+
+    def gesture_unbind_window(self) -> None:
+        try:
+            if not getattr(self, "_g_window_bound", False):
+                return
+            Window.unbind(on_touch_down=self._gesture_window_down, on_touch_move=self._gesture_window_move, on_touch_up=self._gesture_window_up)
+        except Exception:
+            pass
+        self._g_window_bound = False
+
+    def _gesture_is_active_screen(self) -> bool:
+        """
+        Only run gestures for the currently visible Screen.
+        """
+        try:
+            if not self.get_root_window():
+                return False
+        except Exception:
+            return False
+        try:
+            mgr = getattr(self, "manager", None)
+            name = getattr(self, "name", None)
+            if mgr is not None and name:
+                return str(getattr(mgr, "current", "") or "") == str(name)
+        except Exception:
+            pass
+        return True
+
+    def _gesture_track_down(self, touch) -> None:
         # Ignore mouse wheel scrolling etc.
         if getattr(touch, "is_mouse_scrolling", False):
-            return super().on_touch_down(touch)
+            return
+        try:
+            if self.collide_point(*touch.pos):
+                self._g_touch_uid = getattr(touch, "uid", None)
+                self._g_start = (float(touch.x), float(touch.y))
+                self._g_start_t = time.time()
+                self._g_handled = False
+                self._g_refreshed = False
+        except Exception:
+            return
 
-        if self.collide_point(*touch.pos):
-            self._g_touch_uid = getattr(touch, "uid", None)
-            self._g_start = (float(touch.x), float(touch.y))
-            self._g_start_t = time.time()
-            self._g_handled = False
-            self._g_refreshed = False
-        return super().on_touch_down(touch)
-
-    def on_touch_move(self, touch):
-        out = super().on_touch_move(touch)
-
+    def _gesture_track_move(self, touch) -> bool:
         if getattr(self, "_g_handled", False):
             return True
-
         if getattr(self, "_g_touch_uid", None) != getattr(touch, "uid", None):
-            return out
+            return False
 
         start = getattr(self, "_g_start", None)
         if not start:
-            return out
+            return False
         sx, sy = start
         dx = float(touch.x) - float(sx)
         dy = float(touch.y) - float(sy)
@@ -77,15 +118,44 @@ class GestureNavigationMixin:
             except Exception:
                 pass
 
-        return out
+        return False
 
-    def on_touch_up(self, touch):
-        # Reset gesture state.
+    def _gesture_track_up(self, touch) -> None:
         if getattr(self, "_g_touch_uid", None) == getattr(touch, "uid", None):
             self._g_touch_uid = None
             self._g_start = None
             self._g_handled = False
             self._g_refreshed = False
+
+    def _gesture_window_down(self, _window, touch):
+        if not self._gesture_is_active_screen():
+            return False
+        self._gesture_track_down(touch)
+        return False
+
+    def _gesture_window_move(self, _window, touch):
+        if not self._gesture_is_active_screen():
+            return False
+        return bool(self._gesture_track_move(touch))
+
+    def _gesture_window_up(self, _window, touch):
+        if not self._gesture_is_active_screen():
+            return False
+        self._gesture_track_up(touch)
+        return False
+
+    def on_touch_down(self, touch):
+        self._gesture_track_down(touch)
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        out = super().on_touch_move(touch)
+        if self._gesture_track_move(touch):
+            return True
+        return out
+
+    def on_touch_up(self, touch):
+        self._gesture_track_up(touch)
         return super().on_touch_up(touch)
 
     def _gesture_back(self) -> None:

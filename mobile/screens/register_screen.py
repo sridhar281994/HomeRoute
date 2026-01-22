@@ -113,6 +113,18 @@ class RegisterScreen(GestureNavigationMixin, Screen):
                 Clock.schedule_once(lambda *_: setattr(self, "_states_cache", []), 0)
 
         Thread(target=work, daemon=True).start()
+        # Make swipe-back work even when TextInput captures touch.
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
+
+    def on_leave(self, *args) -> None:
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def go_back(self) -> None:
         """Navigate back to login or stage screen."""

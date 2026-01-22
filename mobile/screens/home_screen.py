@@ -249,6 +249,47 @@ class HomeScreen(GestureNavigationMixin, Screen):
         self._ensure_gps_best_effort()
 
         Clock.schedule_once(lambda _dt: self.refresh(), 0)
+        # Enable gesture capture even when ScrollView consumes touches.
+        self.gesture_bind_window()
+
+    def on_leave(self, *args):
+        # Avoid leaking Window bindings when screen is not visible.
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
+
+    # -----------------------
+    # Gesture handlers (pull-to-refresh)
+    # -----------------------
+    def gesture_can_refresh(self) -> bool:
+        """
+        Only allow pull-to-refresh when:
+        - not already loading
+        - feed scroll is at the top
+        """
+        if self.is_loading:
+            return False
+        sv = None
+        try:
+            sv = (self.ids or {}).get("feed_scroll")
+        except Exception:
+            sv = None
+        if sv is None:
+            return False
+        try:
+            # In Kivy ScrollView, scroll_y==1 means top.
+            return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.99
+        except Exception:
+            return False
+
+    def gesture_refresh(self) -> None:
+        # Reuse existing refresh logic (same as tapping "Refresh").
+        try:
+            self.refresh()
+        except Exception:
+            return
 
     # -----------------------
     # Top nav actions (Home header)

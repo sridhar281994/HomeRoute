@@ -47,6 +47,18 @@ class LoginScreen(GestureNavigationMixin, Screen):
             self.remember_me = bool(get_remember_me())
         except Exception:
             self.remember_me = False
+        # Make swipe-back work even when TextInput captures touch.
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def on_size(self, *args):
         self._update_font_scale()
