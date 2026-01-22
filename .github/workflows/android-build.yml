@@ -86,11 +86,6 @@ jobs:
             -lc '
               set -euo pipefail
 
-              # Work around transient GitHub 5xx errors when SDL2 tries to fetch libwebp.
-              # SDL2 may attempt: https://github.com/libsdl-org/libwebp.git
-              # Redirect it to the stable upstream mirror.
-              git config --global url."https://github.com/webmproject/libwebp.git".insteadOf https://github.com/libsdl-org/libwebp.git
-
               # Let buildozer create SDK/NDK folders first (it may exit early on missing licenses).
               # When piping `yes`, `yes` will often exit with SIGPIPE once buildozer is done.
               # With `pipefail` enabled this would fail the step, so temporarily disable it.
@@ -147,7 +142,7 @@ jobs:
                 "${APKSIGNER}" verify --print-certs "${apk}" | sed -e "s/^/  /"
                 echo ""
                 echo "  Signing cert SHA-1 (extracted from APK):"
-                ANDROID_SDK_ROOT="${SDKROOT}" python "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
+                ANDROID_SDK_ROOT="${SDKROOT}" python3 "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
               done
             '
 
@@ -177,8 +172,8 @@ jobs:
               # a bogus APKSIGNER like "screens".
               APKSIGNER="$(ls -1 "${SDKROOT}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1 || true)"
               if [ -z "${APKSIGNER}" ] || [ ! -x "${APKSIGNER}" ]; then
-                echo "Could not locate apksigner under ${SDKROOT}/build-tools."
-                exit 1
+                echo "Could not locate apksigner under ${SDKROOT}/build-tools (will skip apksigner cert output)."
+                APKSIGNER=""
               fi
 
               for apk in "${apks[@]}"; do
@@ -187,11 +182,13 @@ jobs:
                 echo "  APK file SHA-1:"
                 sha1sum "${apk}" | sed -e "s/^/    /"
                 echo ""
-                echo "  Signing cert SHA-1 (from apksigner --print-certs):"
-                "${APKSIGNER}" verify --print-certs "${apk}" | sed -n "s/^.*certificate SHA-1 digest:[[:space:]]*//p" | sed -e "s/^/    /"
-                echo ""
+                if [ -n "${APKSIGNER}" ]; then
+                  echo "  Signing cert SHA-1 (from apksigner --print-certs):"
+                  "${APKSIGNER}" verify --print-certs "${apk}" | sed -n "s/^.*certificate SHA-1 digest:[[:space:]]*//p" | sed -e "s/^/    /"
+                  echo ""
+                fi
                 echo "  Signing cert SHA-1 (extracted from APK via tools/print_apk_sha1.py):"
-                ANDROID_SDK_ROOT="${SDKROOT}" python "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
+                ANDROID_SDK_ROOT="${SDKROOT}" python3 "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
                 echo ""
                 echo "  META-INF entries (for debugging):"
                 unzip -Z1 "${apk}" | sed -n "s#^META-INF/#META-INF/#p" | sed -e "s/^/    /" | head -n 50 || true
