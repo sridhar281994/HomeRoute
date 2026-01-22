@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getContact, getProperty, getSession, toApiUrl } from "../api";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { sharePost } from "../share";
 
 export default function PropertyPage() {
   const { id } = useParams();
@@ -49,6 +50,30 @@ export default function PropertyPage() {
           {p.title}
         </p>
         <div className="spacer" />
+        <button
+          type="button"
+          title="Share"
+          aria-label="Share"
+          onClick={async () => {
+            const title = String(p.title || "Property").trim() || "Property";
+            const adv = String(p.adv_number || p.advNo || p.id || "").trim();
+            const meta = [
+              adv ? `Ad #${adv}` : "",
+              String(p.rent_sale || "").trim(),
+              String(p.property_type || "").trim(),
+              String(p.price_display || "").trim(),
+              String(p.location_display || "").trim(),
+            ]
+              .filter(Boolean)
+              .join(" • ");
+            const url = pidOk ? `${window.location.origin}/property/${pid}` : window.location.href;
+            const res = await sharePost({ title, text: meta ? `${title}\n${meta}` : title, url });
+            if (res === "copied") setMsg("Copied share text to clipboard.");
+          }}
+          style={{ padding: "8px 10px", minWidth: 44 }}
+        >
+          📤
+        </button>
         <Link to="/home">Back</Link>
       </div>
       <p className="muted">
