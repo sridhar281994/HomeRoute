@@ -182,6 +182,7 @@ export function listProperties(params: {
   area?: string;
   sort_budget?: string;
   posted_within_days?: string;
+  limit?: number;
 }) {
   const sp = new URLSearchParams();
   if (params.q) sp.set("q", params.q);
@@ -194,6 +195,7 @@ export function listProperties(params: {
   if (params.area) sp.set("area", params.area);
   if (params.sort_budget) sp.set("sort_budget", params.sort_budget);
   if (params.posted_within_days) sp.set("posted_within_days", params.posted_within_days);
+  if (params.limit != null) sp.set("limit", String(params.limit));
   const qs = sp.toString() ? `?${sp.toString()}` : "";
   return api<{ items: any[] }>(`/properties${qs}`);
 }

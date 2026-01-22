@@ -13,14 +13,17 @@ from kivy.properties import (
     StringProperty,
 )
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.checkbox import CheckBox
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import Screen
+from kivy.uix.textinput import TextInput
 from kivy.graphics import Color, Line, RoundedRectangle
 
-from frontend_app.utils.android_location import get_last_known_location
+from frontend_app.utils.android_location import get_last_known_location, open_location_settings
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions
 from frontend_app.utils.api import (
     ApiError,
@@ -36,6 +39,7 @@ from frontend_app.utils.api import (
 )
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 
+from screens.gestures import GestureNavigationMixin
 
 def _popup(title: str, message: str) -> None:
     def _open(*_):
@@ -71,7 +75,109 @@ class FilterPopup(Popup):
     home = ObjectProperty(None)
 
 
-class HomeScreen(Screen):
+class AreaSelectPopup(Popup):
+    """
+    Multi-select picker for Areas with search + checkboxes.
+    """
+
+    home = ObjectProperty(None)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.title = "Select Areas"
+        self.size_hint = (0.95, 0.9)
+        self.auto_dismiss = True
+        self._query = ""
+        self._selected: set[str] = set()
+        try:
+            if self.home is not None:
+                self._selected = set([str(x).strip() for x in (self.home.selected_areas or []) if str(x).strip()])
+        except Exception:
+            self._selected = set()
+        self._build()
+
+    def _areas_all(self) -> list[str]:
+        try:
+            opts = list(getattr(self.home, "area_options", []) or [])
+        except Exception:
+            opts = []
+        opts = [str(x).strip() for x in opts if str(x).strip() and str(x).strip().lower() != "any"]
+        return opts
+
+    def _areas_filtered(self) -> list[str]:
+        q = str(getattr(self, "_query", "") or "").strip().lower()
+        items = self._areas_all()
+        if not q:
+            return items
+        return [x for x in items if q in x.lower()]
+
+    def _build(self) -> None:
+        root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
+
+        search = TextInput(hint_text="Search areas…", multiline=False, size_hint_y=None, height=dp(44))
+
+        list_wrap = ScrollView(do_scroll_x=False)
+        grid = GridLayout(cols=1, spacing=dp(6), size_hint_y=None)
+        grid.bind(minimum_height=grid.setter("height"))
+        list_wrap.add_widget(grid)
+
+        def rebuild(*_):
+            grid.clear_widgets()
+            for a in self._areas_filtered():
+                row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(42), spacing=dp(10))
+                cb = CheckBox(active=(a in self._selected), size_hint=(None, None), size=(dp(32), dp(32)))
+                lbl = Label(text=a, halign="left", valign="middle", color=(1, 1, 1, 0.92))
+                lbl.text_size = (0, None)
+
+                def _toggle(_cb, value, a=a):
+                    if bool(value):
+                        self._selected.add(a)
+                    else:
+                        self._selected.discard(a)
+
+                cb.bind(active=_toggle)
+                row.add_widget(cb)
+                row.add_widget(lbl)
+                grid.add_widget(row)
+
+            if not self._areas_all():
+                grid.add_widget(Label(text="No areas available.", size_hint_y=None, height=dp(32), color=(1, 1, 1, 0.75)))
+
+        def on_search(*_):
+            self._query = (search.text or "").strip()
+            rebuild()
+
+        search.bind(text=lambda *_: on_search())
+
+        btns = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
+        btn_clear = Factory.AppButton(text="Clear")
+        btn_apply = Factory.AppButton(text="Apply")
+        btns.add_widget(btn_clear)
+        btns.add_widget(btn_apply)
+
+        def do_clear(*_):
+            self._selected = set()
+            rebuild()
+
+        def do_apply(*_):
+            try:
+                if self.home is not None:
+                    self.home.selected_areas = sorted(self._selected)
+            except Exception:
+                pass
+            self.dismiss()
+
+        btn_clear.bind(on_release=do_clear)
+        btn_apply.bind(on_release=do_apply)
+
+        root.add_widget(search)
+        root.add_widget(list_wrap)
+        root.add_widget(btns)
+        self.content = root
+        rebuild()
+
+
+class HomeScreen(GestureNavigationMixin, Screen):
     """
     Home / Property Feed + Search & Filters.
     """
@@ -84,6 +190,7 @@ class HomeScreen(Screen):
     state_value = StringProperty("Any")
     district_value = StringProperty("Any")
     area_value = StringProperty("Any")
+    selected_areas = ListProperty([])
     radius_km = StringProperty("20")
     gps_status = StringProperty("GPS not available (showing non-nearby results).")
     gps_msg = StringProperty("")
@@ -91,6 +198,8 @@ class HomeScreen(Screen):
     max_price = StringProperty("")
     sort_budget = StringProperty("Any (Newest)")
     posted_within_days = StringProperty("Any")
+    need_search = StringProperty("")
+    need_values_filtered = ListProperty(["Any"])
 
     state_options = ListProperty(["Any"])
     district_options = ListProperty(["Any"])
@@ -163,6 +272,17 @@ class HomeScreen(Screen):
         if self.manager:
             self.manager.current = "welcome"
 
+    def go_back(self):
+        """
+        Swipe-back handler.
+        Home is the root screen for logged-in users; for guests we go back to Welcome.
+        """
+        if not self.manager:
+            return
+        if self.is_logged_in:
+            return
+        self.manager.current = "welcome"
+
     def go_my_posts(self):
         if not self.is_logged_in:
             _popup("Login required", "Please login to view My Posts.")
@@ -214,6 +334,9 @@ class HomeScreen(Screen):
 
     def open_filters(self):
         FilterPopup(home=self).open()
+
+    def open_area_picker(self):
+        AreaSelectPopup(home=self).open()
 
     # -----------------------
     # Filter option loaders (State/District/Area)
@@ -326,6 +449,7 @@ class HomeScreen(Screen):
     def on_district_selected(self, *_):
         self.area_value = "Any"
         self.area_options = ["Any"]
+        self.selected_areas = []
         state = self._norm_any(self.state_value)
         district = self._norm_any(self.district_value)
         if not state or not district:
@@ -380,7 +504,40 @@ class HomeScreen(Screen):
         """
         Manual action from Home screen button.
         """
-        self._ensure_gps_best_effort()
+        def after(ok: bool) -> None:
+            # Always log so we can debug issues via `adb logcat` / console output.
+            try:
+                print("[GPS] Enable GPS pressed. permission_ok=", bool(ok))
+            except Exception:
+                pass
+
+            if not ok:
+                self._gps = None
+                self.gps_status = "GPS not available (showing non-nearby results)."
+                self.gps_msg = "Location permission denied."
+                return
+
+            loc = get_last_known_location()
+            try:
+                print("[GPS] last_known_location=", loc)
+            except Exception:
+                pass
+
+            if self._is_valid_gps(loc):
+                self._gps = (float(loc[0]), float(loc[1]))
+                self.gps_status = "GPS enabled (showing nearby results)."
+                self.gps_msg = ""
+                # Immediately refresh so the user sees nearby results.
+                Clock.schedule_once(lambda *_: self.refresh(), 0)
+                return
+
+            # Permissions are granted, but we have no fix yet (often because Location is OFF).
+            self._gps = None
+            self.gps_status = "GPS is off (showing non-nearby results)."
+            self.gps_msg = "Turn on Location/GPS in settings, then tap Enable GPS again."
+            open_location_settings()
+
+        ensure_permissions(required_location_permissions(), on_result=after)
 
     def feed_card(self, raw: dict[str, Any]) -> BoxLayout:
         """
@@ -626,6 +783,7 @@ class HomeScreen(Screen):
 
                 def apply(*_):
                     setattr(self, "need_values", deduped)
+                    self.need_values_filtered = list(deduped)
                     warning = str(data.get("warning") or "").strip()
                     if warning and not getattr(self, "_warned_categories", False):
                         self._warned_categories = True
@@ -643,6 +801,29 @@ class HomeScreen(Screen):
 
         Thread(target=work, daemon=True).start()
 
+    def apply_need_filter(self) -> None:
+        """
+        Filter need_values based on need_search (searchable category picker).
+        """
+        try:
+            q = str(self.need_search or "").strip().lower()
+        except Exception:
+            q = ""
+        values = list(self.need_values or [])
+        if not q:
+            self.need_values_filtered = values
+            return
+        out: list[str] = []
+        for v in values:
+            s = str(v or "").strip()
+            if not s:
+                continue
+            if s.lower() == "any":
+                continue
+            if q in s.lower():
+                out.append(s)
+        self.need_values_filtered = ["Any"] + out
+
     def refresh(self):
         if self.is_loading:
             return
@@ -659,7 +840,8 @@ class HomeScreen(Screen):
                     max_price = ""
                 state = self._norm_any(self.state_value)
                 district = self._norm_any(self.district_value)
-                area = self._norm_any(self.area_value)
+                sel = [str(x).strip() for x in (self.selected_areas or []) if str(x).strip()]
+                area = ",".join(sel) if sel else self._norm_any(self.area_value)
 
                 sort_budget = (self.sort_budget or "").strip()
                 sort_budget_param = ""
@@ -698,7 +880,7 @@ class HomeScreen(Screen):
                         district=district,
                         area=area,
                         posted_within_days=posted_param,
-                        limit=60,
+                        limit=20,
                     )
                     # Nearby results require ads to have GPS coords. If none match (common),
                     # fall back to normal listing so refresh never "empties" the Home feed.
@@ -771,6 +953,32 @@ class HomeScreen(Screen):
         from threading import Thread
 
         Thread(target=work, daemon=True).start()
+
+    # -----------------------
+    # Gestures (pull-to-refresh)
+    # -----------------------
+    def gesture_can_refresh(self) -> bool:
+        """
+        Only allow pull-to-refresh if the feed scroll view is already at the top.
+        """
+        try:
+            if self.is_loading:
+                return False
+            sv = self.ids.get("feed_scroll")
+            if sv is None:
+                return False
+            # Kivy ScrollView: scroll_y == 1 means top.
+            return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.99
+        except Exception:
+            return False
+
+    def gesture_refresh(self) -> None:
+        # Mirror the explicit Refresh button behavior.
+        try:
+            print("[GESTURE] pull-to-refresh")
+        except Exception:
+            pass
+        self.refresh()
 
     def go_profile(self):
         if not self.is_logged_in:

@@ -1,10 +1,10 @@
 # Shiny purple theme (professional)
 # NOTE: keep names stable to avoid touching every screen rule.
-#:set BG_PURPLE (0.11, 0.02, 0.23, 1)               # deep purple base (web-like)
-#:set SHINE_PURPLE (0.66, 0.33, 0.97, 0.26)         # purple shine
-#:set SHINE_WHITE (1, 1, 1, 0.10)
-#:set PANEL_BG (1, 1, 1, 0.14)
-#:set CARD_BG (0, 0, 0, 0.35)
+#:set BG_PURPLE (0.15, 0.05, 0.30, 1)               # lighter purple base
+#:set SHINE_PURPLE (0.66, 0.33, 0.97, 0.30)         # purple shine (slightly stronger)
+#:set SHINE_WHITE (1, 1, 1, 0.14)
+#:set PANEL_BG (1, 1, 1, 0.17)
+#:set CARD_BG (0, 0, 0, 0.28)
 #:set TEXT_MAIN (1, 1, 1, 0.92)
 #:set TEXT_MUTED (1, 1, 1, 0.68)
 #:set ACCENT_PURPLE (0.66, 0.33, 0.97, 1)
@@ -541,6 +541,14 @@
                         size_hint_y: None
                         height: dp(44)
                         on_press: root.send_otp_to_user()
+
+                AppButton:
+                    text: "Login via Gmail"
+                    size_hint_y: None
+                    height: dp(44)
+                    background_color: (1, 1, 1, 0.96)
+                    color: (0.12, 0.12, 0.12, 1)
+                    on_release: root.google_login()
 
                 # OTP Box
                 BoxLayout:
@@ -1321,14 +1329,6 @@
                     on_release: root.save_profile()
 
                 AppButton:
-                    text: "Login via Gmail"
-                    size_hint_y: None
-                    height: dp(44)
-                    background_color: (1, 1, 1, 0.96)
-                    color: (0.12, 0.12, 0.12, 1)
-                    on_release: root.google_login()
-
-                AppButton:
                     text: "Back"
                     size_hint_y: None
                     height: dp(44)
@@ -1475,6 +1475,7 @@
                 color: TEXT_MUTED
 
             ScrollView:
+                id: feed_scroll
                 size_hint_y: 1
                 do_scroll_x: False
                 bar_width: dp(6)
@@ -1611,14 +1612,24 @@
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
-                        PrettySpinner:
-                            text: root.home.area_value if root.home else "Any"
-                            values: root.home.area_options if root.home else ["Any"]
-                            disabled: (not root.home) or (root.home.state_value == "Any") or (root.home.district_value == "Any")
-                            on_text:
-                                if root.home: root.home.area_value = self.text
+                        BoxLayout:
+                            orientation: "horizontal"
                             size_hint_y: None
                             height: dp(48)
+                            spacing: dp(8)
+                            AppButton:
+                                text: "Select Areas"
+                                size_hint_x: None
+                                width: dp(160)
+                                disabled: (not root.home) or (root.home.state_value == "Any") or (root.home.district_value == "Any")
+                                on_release:
+                                    if root.home: root.home.open_area_picker()
+                            Label:
+                                text: (", ".join(root.home.selected_areas) if root.home and root.home.selected_areas else "Any")
+                                color: TEXT_MUTED
+                                halign: "left"
+                                valign: "middle"
+                                text_size: self.size
 
                     BoxLayout:
                         orientation: "vertical"
@@ -1680,9 +1691,18 @@
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
+                        TextInput:
+                            text: root.home.need_search if root.home else ""
+                            hint_text: "Search category…"
+                            multiline: False
+                            on_text:
+                                if root.home: root.home.need_search = self.text
+                                if root.home: root.home.apply_need_filter()
+                            size_hint_y: None
+                            height: dp(44)
                         PrettySpinner:
                             text: root.home.need_category if root.home else "Any"
-                            values: root.home.need_values if root.home else ["Any"]
+                            values: root.home.need_values_filtered if root.home else ["Any"]
                             on_text:
                                 if root.home: root.home.need_category = self.text
                             size_hint_y: None

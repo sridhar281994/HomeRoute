@@ -32,3 +32,25 @@ def get_last_known_location() -> tuple[float, float] | None:
     except Exception:
         return None
 
+
+def open_location_settings() -> None:
+    """
+    Best-effort: open Android Location settings so the user can enable GPS.
+    No-op on non-Android platforms.
+    """
+    if platform != "android":
+        return
+    try:
+        from jnius import autoclass  # type: ignore
+
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        Intent = autoclass("android.content.Intent")
+        Settings = autoclass("android.provider.Settings")
+
+        act = PythonActivity.mActivity
+        intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+        act.startActivity(intent)
+    except Exception:
+        # Never crash UI if Intent fails.
+        return
+

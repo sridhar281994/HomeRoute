@@ -382,10 +382,23 @@ def _free_contact_limit() -> int:
 
 
 def _public_image_url(file_path: str) -> str:
+    """
+    Convert a stored DB file path into a public URL under /uploads.
+
+    Historical DB values may already include a leading "/uploads/" or "uploads/" prefix.
+    Avoid duplicating that prefix (which would break image rendering as /uploads/uploads/...).
+    """
     fp = (file_path or "").strip()
+    if not fp:
+        return ""
+    fp = fp.replace("\\", "/")
     if fp.startswith("http://") or fp.startswith("https://"):
         return fp
+    if fp.startswith("/uploads/"):
+        return fp
     fp = fp.lstrip("/")
+    if fp.startswith("uploads/"):
+        fp = fp[len("uploads/") :]
     return f"/uploads/{fp}"
 
 
@@ -487,10 +500,12 @@ def _user_out(u: User) -> dict[str, Any]:
     img_url = ""
     if img:
         try:
-            safe = img.lstrip("/")
-            disk_path = os.path.join(_uploads_dir(), safe)
+            safe = img.lstrip("/").replace("\\", "/")
+            # Historical values might already include "uploads/".
+            rel = safe[len("uploads/") :] if safe.startswith("uploads/") else safe
+            disk_path = os.path.join(_uploads_dir(), rel)
             if os.path.exists(disk_path):
-                img_url = _public_image_url(safe)
+                img_url = _public_image_url(rel)
         except Exception:
             img_url = ""
     return {
@@ -1712,6 +1727,18 @@ def _apply_contacted_flags(db: Session, me: User | None, items: list[dict[str, A
             item["contacted"] = pid in contacted
 
 
+def _split_csv_values(v: str | None) -> list[str]:
+    """
+    Parse a comma-separated query param into a clean list.
+    Used for multi-select filters (e.g. area=a,b,c).
+    """
+    raw = (v or "").strip()
+    if not raw:
+        return []
+    parts = [p.strip() for p in raw.split(",")]
+    return [p for p in parts if p]
+
+
 @app.get("/properties")
 def list_properties(
     db: Annotated[Session, Depends(get_db)],
@@ -1723,6 +1750,7 @@ def list_properties(
     state: str | None = Query(default=None),
     district: str | None = Query(default=None),
     area: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
     sort_budget: str | None = Query(default=None),  # top|bottom|asc|desc
     posted_within_days: int | None = Query(default=None, ge=1, le=365),
 ):
@@ -1731,6 +1759,9 @@ def list_properties(
     area_in = (area or "").strip()
     state_norm = _norm_key(state_in)
     district_norm = _norm_key(district_in)
+    area_list = _split_csv_values(area_in)
+    area_norms = [_norm_key(x) for x in area_list]
+    area_norms = [x for x in area_norms if x]
     area_norm = _norm_key(area_in)
 
     # Only approved listings from approved (non-suspended) owners are visible.
@@ -1751,7 +1782,9 @@ def list_properties(
         stmt = stmt.where(Property.state_normalized == state_norm)
     if district_norm:
         stmt = stmt.where(Property.district_normalized == district_norm)
-    if area_norm:
+    if area_norms:
+        stmt = stmt.where(Property.area_normalized.in_(area_norms))
+    elif area_norm:
         stmt = stmt.where(Property.area_normalized == area_norm)
     if q:
         q_like = f"%{q.strip()}%"
@@ -1767,7 +1800,7 @@ def list_properties(
         now = dt.datetime.now(dt.timezone.utc)
         stmt = stmt.where(Property.created_at >= (now - dt.timedelta(days=int(posted_within_days))))
 
-    rows = db.execute(stmt).all()
+    rows = db.execute(stmt.limit(int(limit))).all()
     user_lat = None
     user_lon = None
     if me and _is_valid_gps(getattr(me, "gps_lat", None), getattr(me, "gps_lng", None)):
@@ -1937,7 +1970,7 @@ def list_nearby_properties(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
     radius_km: float = Query(default=20.0, gt=0, le=500),
-    limit: int = Query(default=60, ge=1, le=200),
+    limit: int = Query(default=20, ge=1, le=200),
     district: str | None = Query(default=None),
     state: str | None = Query(default=None),
     area: str | None = Query(default=None),
@@ -1957,7 +1990,11 @@ def list_nearby_properties(
     """
     district_norm = _norm_key((district or "").strip())
     state_norm = _norm_key((state or "").strip())
-    area_norm = _norm_key((area or "").strip())
+    area_in = (area or "").strip()
+    area_list = _split_csv_values(area_in)
+    area_norms = [_norm_key(x) for x in area_list]
+    area_norms = [x for x in area_norms if x]
+    area_norm = _norm_key(area_in)
 
     if me and _is_valid_gps(lat, lon):
         me.gps_lat = float(lat)
@@ -1986,7 +2023,9 @@ def list_nearby_properties(
         stmt = stmt.where(Property.district_normalized == district_norm)
     if state_norm:
         stmt = stmt.where(Property.state_normalized == state_norm)
-    if area_norm:
+    if area_norms:
+        stmt = stmt.where(Property.area_normalized.in_(area_norms))
+    elif area_norm:
         stmt = stmt.where(Property.area_normalized == area_norm)
 
     if q:
