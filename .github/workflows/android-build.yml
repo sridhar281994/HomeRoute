@@ -251,3 +251,38 @@ jobs:
           name: quickrent-apk
           path: mobile/bin/*.apk
           if-no-files-found: error
+
+  verify-artifact:
+    name: Verify uploaded artifact (download + SHA-1)
+    needs: build-apk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: quickrent-apk
+          path: downloaded-apk
+
+      - name: Inspect downloaded APK (file SHA-1 + cert SHA-1)
+        run: |
+          set -euo pipefail
+          echo "Downloaded artifact contents:"
+          ls -l downloaded-apk
+          shopt -s nullglob
+          apks=(downloaded-apk/*.apk)
+          if [ "${apks[0]}" = "downloaded-apk/*.apk" ]; then
+            echo "No APKs found in downloaded artifact."
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            echo ""
+            echo "== ${apk} =="
+            echo "  APK file SHA-1:"
+            sha1sum "${apk}" | sed -e "s/^/    /"
+            echo ""
+            echo "  Signing cert SHA-1 (extracted from APK):"
+            python3 tools/print_apk_sha1.py "${apk}" | sed -e "s/^/    /" || true
+          done

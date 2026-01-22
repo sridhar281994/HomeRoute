@@ -1605,31 +1605,32 @@
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
-                        height: dp(82)
+                        height: dp(118)
                         spacing: dp(4)
                         Label:
                             text: "Area (optional)"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
-                        BoxLayout:
-                            orientation: "horizontal"
+                        AppButton:
+                            text: "Select Areas"
+                            disabled: (not root.home) or (root.home.state_value == "Any") or (root.home.district_value == "Any")
+                            on_release:
+                                if root.home: root.home.open_area_picker()
                             size_hint_y: None
                             height: dp(48)
-                            spacing: dp(8)
-                            AppButton:
-                                text: "Select Areas"
-                                size_hint_x: None
-                                width: dp(160)
-                                disabled: (not root.home) or (root.home.state_value == "Any") or (root.home.district_value == "Any")
-                                on_release:
-                                    if root.home: root.home.open_area_picker()
-                            Label:
-                                text: (", ".join(root.home.selected_areas) if root.home and root.home.selected_areas else "Any")
-                                color: TEXT_MUTED
-                                halign: "left"
-                                valign: "middle"
-                                text_size: self.size
+                        Label:
+                            text:
+                                ("Any" if (not root.home) or (not root.home.selected_areas) else (
+                                (", ".join(root.home.selected_areas[:2])) + (
+                                (" (+" + str(len(root.home.selected_areas) - 2) + " more)") if len(root.home.selected_areas) > 2 else ""
+                                )))
+                            color: TEXT_MUTED
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.size
+                            size_hint_y: None
+                            height: dp(44)
 
                     BoxLayout:
                         orientation: "vertical"
@@ -1684,27 +1685,24 @@
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
-                        height: dp(82)
+                        height: dp(96)
                         spacing: dp(4)
                         Label:
                             text: "Need category (materials / services / property)"
                             color: TEXT_MUTED
                             size_hint_y: None
-                            height: dp(22)
+                            height: dp(42)
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.width, None
                         TextInput:
-                            text: root.home.need_search if root.home else ""
-                            hint_text: "Search category…"
+                            text: ("" if (root.home and root.home.need_category == "Any") else (root.home.need_category if root.home else ""))
+                            hint_text: "Type to search…"
                             multiline: False
                             on_text:
-                                if root.home: root.home.need_search = self.text
-                                if root.home: root.home.apply_need_filter()
-                            size_hint_y: None
-                            height: dp(44)
-                        PrettySpinner:
-                            text: root.home.need_category if root.home else "Any"
-                            values: root.home.need_values_filtered if root.home else ["Any"]
-                            on_text:
-                                if root.home: root.home.need_category = self.text
+                                if root.home: root.home.on_need_input_changed(self)
+                            on_focus:
+                                if root.home: root.home.on_need_input_focus(self, self.focus)
                             size_hint_y: None
                             height: dp(48)
 

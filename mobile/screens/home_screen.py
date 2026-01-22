@@ -705,9 +705,19 @@ class HomeScreen(GestureNavigationMixin, Screen):
             ]:
                 if x:
                     meta_lines.append(x)
-            api_link = to_api_url(f"/properties/{pid}") if pid else ""
+            # Prefer linking to the web UI route if hosted on the same domain.
+            api_link = to_api_url(f"/property/{pid}") if pid else ""
+            img_link = ""
+            try:
+                imgs = p.get("images") or []
+                if imgs:
+                    img_link = to_api_url(str((imgs[0] or {}).get("url") or "").strip())
+            except Exception:
+                img_link = ""
             subject = f"{title_s} (Ad #{adv})" if adv else title_s
-            body = "\n".join([x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link] if x])
+            body = "\n".join(
+                [x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link, (f"Image: {img_link}" if img_link else "")] if x]
+            )
 
             launched = share_text(subject=subject, text=body)
             if launched:
@@ -866,6 +876,98 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 out.append(s)
         self.need_values_filtered = ["Any"] + out
 
+    def on_need_input_changed(self, widget) -> None:
+        """
+        Single "Need category" control:
+        - user types into TextInput
+        - dropdown suggestions appear while typing (scrollable)
+        - selecting a suggestion fills the same input
+        """
+        try:
+            if getattr(self, "_suppress_need_dropdown", False):
+                return
+            text = str(getattr(widget, "text", "") or "").strip()
+            # Keep "Any" as the empty/default semantic.
+            self.need_category = text or "Any"
+            self.need_search = text
+            self.apply_need_filter()
+            if getattr(widget, "focus", False):
+                self._open_need_dropdown(widget)
+        except Exception:
+            return
+
+    def on_need_input_focus(self, widget, focused: bool) -> None:
+        try:
+            if getattr(self, "_suppress_need_dropdown", False):
+                return
+            if focused:
+                # Show options immediately on focus.
+                self.need_search = str(getattr(widget, "text", "") or "").strip()
+                self.apply_need_filter()
+                self._open_need_dropdown(widget)
+            else:
+                dd = getattr(self, "_need_dropdown", None)
+                if dd is not None:
+                    dd.dismiss()
+        except Exception:
+            return
+
+    def _select_need_value(self, value: str, widget) -> None:
+        from kivy.clock import Clock
+
+        v = str(value or "").strip() or "Any"
+        self.need_category = v
+        self.need_search = "" if v.lower() == "any" else v
+        self.apply_need_filter()
+        self._suppress_need_dropdown = True
+        try:
+            widget.text = "" if v.lower() == "any" else v
+        except Exception:
+            pass
+        dd = getattr(self, "_need_dropdown", None)
+        if dd is not None:
+            dd.dismiss()
+
+        def _unsuppress(*_):
+            self._suppress_need_dropdown = False
+
+        Clock.schedule_once(_unsuppress, 0.15)
+
+    def _open_need_dropdown(self, widget) -> None:
+        from kivy.metrics import dp
+        from kivy.uix.button import Button
+        from kivy.uix.dropdown import DropDown
+
+        dd = getattr(self, "_need_dropdown", None)
+        if dd is not None:
+            try:
+                dd.dismiss()
+            except Exception:
+                pass
+            try:
+                dd.clear_widgets()
+            except Exception:
+                pass
+        dd = DropDown(auto_width=False)
+        dd.width = getattr(widget, "width", dp(320))
+        dd.max_height = dp(260)
+
+        values = list(self.need_values_filtered or []) or ["Any"]
+        # Cap to keep the dropdown responsive.
+        for raw in values[:160]:
+            label = str(raw or "").strip()
+            if not label:
+                continue
+            btn = Button(text=label, size_hint_y=None, height=dp(44))
+            btn.bind(on_release=lambda _btn, v=label: self._select_need_value(v, widget))
+            dd.add_widget(btn)
+
+        self._need_dropdown = dd
+        try:
+            dd.open(widget)
+        except Exception:
+            pass
+
     def refresh(self):
         if self.is_loading:
             return
@@ -937,15 +1039,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
                             area=area,
                             sort_budget=sort_budget_param,
                             posted_within_days=posted_param,
-                        )
-                        # Keep GPS on, but communicate fallback.
-                        Clock.schedule_once(
-                            lambda *_: setattr(
-                                self,
-                                "gps_status",
-                                "GPS enabled (no nearby ads found; showing all results).",
-                            ),
-                            0,
                         )
                 else:
                     data = api_list_properties(
