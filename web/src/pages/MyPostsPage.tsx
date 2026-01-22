@@ -133,6 +133,9 @@ export default function MyPostsPage() {
                           <div className="post-media placeholder" aria-hidden="true">
                             <div className="media-placeholder" />
                             <div className="media-placeholder" />
+                            <div className="muted" style={{ gridColumn: "1 / -1", textAlign: "center" }}>
+                              No Photos
+                            </div>
                           </div>
                         )}
 

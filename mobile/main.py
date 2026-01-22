@@ -64,6 +64,12 @@ class QuickRentApp(App):
         if app_regular:
             LabelBase.register(name="AppFont", fn_regular=app_regular, fn_bold=app_bold or app_regular)
 
+        # Cursive tagline font (bundled with the app).
+        cursive = resource_find("fonts/DancingScript.ttf")
+        if cursive:
+            # Use the same file for regular/bold; the font itself contains multiple weights.
+            LabelBase.register(name="CursiveFont", fn_regular=cursive, fn_bold=cursive)
+
         emoji_candidates: list[str] = []
         env_path = (os.environ.get("EMOJI_FONT_PATH") or "").strip()
         if env_path:

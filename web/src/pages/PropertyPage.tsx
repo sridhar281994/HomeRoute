@@ -101,6 +101,9 @@ export default function PropertyPage() {
               <div className="post-media placeholder" aria-hidden="true" style={{ marginTop: 10 }}>
                 <div className="media-placeholder" />
                 <div className="media-placeholder" />
+                <div className="muted" style={{ gridColumn: "1 / -1", textAlign: "center" }}>
+                  No Photos
+                </div>
               </div>
             )}
           </div>
