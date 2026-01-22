@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  getCategoryCatalog,
   getMe,
   getSession,
   listLocationAreas,
@@ -24,7 +25,7 @@ export default function OwnerAddPage() {
   const [area, setArea] = useState<string>(localStorage.getItem("pd_area") || "");
   const [price, setPrice] = useState("");
   const [rentSale, setRentSale] = useState("rent");
-  const [category, setCategory] = useState<"materials" | "services" | "property">("property");
+  const [propertyType, setPropertyType] = useState<string>("");
   const [contactPhone, setContactPhone] = useState("");
   const [useCompanyName, setUseCompanyName] = useState<boolean>(false);
   const [companyName, setCompanyName] = useState<string>(((s.user as any)?.company_name as string) || "");
@@ -36,6 +37,8 @@ export default function OwnerAddPage() {
   const [mediaMsg, setMediaMsg] = useState<string>("");
   const [myAds, setMyAds] = useState<any[]>([]);
   const [myAdsMsg, setMyAdsMsg] = useState<string>("");
+  const [catalog, setCatalog] = useState<any>(null);
+  const [categoryMsg, setCategoryMsg] = useState<string>("");
 
   function validateSelectedMedia(list: FileList | null): { ok: boolean; message: string; images: File[]; videos: File[] } {
     const arr = list ? Array.from(list) : [];
@@ -62,6 +65,32 @@ export default function OwnerAddPage() {
     // Default to "Yes" if company name already exists.
     const existing = (((getSession().user as any)?.company_name as string) || "").trim();
     if (existing) setUseCompanyName(true);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const c = await getCategoryCatalog();
+        setCatalog(c);
+        const warn = String((c as any)?.warning || "").trim();
+        setCategoryMsg(warn);
+        // Default to a sensible property category if user hasn't chosen one.
+        if (!propertyType) {
+          const all: string[] = [];
+          for (const g of (c?.categories || []) as Array<{ items: string[] }>) {
+            for (const it of g.items || []) {
+              const label = String(it || "").trim();
+              if (label) all.push(label);
+            }
+          }
+          const pick = all.find((x) => x.toLowerCase().includes("apartment")) || all[0] || "";
+          if (pick) setPropertyType(pick);
+        }
+      } catch {
+        setCategoryMsg("Categories unavailable. Check API /meta/categories.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -157,6 +186,14 @@ export default function OwnerAddPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.token]);
 
+  const needGroups = (() => {
+    const cats = (catalog?.categories || []) as Array<{ group: string; items: string[] }>;
+    const grouped = cats
+      .map((g) => ({ group: String(g.group || "").trim(), items: (g.items || []).map((x) => String(x || "").trim()).filter(Boolean) }))
+      .filter((g) => g.group && g.items.length);
+    return grouped;
+  })();
+
   if (isLocked) {
     return (
       <GuestGate
@@ -236,12 +273,20 @@ export default function OwnerAddPage() {
           <input value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
         <div className="col-6">
-          <label className="muted">Category (materials / services / property)</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value as any)}>
-            <option value="materials">materials</option>
-            <option value="services">services</option>
-            <option value="property">property</option>
+          <label className="muted">Need category (materials / services / property)</label>
+          <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
+            <option value="">{needGroups.length ? "Select category…" : "Loading…"}</option>
+            {needGroups.map((g) => (
+              <optgroup key={g.group} label={g.group}>
+                {g.items.map((it) => (
+                  <option key={`${g.group}:${it}`} value={it}>
+                    {it}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
+          {categoryMsg ? <div className="muted" style={{ marginTop: 6 }}>{categoryMsg}</div> : null}
         </div>
         <div className="col-6">
           <label className="muted">Publish with company name?</label>
@@ -341,6 +386,7 @@ export default function OwnerAddPage() {
                 if (!area) throw new Error("Select area.");
                 if (areaOptions.length && !areaOptions.includes(area)) throw new Error("Invalid area selection.");
                 if (!title.trim()) throw new Error("Enter title.");
+                if (!propertyType.trim()) throw new Error("Select need category.");
                 if (useCompanyName && !companyName.trim()) throw new Error("Please enter company name (or select No).");
 
                 // GPS is optional (State/District/Area are mandatory).
@@ -362,7 +408,7 @@ export default function OwnerAddPage() {
                   address: "",
                   price: Number(price || 0),
                   rent_sale: rentSale,
-                  property_type: category,
+                  property_type: propertyType.trim(),
                   contact_phone: contactPhone,
                   contact_email: "",
                   company_name: useCompanyName ? companyName.trim() : "",

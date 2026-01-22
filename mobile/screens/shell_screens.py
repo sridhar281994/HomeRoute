@@ -350,7 +350,7 @@ class SettingsScreen(Screen):
             if self.ids.get("email_current"):
                 self.ids["email_current"].text = self.email_value
             if self.ids.get("role_display"):
-                self.ids["role_display"].text = "Owner" if self.role_value.lower() == "owner" else "Customer"
+                self.ids["role_display"].text = "Owner" if self.role_value.lower() in {"owner", "admin"} else "Customer"
         except Exception:
             pass
 
@@ -638,6 +638,8 @@ class OwnerAddPropertyScreen(Screen):
         self._edit_data: dict[str, Any] | None = None
         self.edit_property_id: int | None = None
         self._selected_media: list[str] = []
+        self._category_items_cache: list[str] = []
+        self._preferred_category: str = ""
 
     def start_new(self) -> None:
         """
@@ -646,6 +648,7 @@ class OwnerAddPropertyScreen(Screen):
         self.edit_property_id = None
         self._edit_data = None
         self._selected_media = []
+        self._preferred_category = ""
         try:
             if "submit_btn" in self.ids:
                 self.ids["submit_btn"].text = "Submit (goes to admin review)"
@@ -655,6 +658,8 @@ class OwnerAddPropertyScreen(Screen):
                 self.ids["price_input"].text = ""
             if "contact_phone_input" in self.ids:
                 self.ids["contact_phone_input"].text = ""
+            if "category_spinner" in self.ids:
+                self.ids["category_spinner"].text = "Select Category"
             if "media_summary" in self.ids:
                 self.ids["media_summary"].text = ""
         except Exception:
@@ -691,10 +696,13 @@ class OwnerAddPropertyScreen(Screen):
                 rs = str(p.get("rent_sale") or "").strip().title() or "Rent"
                 self.ids["rent_sale_spinner"].text = rs
             if "category_spinner" in self.ids:
-                cat = str(p.get("property_type") or "").strip().lower() or "property"
-                if cat not in {"materials", "services", "property"}:
-                    cat = "property"
-                self.ids["category_spinner"].text = cat
+                cat = str(p.get("property_type") or "").strip()
+                self._preferred_category = cat
+                sp = self.ids["category_spinner"]
+                if cat and cat in (getattr(sp, "values", None) or []):
+                    sp.text = cat
+                elif (sp.text or "").strip() in {"", "Select Category", "property"}:
+                    sp.text = "Select Category"
             if "contact_phone_input" in self.ids:
                 self.ids["contact_phone_input"].text = str(p.get("contact_phone") or p.get("phone") or "")
             if "media_summary" in self.ids:
@@ -702,6 +710,62 @@ class OwnerAddPropertyScreen(Screen):
                 self.ids["media_summary"].text = ""
         except Exception:
             return
+
+    def category_values(self) -> list[str]:
+        """
+        Values for the Publish Ad category spinner (pulled from /meta/categories).
+        """
+        return list(getattr(self, "_category_items_cache", []) or [])
+
+    def _load_publish_categories(self, preferred: str = "") -> None:
+        """
+        Load publish category list from the backend category catalog.
+        """
+        from threading import Thread
+
+        def work():
+            try:
+                data = api_meta_categories()
+                cats = data.get("categories") or []
+                values: list[str] = []
+                for g in cats:
+                    for it in ((g or {}).get("items") or []):
+                        label = str(it or "").strip()
+                        if label:
+                            values.append(label)
+
+                # De-dup while keeping order
+                seen: set[str] = set()
+                deduped: list[str] = []
+                for v in values:
+                    if v in seen:
+                        continue
+                    seen.add(v)
+                    deduped.append(v)
+
+                def apply(*_):
+                    self._category_items_cache = deduped
+                    if "category_spinner" not in self.ids:
+                        return
+                    sp = self.ids["category_spinner"]
+                    sp.values = self.category_values()
+
+                    pref = (preferred or self._preferred_category or "").strip()
+                    if pref and pref in (sp.values or []):
+                        sp.text = pref
+                        return
+
+                    # Pick a sensible default when empty.
+                    if (sp.text or "").strip() in {"", "Select Category", "property"}:
+                        pick = next((x for x in (sp.values or []) if "apartment" in str(x).lower()), None) or ((sp.values or [None])[0])
+                        sp.text = pick or "Select Category"
+
+                Clock.schedule_once(apply, 0)
+            except Exception:
+                return
+
+        Thread(target=work, daemon=True).start()
+
     def on_pre_enter(self, *args):
         # Load location dropdowns from backend (and default to profile state/district if present).
         u = get_user() or {}
@@ -710,6 +774,7 @@ class OwnerAddPropertyScreen(Screen):
         preferred_district = str(p.get("district") or u.get("district") or "").strip()
         preferred_area = str(p.get("area") or "").strip()
         self._apply_edit_prefill()
+        self._load_publish_categories(str(p.get("property_type") or "").strip())
 
         from threading import Thread
 
@@ -933,7 +998,7 @@ class OwnerAddPropertyScreen(Screen):
         state = (self.ids.get("state_spinner").text or "").strip() if self.ids.get("state_spinner") else ""
         district = (self.ids.get("district_spinner").text or "").strip() if self.ids.get("district_spinner") else ""
         area = (self.ids.get("area_spinner").text or "").strip() if self.ids.get("area_spinner") else ""
-        category = (self.ids.get("category_spinner").text or "").strip().lower() if self.ids.get("category_spinner") else "property"
+        category = (self.ids.get("category_spinner").text or "").strip() if self.ids.get("category_spinner") else ""
         price_text = (self.ids.get("price_input").text or "").strip() if self.ids.get("price_input") else ""
         rent_sale = (self.ids.get("rent_sale_spinner").text or "").strip().lower() if self.ids.get("rent_sale_spinner") else "rent"
         contact_phone = (self.ids.get("contact_phone_input").text or "").strip() if self.ids.get("contact_phone_input") else ""
@@ -950,7 +1015,7 @@ class OwnerAddPropertyScreen(Screen):
         if not title:
             _popup("Error", "Please enter title.")
             return
-        if category not in {"materials", "services", "property"}:
+        if not category or category in {"Select Category"}:
             _popup("Error", "Please select category.")
             return
 

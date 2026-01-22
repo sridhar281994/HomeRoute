@@ -22,7 +22,7 @@ export default function ProfilePage() {
   const s = getSession();
   const isLocked = !s.token;
   const [name, setName] = useState(s.user?.name || "");
-  const [role] = useState((s.user?.role || "").toLowerCase() || "user");
+  const [role, setRole] = useState((s.user?.role || "").toLowerCase() || "user");
   const [phone, setPhone] = useState((s.user as any)?.phone || "");
   const [email, setEmail] = useState(s.user?.email || "");
   const [profileImageUrl, setProfileImageUrl] = useState(((s.user as any)?.profile_image_url as string) || "");
@@ -46,6 +46,7 @@ export default function ProfilePage() {
         setName(u.name || "");
         setEmail(u.email || "");
         setPhone(u.phone || "");
+        setRole(String(u.role || "user").toLowerCase());
         setProfileImageUrl(u.profile_image_url || "");
         setSession({ token: s.token, user: u });
       } catch (e: any) {
@@ -171,7 +172,7 @@ export default function ProfilePage() {
         <div className="col-12 row">
           <div className="col-6" style={{ width: "100%" }}>
             <label className="muted">Role</label>
-            <input value={role === "owner" ? "Publish Ad" : "Customer"} disabled />
+            <input value={role === "owner" || role === "admin" ? "Owner" : "Customer"} disabled />
           </div>
         </div>
 

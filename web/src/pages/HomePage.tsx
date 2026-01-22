@@ -53,6 +53,19 @@ export default function HomePage() {
     return true;
   }
 
+  function cleanGpsUiMessage(msg: any): string {
+    const s = String(msg || "").trim();
+    if (!s) return "GPS permission denied.";
+    // Never show the browser's technical permissions-policy message in the UI.
+    if (s.toLowerCase().includes("geolocation has been disabled in this document by permissions policy")) {
+      return "GPS is blocked by browser policy.";
+    }
+    if (s.toLowerCase().includes("only secure origins are allowed")) {
+      return "GPS requires HTTPS (secure site).";
+    }
+    return s;
+  }
+
   const needGroups = useMemo(() => {
     const cats = (catalog?.categories || []) as Array<{ group: string; items: string[] }>;
     const grouped = cats
@@ -141,7 +154,7 @@ export default function HomePage() {
         setGpsMsg("GPS not available.");
       }
     } catch (e: any) {
-      setGpsMsg(e?.message || "GPS permission denied.");
+      setGpsMsg(cleanGpsUiMessage(e?.message || e));
     }
   }
 
@@ -315,7 +328,7 @@ export default function HomePage() {
       <div className="panel">
       <div className="row">
         <p className="h1" style={{ margin: 0 }}>
-          <span className="home-tagline">Uncover the best, Good luck</span>
+          <span className="home-tagline">Uncover the Best, Good Luck</span>
         </p>
         <div className="spacer" />
         <button onClick={load}>Refresh</button>
@@ -483,6 +496,9 @@ export default function HomePage() {
                     <div className="post-media placeholder" aria-hidden="true">
                       <div className="media-placeholder" />
                       <div className="media-placeholder" />
+                      <div className="muted" style={{ gridColumn: "1 / -1", textAlign: "center" }}>
+                        No Photos
+                      </div>
                     </div>
                   )}
 

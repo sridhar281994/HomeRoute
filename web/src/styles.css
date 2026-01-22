@@ -8,6 +8,14 @@
   --purple:#a855f7;
 }
 
+@font-face{
+  font-family: "DancingScript";
+  src: url("/fonts/DancingScript.ttf") format("truetype");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 html,body{height:100%;}
 *, *::before, *::after{ box-sizing: border-box; }
 body{
@@ -161,7 +169,7 @@ a{color:inherit}
 .h2{font-size:16px; font-weight:800; margin:0;}
 .muted{color:var(--muted);}
 .home-tagline{
-  font-family: cursive;
+  font-family: "DancingScript", cursive;
   font-weight: 700;
   color: var(--text);
 }

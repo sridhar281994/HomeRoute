@@ -86,6 +86,7 @@ class HomeScreen(Screen):
     area_value = StringProperty("Any")
     radius_km = StringProperty("20")
     gps_status = StringProperty("GPS not available (showing non-nearby results).")
+    gps_msg = StringProperty("")
     rent_sale = StringProperty("Any")
     max_price = StringProperty("")
     sort_budget = StringProperty("Any (Newest)")
@@ -367,9 +368,11 @@ class HomeScreen(Screen):
                 self._gps = (float(loc[0]), float(loc[1]))
                 # Never show coordinates in the UI.
                 self.gps_status = "GPS enabled (showing nearby results)."
+                self.gps_msg = ""
             else:
                 self._gps = None
                 self.gps_status = "GPS not available (showing non-nearby results)."
+                self.gps_msg = "" if ok else "GPS permission denied."
 
         ensure_permissions(required_location_permissions(), on_result=after)
 
@@ -514,6 +517,7 @@ class HomeScreen(Screen):
             grid.add_widget(_placeholder_tile())
             grid.add_widget(_placeholder_tile())
             card.add_widget(grid)
+            card.add_widget(Label(text="No Photos", size_hint_y=None, height=22, color=(1, 1, 1, 0.78)))
 
         amenities = p.get("amenities") or []
         card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))

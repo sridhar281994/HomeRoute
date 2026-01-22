@@ -913,7 +913,7 @@
 
                         TextInput:
                             id: role_display
-                            text: "Owner" if root.role_value.lower() == "owner" else "Customer"
+                            text: "Owner" if root.role_value.lower() in ("owner", "admin") else "Customer"
                             hint_text: "Role"
                             size_hint_y: None
                             height: dp(42)
@@ -1413,7 +1413,8 @@
                 height: dp(36)
                 spacing: dp(8)
                 Label:
-                    text: "[b]Uncover the best, Good Luck[/b]"
+                    text: "[b]Uncover the Best, Good Luck[/b]"
+                    font_name: "CursiveFont"
                     halign: "left"
                     valign: "middle"
                     text_size: self.size
@@ -1661,12 +1662,30 @@
                     Widget:
 
                     BoxLayout:
+                        orientation: "horizontal"
+                        size_hint_y: None
+                        height: dp(44)
+                        spacing: dp(8)
+                        AppButton:
+                            text: "Enable GPS"
+                            size_hint_x: None
+                            width: dp(150)
+                            on_release:
+                                if root.home: root.home.enable_gps()
+                        Label:
+                            text: root.home.gps_msg if root.home else ""
+                            color: TEXT_MUTED
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.size
+
+                    BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: dp(82)
                         spacing: dp(4)
                         Label:
-                            text: "Need category"
+                            text: "Need category (materials / services / property)"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
@@ -1756,7 +1775,7 @@
                 height: dp(48)
                 spacing: dp(10)
                 AppButton:
-                    text: "Apply"
+                    text: "Apply filters"
                     on_release:
                         if root.home: root.home.refresh()
                         root.dismiss()
@@ -1989,8 +2008,8 @@
                 height: dp(44)
             PrettySpinner:
                 id: category_spinner
-                text: "property"
-                values: ["materials", "services", "property"]
+                text: "Select Category"
+                values: root.category_values()
                 size_hint_y: None
                 height: dp(44)
             PrettySpinner:
