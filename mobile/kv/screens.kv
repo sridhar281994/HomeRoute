@@ -28,7 +28,10 @@
     # - avoid text spilling off-screen
     halign: "left"
     valign: "middle"
-    text_size: self.size
+    # IMPORTANT: don't bind text_size to (width,height). Doing so can create a
+    # layout loop when other rules bind width/height to texture_size.
+    # Keep only the width constrained; allow height to expand naturally.
+    text_size: (self.width, None)
     shorten: True
     shorten_from: "right"
 
@@ -407,7 +410,9 @@
             width: self.texture_size[0]
             halign: "left"
             valign: "middle"
-            text_size: self.size
+            # Prevent circular dependency:
+            # width -> text_size -> texture_size -> width
+            text_size: (None, None)
         Widget:
         GuestPill:
             opacity: 1 if (app.root and app.root.get_screen("home").is_guest) else 0
@@ -419,6 +424,9 @@
                 color: TEXT_MAIN
                 size_hint: None, None
                 size: self.texture_size
+                # Prevent circular dependency:
+                # size -> text_size -> texture_size -> size
+                text_size: (None, None)
     GridLayout:
         # Match web topbar-links behavior: wrap into 2 columns on narrow screens.
         cols: 2 if self.width < dp(520) else (3 if self.width < dp(720) else 6)
