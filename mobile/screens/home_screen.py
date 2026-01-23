@@ -345,6 +345,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
     is_logged_in = BooleanProperty(False)
     is_guest = BooleanProperty(False)
 
+    # Home header avatar
+    profile_avatar_url = StringProperty("")
+    profile_avatar_letter = StringProperty("U")
+
     def on_pre_enter(self, *args):
         # Gate buttons until user logs in.
         try:
@@ -355,6 +359,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
         except Exception:
             self.is_logged_in = False
             self.is_guest = False
+
+        # Update avatar from cached session user (fast).
+        self._apply_avatar_from_user(get_user() or {})
 
         # Seed preferred location from the stored profile.
         try:
@@ -704,6 +711,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 def apply(*_):
                     self._preferred_state = pref_state
                     self._preferred_district = pref_district
+                    self._apply_avatar_from_user(u)
                     self._apply_preferred_state()
 
                 Clock.schedule_once(apply, 0)
@@ -711,6 +719,22 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 return
 
         Thread(target=work, daemon=True).start()
+
+    def _apply_avatar_from_user(self, u: dict[str, Any]) -> None:
+        """
+        Set Home header avatar (URL or fallback letter).
+        """
+        try:
+            name = str(u.get("name") or u.get("email") or u.get("phone") or "User").strip()
+        except Exception:
+            name = "User"
+        letter = (name[:1].upper() if name else "U") or "U"
+        try:
+            url = to_api_url(str(u.get("profile_image_url") or "").strip())
+        except Exception:
+            url = ""
+        self.profile_avatar_letter = letter
+        self.profile_avatar_url = url
 
     def _apply_preferred_state(self) -> bool:
         pref = str(getattr(self, "_preferred_state", "") or "").strip()
@@ -1059,12 +1083,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
         header.add_widget(hb)
         header.add_widget(Widget())
         btn_share = Factory.AppButton(
-            text="[font=EmojiFont]↗️[/font]",
+            text="Share",
             size_hint=(None, None),
-            width=dp(56),
+            width=dp(96),
             height=dp(40),
         )
-        # Ensure the share icon is visible (emoji can render as white on light button bg).
+        # Ensure the share label is visible.
         try:
             btn_share.background_color = (0.66, 0.33, 0.97, 1)
             btn_share.color = (1, 1, 1, 1)
@@ -1127,7 +1151,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         amenities = [str(x).strip() for x in (p.get("amenities") or []) if str(x).strip()]
         if amenities:
-            card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
             card.add_widget(
                 Label(
                     text=", ".join(amenities),

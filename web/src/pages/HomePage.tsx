@@ -19,6 +19,12 @@ import { sharePost } from "../share";
 export default function HomePage() {
   const nav = useNavigate();
   const session = getSession();
+  const user: any = session.user || {};
+  const profileImageUrl = String(user?.profile_image_url || "").trim();
+  const avatarLetter = String(user?.name || user?.email || user?.phone || "U")
+    .trim()
+    .slice(0, 1)
+    .toUpperCase() || "U";
   const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
@@ -370,6 +376,34 @@ export default function HomePage() {
         </p>
         <div className="spacer" />
         <button
+          type="button"
+          title="Profile"
+          aria-label="Profile"
+          onClick={() => nav("/profile")}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 999,
+            padding: 0,
+            overflow: "hidden",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "1px solid rgba(255,255,255,.18)",
+            background: "rgba(0,0,0,.20)",
+          }}
+        >
+          {profileImageUrl ? (
+            <img
+              src={toApiUrl(profileImageUrl)}
+              alt="Profile"
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            />
+          ) : (
+            <span style={{ fontWeight: 800 }}>{avatarLetter}</span>
+          )}
+        </button>
+        <button
           onClick={() => {
             const s = getSession();
             if (!s.token) {
@@ -612,7 +646,7 @@ export default function HomePage() {
                     }}
                     style={{ padding: "8px 10px", minWidth: 44 }}
                   >
-                    ↗️
+                    Share
                   </button>
                 </div>
 
@@ -645,14 +679,9 @@ export default function HomePage() {
                   )}
 
                   {amenities.length ? (
-                    <>
-                      <div className="h2" style={{ marginTop: 12 }}>
-                        Amenities
-                      </div>
-                      <div className="muted" style={{ marginTop: 6 }}>
-                        {amenities.join(", ")}
-                      </div>
-                    </>
+                    <div className="muted" style={{ marginTop: 12 }}>
+                      {amenities.join(", ")}
+                    </div>
                   ) : null}
 
                   <div className="row" style={{ marginTop: 12, alignItems: "center" }}>

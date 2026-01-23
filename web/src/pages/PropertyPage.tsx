@@ -80,7 +80,7 @@ export default function PropertyPage() {
           }}
           style={{ padding: "8px 10px", minWidth: 44 }}
         >
-          ↗️
+          Share
         </button>
         <Link to="/home">Back</Link>
       </div>
@@ -144,7 +144,6 @@ export default function PropertyPage() {
         {amenities.length ? (
           <div className="col-12">
             <div className="card">
-              <div className="h2">Amenities</div>
               <div className="muted" style={{ marginTop: 6 }}>
                 {amenities.join(", ")}
               </div>

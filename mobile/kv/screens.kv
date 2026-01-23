@@ -84,6 +84,51 @@
             pos: self.x + dp(12), self.center_y - dp(10)
             size: self.width - dp(24), dp(2)
 
+<AvatarButton>:
+    size_hint: None, None
+    size: dp(44), dp(44)
+    background_color: (0, 0, 0, 0)
+    canvas.before:
+        # Clip contents to circle.
+        StencilPush
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [999]
+        StencilUse
+    canvas.after:
+        StencilUnUse
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [999]
+        StencilPop
+        # Border
+        Color:
+            rgba: (1, 1, 1, 0.25)
+        Line:
+            width: 1.0
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 999]
+    AsyncImage:
+        source: root.avatar_source if root.avatar_source else ""
+        allow_stretch: True
+        keep_ratio: False
+        opacity: 1 if root.avatar_source else 0
+    Label:
+        text: (root.avatar_text or "U")
+        halign: "center"
+        valign: "middle"
+        text_size: self.size
+        opacity: 0 if root.avatar_source else 1
+        color: (1, 1, 1, 0.95)
+        canvas.before:
+            Color:
+                rgba: ACCENT_PURPLE
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [999]
+
 <TextInput>:
     font_name: "AppFont"
     background_normal: ""
@@ -425,6 +470,7 @@
                 color: TEXT_MAIN
                 size_hint: None, None
                 size: self.texture_size
+                shorten: False
                 # Prevent circular dependency:
                 # size -> text_size -> texture_size -> size
                 text_size: (None, None)
@@ -1530,19 +1576,22 @@
 
                 Widget:
 
+                AvatarButton:
+                    id: home_avatar_btn
+                    avatar_source: root.profile_avatar_url
+                    avatar_text: root.profile_avatar_letter
+                    on_release: root.go_settings()
+
             WebPanel:
                 size_hint_y: 1
                 spacing: dp(10)
 
                 BoxLayout:
                     size_hint_y: None
-                    height: dp(60)
-                    spacing: dp(10)
-                    AppButton:
-                        text: "[font=EmojiFont]🔄[/font]"
-                        size_hint_x: None
-                        width: dp(56)
-                        on_release: root.refresh()
+                    height: self.minimum_height
+                    spacing: dp(6)
+                    orientation: "vertical"
+
                     Label:
                         text: "[b]Uncover the Best, Good Luck[/b]"
                         font_name: "CursiveFont"
@@ -1552,6 +1601,12 @@
                         shorten: False
                         text_size: (self.width, None)
                         color: TEXT_MAIN
+
+                    AppButton:
+                        text: "Refresh"
+                        size_hint_y: None
+                        height: dp(44)
+                        on_release: root.refresh()
 
                 BoxLayout:
                     size_hint_y: None
@@ -2004,9 +2059,9 @@
                             text_size: self.size
                         Widget:
                         AppButton:
-                            text: "[font=EmojiFont]↗️[/font]"
+                            text: "Share"
                             size_hint_x: None
-                            width: dp(56)
+                            width: dp(110)
                             background_color: ACCENT_PURPLE
                             color: (1, 1, 1, 1)
                             on_release: root.share_current()
@@ -2042,10 +2097,6 @@
                             height: self.minimum_height
 
                     WebCard:
-                        Label:
-                            text: "[b]Amenities[/b]"
-                            size_hint_y: None
-                            height: dp(22)
                         Label:
                             text: (", ".join(root.property_data.get("amenities") or []) if root.property_data.get("amenities") else "—")
                             color: TEXT_MUTED
