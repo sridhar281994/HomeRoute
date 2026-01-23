@@ -230,6 +230,7 @@ class HomeHamburgerMenu(ModalView):
             ("Home", "home"),
             ("My Posts", "my_posts"),
             ("Settings", "settings"),
+            ("Subscription", "subscription"),
             ("Publish Ad", "publish"),
             ("Logout", "logout"),
         ]
@@ -298,6 +299,8 @@ class HomeHamburgerMenu(ModalView):
                 self._home.go_my_posts()
             elif key == "settings":
                 self._home.go_settings()
+            elif key == "subscription":
+                self._home.go_subscription()
             elif key == "publish":
                 self._home.go_publish_ad()
             elif key == "logout":

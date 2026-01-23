@@ -369,6 +369,18 @@ export default function HomePage() {
           <span className="home-tagline">Uncover the Best, Good Luck</span>
         </p>
         <div className="spacer" />
+        <button
+          onClick={() => {
+            const s = getSession();
+            if (!s.token) {
+              nav("/login");
+              return;
+            }
+            nav("/subscription");
+          }}
+        >
+          Subscription
+        </button>
         <button onClick={load}>Refresh</button>
       </div>
 
