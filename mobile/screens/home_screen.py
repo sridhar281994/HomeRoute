@@ -1025,9 +1025,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
         header.add_widget(hb)
         header.add_widget(Widget())
         btn_share = Factory.AppButton(
-            text="Share",
+            text="[font=EmojiFont]↗️[/font]",
             size_hint=(None, None),
-            width=dp(96),
+            width=dp(56),
             height=dp(40),
         )
         btn_share.bind(on_release=do_share)
