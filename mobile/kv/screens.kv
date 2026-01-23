@@ -111,8 +111,9 @@
             rounded_rectangle: [self.x, self.y, self.width, self.height, 999]
     AsyncImage:
         source: root.avatar_source if root.avatar_source else ""
-        allow_stretch: True
-        keep_ratio: False
+        # Kivy deprecated allow_stretch/keep_ratio in favor of fit_mode.
+        # "fill" matches: allow_stretch=True, keep_ratio=False
+        fit_mode: "fill"
         opacity: 1 if root.avatar_source else 0
     Label:
         text: (root.avatar_text or "U")
@@ -463,9 +464,10 @@
             text_size: (None, None)
         Widget:
         GuestPill:
-            opacity: 1 if (app.root and app.root.get_screen("home").is_guest) else 0
-            disabled: not (app.root and app.root.get_screen("home").is_guest)
-            width: dp(110) if (app.root and app.root.get_screen("home").is_guest) else 0
+            # Guard get_screen() to avoid churn/errors during early startup.
+            opacity: 1 if (app.root and app.root.has_screen("home") and app.root.get_screen("home").is_guest) else 0
+            disabled: not (app.root and app.root.has_screen("home") and app.root.get_screen("home").is_guest)
+            width: dp(110) if (app.root and app.root.has_screen("home") and app.root.get_screen("home").is_guest) else 0
             Label:
                 text: "[b]Guest mode[/b]"
                 font_size: sp(12)

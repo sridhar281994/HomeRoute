@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from kivy.app import App
+from kivy.clock import Clock
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
 from kivy.lang import Builder
@@ -32,6 +33,13 @@ class QuickRentApp(App):
     title = "Flatnow.in"
 
     def build(self):
+        # Some screens have heavy layout trees; avoid Clock "too much iteration"
+        # by allowing more iterations and by deferring screen creation.
+        try:
+            Clock.max_iteration = max(int(getattr(Clock, "max_iteration", 20) or 20), 60)
+        except Exception:
+            pass
+
         # Android: keep focused inputs above the soft keyboard (OTP fields, etc).
         # This prevents the keyboard from covering TextInputs on smaller screens.
         try:
@@ -50,21 +58,40 @@ class QuickRentApp(App):
 
         sm = ScreenManager(transition=FadeTransition())
         sm.add_widget(SplashScreen(name="splash"))
-        sm.add_widget(WelcomeScreen(name="welcome"))
-        sm.add_widget(LoginScreen(name="login"))
-        sm.add_widget(RegisterScreen(name="register"))
-        sm.add_widget(ForgotPasswordScreen(name="forgot_password"))
-        sm.add_widget(ResetPasswordScreen(name="reset_password"))
-
-        sm.add_widget(HomeScreen(name="home"))
-        sm.add_widget(MyPostsScreen(name="my_posts"))
-        sm.add_widget(PropertyDetailScreen(name="property_detail"))
-        sm.add_widget(SettingsScreen(name="profile"))
-        sm.add_widget(SubscriptionScreen(name="subscription"))
-
-        sm.add_widget(OwnerAddPropertyScreen(name="owner_add_property"))
-
         sm.current = "splash"
+
+        # Add remaining screens after the first frame, in small batches.
+        # This prevents startup from doing a large number of layout/texture updates
+        # before the app has a chance to render its first frame.
+        pending: list[tuple[type, str]] = [
+            (WelcomeScreen, "welcome"),
+            (LoginScreen, "login"),
+            (RegisterScreen, "register"),
+            (ForgotPasswordScreen, "forgot_password"),
+            (ResetPasswordScreen, "reset_password"),
+            (HomeScreen, "home"),
+            (MyPostsScreen, "my_posts"),
+            (PropertyDetailScreen, "property_detail"),
+            (SettingsScreen, "profile"),
+            (SubscriptionScreen, "subscription"),
+            (OwnerAddPropertyScreen, "owner_add_property"),
+        ]
+
+        def _add_next(_dt=0.0) -> None:
+            if not pending:
+                return
+            cls, name = pending.pop(0)
+            try:
+                if not sm.has_screen(name):
+                    sm.add_widget(cls(name=name))
+            except Exception:
+                # Never crash due to an eager screen build.
+                pass
+            if pending:
+                Clock.schedule_once(_add_next, 0)
+
+        Clock.schedule_once(_add_next, 0.05)
+
         return sm
 
     def _register_fonts(self) -> None:
