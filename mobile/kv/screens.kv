@@ -331,7 +331,9 @@
 <WebTopBar@BoxLayout>:
     orientation: "vertical"
     size_hint_y: None
-    height: self.minimum_height
+    height: self.minimum_height if (app.root and app.root.current == "home") else 0
+    opacity: 1 if (app.root and app.root.current == "home") else 0
+    disabled: not (app.root and app.root.current == "home")
     spacing: dp(10)
     padding: dp(16)
     canvas.before:
