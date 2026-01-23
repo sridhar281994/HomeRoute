@@ -46,7 +46,9 @@
     # - ellipsize long labels instead of overflowing
     halign: "center"
     valign: "middle"
-    text_size: self.size
+    # IMPORTANT: never bind text_size to (width,height) for general widgets.
+    # Width-only keeps text wrapping stable and avoids layout feedback loops.
+    text_size: (self.width, None)
     shorten: True
     shorten_from: "right"
 
@@ -119,7 +121,8 @@
         text: (root.avatar_text or "U")
         halign: "center"
         valign: "middle"
-        text_size: self.size
+        # Constrain alignment without binding to dynamic height rules.
+        text_size: (self.width, self.height)
         opacity: 0 if root.avatar_source else 1
         color: (1, 1, 1, 0.95)
         canvas.before:
@@ -244,7 +247,7 @@
 <NavButtonWrap@NavButton>:
     size_hint_x: 1
     width: 0
-    text_size: self.size
+    text_size: (self.width, None)
     halign: "center"
     valign: "middle"
     padding: [dp(8), dp(6)]
@@ -742,7 +745,7 @@
                                 color: 1, 1, 1, 0.9
                                 halign: "left"
                                 valign: "middle"
-                                text_size: self.size
+                                text_size: (self.width, None)
 
                         BoxLayout:
                             size_hint_y: None
@@ -1694,7 +1697,7 @@
                     text: "[b]Filters[/b]"
                     halign: "left"
                     valign: "middle"
-                    text_size: self.size
+                    text_size: (self.width, None)
                 Widget:
                 AppButton:
                     text: "Close"
@@ -1783,7 +1786,7 @@
                             color: TEXT_MUTED
                             halign: "left"
                             valign: "middle"
-                            text_size: self.size
+                            text_size: (self.width, None)
                             size_hint_y: None
                             height: dp(44)
 
@@ -1816,7 +1819,7 @@
                             color: TEXT_MUTED
                             halign: "left"
                             valign: "middle"
-                            text_size: self.size
+                            text_size: (self.width, None)
                     Widget:
 
                     BoxLayout:
@@ -1835,7 +1838,7 @@
                             color: TEXT_MUTED
                             halign: "left"
                             valign: "middle"
-                            text_size: self.size
+                            text_size: (self.width, None)
 
                     BoxLayout:
                         orientation: "vertical"
@@ -1984,7 +1987,7 @@
                         font_size: sp(18)
                         halign: "left"
                         valign: "middle"
-                        text_size: self.size
+                        text_size: (self.width, None)
                     Widget:
                     AppButton:
                         text: "Refresh"
@@ -2059,7 +2062,7 @@
                             font_size: sp(18)
                             halign: "left"
                             valign: "middle"
-                            text_size: self.size
+                            text_size: (self.width, None)
                         Widget:
                         AppButton:
                             text: "Share"
