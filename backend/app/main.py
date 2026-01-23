@@ -495,8 +495,23 @@ def _public_image_url_if_exists(file_path: str) -> str:
     if fp.startswith(("http://", "https://", "//")):
         return fp
     if fp.startswith("/uploads/"):
-        # Already a public path (can't reliably validate disk path here).
-        return fp
+        # Public path stored in DB. We *can* still validate and also try the
+        # historical nested "uploads/uploads" layout to prevent 404s.
+        rel = fp[len("/uploads/") :].lstrip("/")
+        if not rel:
+            return ""
+        uploads_dir = _uploads_dir()
+        try:
+            direct_path = os.path.join(uploads_dir, rel)
+            if os.path.exists(direct_path):
+                return f"/uploads/{rel}"
+            nested = os.path.join(uploads_dir, "uploads", rel)
+            if os.path.exists(nested):
+                return f"/uploads/uploads/{rel}"
+        except Exception:
+            pass
+        # If missing, omit instead of returning a broken URL.
+        return ""
 
     rel = _normalize_upload_rel_path(fp)
     if not rel:
@@ -1367,11 +1382,17 @@ def _ensure_plans(db: Session) -> None:
     """
     Ensure the four plans exist. This is idempotent.
     """
+    def _env_int(name: str, default: int) -> int:
+        try:
+            return int(os.environ.get(name) or default)
+        except Exception:
+            return int(default)
+
     plans = [
         ("aggressive_10", "Aggressive", 10, 30, 10),
-        ("instant_79", "Instant", 79, 30, 50),
-        ("smart_monthly_199", "Smart", 199, 30, 200),
-        ("business_quarterly_499", "Business", 499, 90, 1000),
+        ("instant_79", "Instant", _env_int("SUBSCRIPTION_PRICE_INSTANT_INR", 79), 30, 50),
+        ("smart_monthly_199", "Smart", _env_int("SUBSCRIPTION_PRICE_SMART_INR", 199), 30, 200),
+        ("business_quarterly_499", "Business", _env_int("SUBSCRIPTION_PRICE_BUSINESS_INR", 499), 90, 1000),
     ]
     for pid, name, price, days, limit in plans:
         rec = db.get(SubscriptionPlan, pid)

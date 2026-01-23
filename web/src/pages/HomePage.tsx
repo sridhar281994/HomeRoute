@@ -369,6 +369,18 @@ export default function HomePage() {
           <span className="home-tagline">Uncover the Best, Good Luck</span>
         </p>
         <div className="spacer" />
+        <button
+          onClick={() => {
+            const s = getSession();
+            if (!s.token) {
+              nav("/login");
+              return;
+            }
+            nav("/subscription");
+          }}
+        >
+          Subscription
+        </button>
         <button onClick={load}>Refresh</button>
       </div>
 
@@ -554,7 +566,9 @@ export default function HomePage() {
           const pidKey = Number.isInteger(pid) ? pid : Number.NaN;
           const shareUrl = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
           const amenities = Array.isArray(p.amenities)
-            ? p.amenities.map((a: any) => String(a).trim()).filter(Boolean)
+            ? p.amenities
+                .map((a: any) => String(a).trim())
+                .filter((v) => v && v !== "—" && v !== "-" && v.toLowerCase() !== "none")
             : [];
           return (
             <div className="col-12" key={p.id}>
@@ -598,7 +612,7 @@ export default function HomePage() {
                     }}
                     style={{ padding: "8px 10px", minWidth: 44 }}
                   >
-                    Share
+                    ↗️
                   </button>
                 </div>
 

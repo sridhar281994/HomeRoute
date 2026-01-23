@@ -23,6 +23,17 @@ class GestureNavigationMixin:
     _PULL_TO_REFRESH_DY = dp(110)
     _PULL_TO_REFRESH_DX_MAX = dp(80)
 
+    def __init__(self, **kwargs):
+        # Mixin init: ensure we don't rely on every Screen overriding on_pre_enter/on_leave
+        # to bind/unbind gestures. This keeps swipe-back consistent across all screens.
+        super().__init__(**kwargs)  # type: ignore[misc]
+        try:
+            # Bind/unbind at Window level so gestures work even if child widgets consume touch.
+            self.bind(on_pre_enter=lambda *_: self.gesture_bind_window())
+            self.bind(on_leave=lambda *_: self.gesture_unbind_window())
+        except Exception:
+            pass
+
     def gesture_bind_window(self) -> None:
         """
         Bind gesture detection at Window level.
@@ -174,6 +185,20 @@ class GestureNavigationMixin:
             if hasattr(self, "back"):
                 getattr(self, "back")()
                 return
+        except Exception:
+            pass
+
+        # Fallback navigation: try to return to a reasonable root screen.
+        try:
+            mgr = getattr(self, "manager", None)
+            if mgr is not None:
+                names = [getattr(s, "name", "") for s in getattr(mgr, "screens", [])]
+                if "home" in names and str(getattr(mgr, "current", "")) != "home":
+                    mgr.current = "home"
+                    return
+                if "welcome" in names and str(getattr(mgr, "current", "")) != "welcome":
+                    mgr.current = "welcome"
+                    return
         except Exception:
             pass
 

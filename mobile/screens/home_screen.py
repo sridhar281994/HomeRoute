@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from kivy.animation import Animation
 from kivy.clock import Clock
+from kivy.core.window import Window
 from kivy.factory import Factory
 from kivy.metrics import dp
 from kivy.properties import (
@@ -15,9 +17,11 @@ from kivy.properties import (
 )
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.checkbox import CheckBox
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
+from kivy.uix.modalview import ModalView
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import Screen
@@ -180,6 +184,131 @@ class AreaSelectPopup(Popup):
         rebuild()
 
 
+class HomeHamburgerMenu(ModalView):
+    """
+    Full-screen modal overlay that anchors a small dropdown panel under the
+    hamburger button. Auto-dismisses on outside tap and animates open (slide+fade).
+    """
+
+    def __init__(self, home: "HomeScreen", anchor_widget: Widget, **kwargs):
+        super().__init__(**kwargs)
+        self._home = home
+        self._anchor = anchor_widget
+        self.size_hint = (1, 1)
+        self.auto_dismiss = True
+        self.background = ""
+        self.background_color = (0, 0, 0, 0)
+
+        # Root overlay that covers the screen; tapping outside the panel dismisses.
+        root = FloatLayout()
+        self._panel = BoxLayout(
+            orientation="vertical",
+            size_hint=(None, None),
+            padding=dp(10),
+            spacing=dp(8),
+        )
+        self._panel.bind(minimum_height=self._panel.setter("height"))
+
+        # Panel background + border (match the app theme).
+        from kivy.graphics import Color, Line, RoundedRectangle
+
+        with self._panel.canvas.before:
+            Color(1, 1, 1, 0.14)
+            self._bg = RoundedRectangle(pos=self._panel.pos, size=self._panel.size, radius=[dp(16)])
+            Color(1, 1, 1, 0.12)
+            self._border = Line(rounded_rectangle=[0, 0, 0, 0, dp(16)], width=1.0)
+
+        def _sync_panel_bg(*_):
+            self._bg.pos = self._panel.pos
+            self._bg.size = self._panel.size
+            self._border.rounded_rectangle = [self._panel.x, self._panel.y, self._panel.width, self._panel.height, dp(16)]
+
+        self._panel.bind(pos=_sync_panel_bg, size=_sync_panel_bg)
+
+        # Menu items (use existing navigation helpers on HomeScreen).
+        items: list[tuple[str, str]] = [
+            ("Home", "home"),
+            ("My Posts", "my_posts"),
+            ("Settings", "settings"),
+            ("Subscription", "subscription"),
+            ("Publish Ad", "publish"),
+            ("Logout", "logout"),
+        ]
+
+        for label, key in items:
+            btn = Factory.AppButton(text=label)
+            btn.size_hint_y = None
+            btn.height = dp(44)
+            # Make logout visually distinct.
+            if key == "logout":
+                btn.color = (0.94, 0.27, 0.27, 1)
+            btn.bind(on_release=lambda _btn, key=key: self._select(key))
+            self._panel.add_widget(btn)
+
+        root.add_widget(self._panel)
+        self.add_widget(root)
+
+        # Track state so HomeScreen can toggle the menu.
+        self.bind(on_dismiss=lambda *_: setattr(self._home, "_hamburger_menu", None))
+
+    def on_open(self, *args):
+        # After layout pass, compute anchor position and animate in.
+        Clock.schedule_once(lambda *_: self._position_and_animate(), 0)
+        return super().on_open(*args)
+
+    def _position_and_animate(self) -> None:
+        # Panel width responsive to screen size.
+        w = min(dp(260), Window.width * 0.78)
+        self._panel.width = w
+        # Ensure height is computed from children.
+        self._panel.height = max(self._panel.minimum_height, dp(44))
+
+        # Anchor position (window coords): use the bottom-left of the hamburger button.
+        try:
+            ax, ay = self._anchor.to_window(self._anchor.x, self._anchor.y)
+            ah = float(getattr(self._anchor, "height", dp(44)))
+        except Exception:
+            ax, ay, ah = (dp(12), Window.height - dp(60), dp(44))
+
+        # Place dropdown directly below the button.
+        top = ay - dp(6)
+        x_target = ax
+        y_target = top - self._panel.height
+
+        # Keep on-screen (still prefers "below").
+        x_target = max(dp(8), min(x_target, Window.width - self._panel.width - dp(8)))
+        y_target = max(dp(8), min(y_target, Window.height - self._panel.height - dp(8)))
+
+        # Start slightly above and transparent, then slide down + fade in.
+        self._panel.opacity = 0.0
+        self._panel.pos = (x_target, y_target + dp(14))
+        Animation.cancel_all(self._panel)
+        Animation(opacity=1.0, y=y_target, d=0.18, t="out_quad").start(self._panel)
+
+    def _select(self, key: str) -> None:
+        # Close first, then navigate (keeps UX snappy and avoids stray touches).
+        try:
+            self.dismiss()
+        except Exception:
+            pass
+
+        def nav(*_):
+            if key == "home":
+                self._home.go_home()
+            elif key == "my_posts":
+                self._home.go_my_posts()
+            elif key == "settings":
+                self._home.go_settings()
+            elif key == "subscription":
+                self._home.go_subscription()
+            elif key == "publish":
+                self._home.go_publish_ad()
+            elif key == "logout":
+                self._home.do_logout()
+
+        Clock.schedule_once(nav, 0)
+
+
 class HomeScreen(GestureNavigationMixin, Screen):
     """
     Home / Property Feed + Search & Filters.
@@ -259,12 +388,44 @@ class HomeScreen(GestureNavigationMixin, Screen):
         self.gesture_bind_window()
 
     def on_leave(self, *args):
+        # Close any open hamburger menu overlay when navigating away.
+        try:
+            menu = getattr(self, "_hamburger_menu", None)
+            if menu is not None:
+                menu.dismiss()
+                self._hamburger_menu = None
+        except Exception:
+            pass
         # Avoid leaking Window bindings when screen is not visible.
         try:
             self.gesture_unbind_window()
         except Exception:
             pass
         return super().on_leave(*args)
+
+    def open_hamburger_menu(self, anchor_widget: Widget) -> None:
+        """
+        Toggle the Home hamburger dropdown menu.
+        """
+        try:
+            menu = getattr(self, "_hamburger_menu", None)
+        except Exception:
+            menu = None
+        if menu is not None:
+            try:
+                menu.dismiss()
+            except Exception:
+                pass
+            self._hamburger_menu = None
+            return
+
+        try:
+            menu = HomeHamburgerMenu(home=self, anchor_widget=anchor_widget)
+            self._hamburger_menu = menu
+            menu.open()
+        except Exception:
+            # Never crash the Home screen due to menu rendering errors.
+            return
 
     # -----------------------
     # Gesture handlers (pull-to-refresh)
@@ -862,14 +1023,45 @@ class HomeScreen(GestureNavigationMixin, Screen):
         header.add_widget(avatar)
 
         hb = BoxLayout(orientation="vertical", spacing=dp(2))
-        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=dp(24)))
-        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
+        lbl_title = Label(
+            text=f"[b]{title}[/b]",
+            size_hint_y=None,
+            height=dp(24),
+            halign="left",
+            valign="middle",
+            shorten=True,
+            shorten_from="right",
+        )
+        lbl_meta = Label(
+            text=str(meta),
+            size_hint_y=None,
+            height=dp(22),
+            color=(1, 1, 1, 0.78),
+            halign="left",
+            valign="middle",
+            shorten=True,
+            shorten_from="right",
+        )
+
+        def _sync_label(_lbl: Label, *_):
+            try:
+                _lbl.text_size = (_lbl.width, None)
+            except Exception:
+                pass
+
+        lbl_title.bind(size=_sync_label)
+        lbl_meta.bind(size=_sync_label)
+        _sync_label(lbl_title)
+        _sync_label(lbl_meta)
+
+        hb.add_widget(lbl_title)
+        hb.add_widget(lbl_meta)
         header.add_widget(hb)
         header.add_widget(Widget())
         btn_share = Factory.AppButton(
-            text="Share",
+            text="[font=EmojiFont]↗️[/font]",
             size_hint=(None, None),
-            width=dp(96),
+            width=dp(56),
             height=dp(40),
         )
         btn_share.bind(on_release=do_share)
