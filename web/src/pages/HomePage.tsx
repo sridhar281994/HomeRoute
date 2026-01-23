@@ -553,6 +553,9 @@ export default function HomePage() {
           const pid = Number(p.id);
           const pidKey = Number.isInteger(pid) ? pid : Number.NaN;
           const shareUrl = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
+          const amenities = Array.isArray(p.amenities)
+            ? p.amenities.map((a: any) => String(a).trim()).filter(Boolean)
+            : [];
           return (
             <div className="col-12" key={p.id}>
               <div className="card post-card">
@@ -595,7 +598,7 @@ export default function HomePage() {
                     }}
                     style={{ padding: "8px 10px", minWidth: 44 }}
                   >
-                    Share post
+                    Share
                   </button>
                 </div>
 
@@ -627,12 +630,16 @@ export default function HomePage() {
                     </div>
                   )}
 
-                  <div className="h2" style={{ marginTop: 12 }}>
-                    Amenities
-                  </div>
-                  <div className="muted" style={{ marginTop: 6 }}>
-                    {p.amenities?.length ? p.amenities.join(", ") : "—"}
-                  </div>
+                  {amenities.length ? (
+                    <>
+                      <div className="h2" style={{ marginTop: 12 }}>
+                        Amenities
+                      </div>
+                      <div className="muted" style={{ marginTop: 6 }}>
+                        {amenities.join(", ")}
+                      </div>
+                    </>
+                  ) : null}
 
                   <div className="row" style={{ marginTop: 12, alignItems: "center" }}>
                     <button

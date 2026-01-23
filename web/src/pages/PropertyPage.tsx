@@ -43,6 +43,8 @@ export default function PropertyPage() {
     );
   }
 
+  const amenities = Array.isArray(p?.amenities) ? p.amenities.map((a: any) => String(a).trim()).filter(Boolean) : [];
+
   return (
     <div className="panel">
       <div className="row">
@@ -74,7 +76,7 @@ export default function PropertyPage() {
           }}
           style={{ padding: "8px 10px", minWidth: 44 }}
         >
-          Share post
+          Share
         </button>
         <Link to="/home">Back</Link>
       </div>
@@ -135,14 +137,16 @@ export default function PropertyPage() {
             )}
           </div>
         </div>
-        <div className="col-12">
-          <div className="card">
-            <div className="h2">Amenities</div>
-            <div className="muted" style={{ marginTop: 6 }}>
-              {p.amenities?.length ? p.amenities.join(", ") : "—"}
+        {amenities.length ? (
+          <div className="col-12">
+            <div className="card">
+              <div className="h2">Amenities</div>
+              <div className="muted" style={{ marginTop: 6 }}>
+                {amenities.join(", ")}
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
         <div className="col-12 row">
           <button
             className="primary"

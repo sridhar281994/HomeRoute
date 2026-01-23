@@ -119,7 +119,7 @@ export default function MyPostsPage() {
                             }}
                             style={{ padding: "8px 10px", minWidth: 44 }}
                           >
-                            Share post
+                            Share
                           </button>
                           {(() => {
                             const pid = Number(p.id);
