@@ -163,6 +163,25 @@ a{color:inherit}
   backdrop-filter: blur(10px);
 }
 
+.auth-header{
+  display:flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.auth-title{
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+.auth-subtitle{
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: .6px;
+}
+
 .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center;}
 .spacer{flex:1}
 .h1{font-size:22px; font-weight:700; margin:0;}

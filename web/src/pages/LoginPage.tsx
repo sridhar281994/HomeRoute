@@ -71,6 +71,10 @@ export default function LoginPage() {
 
   return (
     <div className="panel">
+      <div className="auth-header">
+        <div className="auth-title">flatnow.in</div>
+        <div className="auth-subtitle">UNLOCK your path</div>
+      </div>
       <div className="row" style={{ alignItems: "baseline" }}>
         <p className="h1" style={{ margin: 0 }}>
           Login
