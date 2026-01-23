@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from kivy.clock import Clock
@@ -21,6 +22,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import Screen
 from kivy.uix.textinput import TextInput
+from kivy.uix.widget import Widget
 from kivy.graphics import Color, Line, RoundedRectangle
 
 from frontend_app.utils.android_location import get_last_known_location, open_location_settings
@@ -192,6 +194,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
     district_value = StringProperty("Any")
     area_value = StringProperty("Any")
     selected_areas = ListProperty([])
+    area_search = StringProperty("")
     radius_km = StringProperty("20")
     gps_status = StringProperty("GPS not available (showing non-nearby results).")
     gps_msg = StringProperty("")
@@ -201,6 +204,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
     posted_within_days = StringProperty("Any")
     need_search = StringProperty("")
     need_values_filtered = ListProperty(["Any"])
+    error_msg = StringProperty("")
 
     state_options = ListProperty(["Any"])
     district_options = ListProperty(["Any"])
@@ -240,6 +244,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         # Load state list (non-fatal if offline).
         self._load_states()
+        Clock.schedule_once(lambda _dt: self._render_area_options(), 0)
+        Clock.schedule_once(lambda _dt: self._render_area_chips(), 0)
 
         # Best-effort: refresh user profile for latest location (non-fatal).
         if self.is_logged_in:
@@ -380,6 +386,141 @@ class HomeScreen(GestureNavigationMixin, Screen):
     def open_area_picker(self):
         AreaSelectPopup(home=self).open()
 
+    def clear_areas(self) -> None:
+        self.selected_areas = []
+        self.area_search = ""
+        self._schedule_area_render()
+        self._schedule_area_chips()
+
+    def remove_area(self, area: str) -> None:
+        area = str(area or "").strip()
+        if not area:
+            return
+        current = [str(x).strip() for x in (self.selected_areas or []) if str(x).strip()]
+        if area not in current:
+            return
+        current = [x for x in current if x != area]
+        self.selected_areas = current
+        self._schedule_area_render()
+        self._schedule_area_chips()
+
+    def toggle_area(self, area: str, enabled: bool) -> None:
+        area = str(area or "").strip()
+        if not area:
+            return
+        current = [str(x).strip() for x in (self.selected_areas or []) if str(x).strip()]
+        if enabled:
+            if area not in current:
+                current.append(area)
+        else:
+            current = [x for x in current if x != area]
+        self.selected_areas = current
+        self._schedule_area_chips()
+
+    def on_area_search(self, *_):
+        self._schedule_area_render()
+
+    def on_area_options(self, *_):
+        self._schedule_area_render()
+
+    def on_selected_areas(self, *_):
+        self._schedule_area_chips()
+
+    def _schedule_area_render(self) -> None:
+        Clock.schedule_once(lambda *_: self._render_area_options(), 0)
+
+    def _schedule_area_chips(self) -> None:
+        Clock.schedule_once(lambda *_: self._render_area_chips(), 0)
+
+    def _render_area_options(self) -> None:
+        try:
+            container = (self.ids or {}).get("area_options_container")
+        except Exception:
+            container = None
+        if container is None:
+            return
+        try:
+            container.clear_widgets()
+        except Exception:
+            return
+
+        state_ok = bool(self._norm_any(self.state_value))
+        district_ok = bool(self._norm_any(self.district_value))
+        if not state_ok or not district_ok:
+            container.add_widget(
+                Label(
+                    text="Select State + District to load Areas.",
+                    size_hint_y=None,
+                    height=dp(32),
+                    color=(1, 1, 1, 0.75),
+                )
+            )
+            return
+
+        options = [str(x).strip() for x in (self.area_options or []) if str(x).strip() and str(x).strip().lower() != "any"]
+        q = str(self.area_search or "").strip().lower()
+        if q:
+            options = [x for x in options if q in x.lower()]
+        options = options[:80]
+        if not options:
+            container.add_widget(
+                Label(text="No areas found.", size_hint_y=None, height=dp(32), color=(1, 1, 1, 0.75))
+            )
+            return
+
+        selected = {str(x).strip() for x in (self.selected_areas or []) if str(x).strip()}
+        for area in options:
+            row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(38), spacing=dp(8))
+            cb = CheckBox(active=(area in selected), size_hint=(None, None), size=(dp(32), dp(32)))
+            lbl = Label(text=area, halign="left", valign="middle", color=(1, 1, 1, 0.92))
+            lbl.text_size = (0, None)
+
+            def _toggle(_cb, value, area=area):
+                self.toggle_area(area, bool(value))
+
+            cb.bind(active=_toggle)
+            row.add_widget(cb)
+            row.add_widget(lbl)
+            container.add_widget(row)
+
+    def _render_area_chips(self) -> None:
+        try:
+            container = (self.ids or {}).get("area_chips")
+        except Exception:
+            container = None
+        if container is None:
+            return
+        try:
+            container.clear_widgets()
+        except Exception:
+            return
+        areas = [str(x).strip() for x in (self.selected_areas or []) if str(x).strip()]
+        if not areas:
+            return
+        max_show = 12
+        for area in areas[:max_show]:
+            btn = Factory.AppButton(text=f"{area}  ✕")
+            btn.size_hint = (None, None)
+            btn.height = dp(32)
+
+            def _resize(_btn, _):
+                _btn.width = max(dp(90), _btn.texture_size[0] + dp(18))
+
+            btn.bind(texture_size=_resize)
+            _resize(btn, btn.texture_size)
+            btn.bind(on_release=lambda _btn, a=area: self.remove_area(a))
+            container.add_widget(btn)
+        if len(areas) > max_show:
+            lbl_more = Label(
+                text=f"+{len(areas) - max_show} more",
+                size_hint=(None, None),
+                height=dp(32),
+                color=(1, 1, 1, 0.75),
+            )
+            lbl_more.bind(texture_size=lambda _lbl, _ts: setattr(_lbl, "width", max(dp(70), _lbl.texture_size[0] + dp(12))))
+            lbl_more.width = max(dp(70), lbl_more.texture_size[0] + dp(12))
+            container.add_widget(lbl_more)
+
     # -----------------------
     # Filter option loaders (State/District/Area)
     # -----------------------
@@ -464,6 +605,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
         self.area_value = "Any"
         self.district_options = ["Any"]
         self.area_options = ["Any"]
+        self.selected_areas = []
+        self.area_search = ""
 
         state = self._norm_any(self.state_value)
         if not state:
@@ -492,6 +635,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
         self.area_value = "Any"
         self.area_options = ["Any"]
         self.selected_areas = []
+        self.area_search = ""
         state = self._norm_any(self.state_value)
         district = self._norm_any(self.district_value)
         if not state or not district:
@@ -607,6 +751,16 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     distance_txt = f"{dist:.1f}km from you" if dist < 10 else f"{round(dist)}km from you"
         except Exception:
             distance_txt = ""
+        created_txt = ""
+        try:
+            created_raw = str(p.get("created_at") or "").strip()
+            if created_raw:
+                if created_raw.endswith("Z"):
+                    created_raw = created_raw[:-1] + "+00:00"
+                dt = datetime.fromisoformat(created_raw)
+                created_txt = dt.date().isoformat()
+        except Exception:
+            created_txt = ""
         meta = " • ".join(
             [
                 x
@@ -617,6 +771,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     str(p.get("property_type") or ""),
                     str(p.get("price_display") or ""),
                     str(p.get("location_display") or ""),
+                    created_txt,
                 ]
                 if x
             ]
@@ -710,6 +865,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
         hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=dp(24)))
         hb.add_widget(Label(text=str(meta), size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
         header.add_widget(hb)
+        header.add_widget(Widget())
         btn_share = Factory.AppButton(
             text="Share",
             size_hint=(None, None),
@@ -1016,6 +1172,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
         if self.is_loading:
             return
         self.is_loading = True
+        self.error_msg = ""
 
         def work():
             try:
@@ -1126,6 +1283,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 Clock.schedule_once(done, 0)
             except ApiError as e:
                 err_msg = str(e)
+                Clock.schedule_once(lambda *_: setattr(self, "error_msg", err_msg), 0)
                 Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
                 Clock.schedule_once(lambda *_: setattr(self, "is_loading", False), 0)
 
