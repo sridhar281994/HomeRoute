@@ -495,8 +495,23 @@ def _public_image_url_if_exists(file_path: str) -> str:
     if fp.startswith(("http://", "https://", "//")):
         return fp
     if fp.startswith("/uploads/"):
-        # Already a public path (can't reliably validate disk path here).
-        return fp
+        # Public path stored in DB. We *can* still validate and also try the
+        # historical nested "uploads/uploads" layout to prevent 404s.
+        rel = fp[len("/uploads/") :].lstrip("/")
+        if not rel:
+            return ""
+        uploads_dir = _uploads_dir()
+        try:
+            direct_path = os.path.join(uploads_dir, rel)
+            if os.path.exists(direct_path):
+                return f"/uploads/{rel}"
+            nested = os.path.join(uploads_dir, "uploads", rel)
+            if os.path.exists(nested):
+                return f"/uploads/uploads/{rel}"
+        except Exception:
+            pass
+        # If missing, omit instead of returning a broken URL.
+        return ""
 
     rel = _normalize_upload_rel_path(fp)
     if not rel:
