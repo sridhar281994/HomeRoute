@@ -46,7 +46,16 @@ export default function PropertyPage() {
   const amenities = Array.isArray(p?.amenities)
     ? p.amenities
         .map((a: any) => String(a).trim())
-        .filter((v: string) => v && v !== "—" && v !== "-" && v.toLowerCase() !== "none")
+        .filter((v: string) => {
+          const s = String(v || "").trim();
+          if (!s) return false;
+          const lc = s.toLowerCase();
+          if (s === "—" || s === "-") return false;
+          if (lc === "none") return false;
+          // Hide accidental values like "Amenities—"
+          if (lc.startsWith("amenities")) return false;
+          return true;
+        })
     : [];
 
   return (

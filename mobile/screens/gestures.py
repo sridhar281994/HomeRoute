@@ -25,6 +25,52 @@ class GestureNavigationMixin:
     _PULL_TO_REFRESH_DY = dp(110)
     _PULL_TO_REFRESH_DX_MAX = dp(80)
 
+    def gesture_can_refresh(self) -> bool:
+        """
+        Default pull-to-refresh gate:
+        - allow only when a known ScrollView is at the top
+        - and when the screen is not already loading (if it exposes is_loading)
+        """
+        try:
+            if bool(getattr(self, "is_loading", False)):
+                return False
+        except Exception:
+            pass
+        sv = None
+        try:
+            ids = getattr(self, "ids", {}) or {}
+            for key in ("feed_scroll", "my_posts_scroll"):
+                if key in ids:
+                    sv = ids.get(key)
+                    break
+        except Exception:
+            sv = None
+        if sv is None:
+            return False
+        try:
+            return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.99
+        except Exception:
+            return False
+
+    def gesture_refresh(self) -> None:
+        """
+        Default refresh action:
+        - call refresh() if present
+        - otherwise call refresh_status() if present
+        """
+        try:
+            if hasattr(self, "refresh"):
+                getattr(self, "refresh")()
+                return
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "refresh_status"):
+                getattr(self, "refresh_status")()
+                return
+        except Exception:
+            pass
+
     def gesture_bind_window(self) -> None:
         """
         Bind gesture detection at Window level.

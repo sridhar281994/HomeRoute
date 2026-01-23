@@ -43,6 +43,7 @@ from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
+from frontend_app.utils.android_filepicker import ensure_local_paths, is_image_path, is_video_path
 
 
 def _popup(title: str, msg: str) -> None:
@@ -567,6 +568,35 @@ class SettingsScreen(GestureNavigationMixin, Screen):
 
     def open_image_picker(self):
         def _open_picker() -> None:
+            # Android: prefer native SAF picker (no folder scanning).
+            try:
+                from kivy.utils import platform as _platform
+            except Exception:
+                _platform = ""
+
+            if _platform == "android":
+                try:
+                    from plyer import filechooser  # type: ignore
+                except Exception:
+                    filechooser = None
+
+                if filechooser is not None:
+                    def _on_sel(selection):
+                        try:
+                            paths = ensure_local_paths(selection or [])
+                            img = next((p for p in paths if is_image_path(p)), "")
+                            if img:
+                                self.upload_profile_image(img)
+                        except Exception:
+                            return
+
+                    try:
+                        filechooser.open_file(on_selection=_on_sel, multiple=False)
+                        return
+                    except Exception:
+                        # Fall back to the in-app chooser below.
+                        pass
+
             chooser = FileChooserListView(
                 path=_default_media_dir(),
                 filters=["*.png", "*.jpg", "*.jpeg", "*.webp"],
@@ -1117,6 +1147,43 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         Pick up to 10 images + 1 video to upload with the ad.
         """
         def _open_picker() -> None:
+            # Android: prefer native SAF picker (no folder scanning).
+            try:
+                from kivy.utils import platform as _platform
+            except Exception:
+                _platform = ""
+
+            if _platform == "android":
+                try:
+                    from plyer import filechooser  # type: ignore
+                except Exception:
+                    filechooser = None
+
+                if filechooser is not None:
+                    def _on_sel(selection):
+                        try:
+                            paths = ensure_local_paths(selection or [])
+                            media = [p for p in paths if is_image_path(p) or is_video_path(p)]
+                            self._selected_media = list(media)
+                            images = [x for x in self._selected_media if is_image_path(x)]
+                            videos = [x for x in self._selected_media if is_video_path(x)]
+                            if "media_summary" in self.ids:
+                                parts = []
+                                if images:
+                                    parts.append(f"{len(images)} image(s)")
+                                if videos:
+                                    parts.append(f"{len(videos)} video(s)")
+                                self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
+                        except Exception:
+                            return
+
+                    try:
+                        filechooser.open_file(on_selection=_on_sel, multiple=True)
+                        return
+                    except Exception:
+                        # Fall back to in-app picker below.
+                        pass
+
             """
             Custom media picker:
             - Folder navigation (list)
