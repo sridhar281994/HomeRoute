@@ -31,6 +31,40 @@
     font_name: "AppFont"
     color: ACCENT_PURPLE
 
+<HamburgerButton@Button>:
+    # Minimal top-left "hamburger" icon button (3 lines).
+    text: ""
+    size_hint: None, None
+    size: dp(44), dp(44)
+    background_normal: ""
+    background_down: ""
+    background_color: (0, 0, 0, 0)
+    canvas.before:
+        # Button bg + border (match overall theme).
+        Color:
+            rgba: (1, 1, 1, 0.18) if self.state == "down" else (1, 1, 1, 0.12)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [12]
+        Color:
+            rgba: (1, 1, 1, 0.20)
+        Line:
+            width: 1.0
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 12]
+        # Hamburger lines
+        Color:
+            rgba: (1, 1, 1, 0.92)
+        Rectangle:
+            pos: self.x + dp(12), self.center_y + dp(8)
+            size: self.width - dp(24), dp(2)
+        Rectangle:
+            pos: self.x + dp(12), self.center_y - dp(1)
+            size: self.width - dp(24), dp(2)
+        Rectangle:
+            pos: self.x + dp(12), self.center_y - dp(10)
+            size: self.width - dp(24), dp(2)
+
 <TextInput>:
     font_name: "AppFont"
     background_normal: ""
@@ -1489,7 +1523,18 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            # Mobile home nav: hamburger menu (replaces WebTopBar).
+            BoxLayout:
+                size_hint_y: None
+                height: dp(52)
+                padding: [dp(6), 0, dp(6), 0]
+                spacing: dp(10)
+
+                HamburgerButton:
+                    id: home_hamburger_btn
+                    on_release: root.open_hamburger_menu(self)
+
+                Widget:
 
             WebPanel:
                 size_hint_y: 1
