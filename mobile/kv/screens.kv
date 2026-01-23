@@ -46,7 +46,9 @@
     # - ellipsize long labels instead of overflowing
     halign: "center"
     valign: "middle"
-    text_size: self.size
+    # IMPORTANT: never bind text_size to (width,height) for general widgets.
+    # Width-only keeps text wrapping stable and avoids layout feedback loops.
+    text_size: (self.width, None)
     shorten: True
     shorten_from: "right"
 
@@ -117,9 +119,11 @@
         opacity: 1 if root.avatar_source else 0
     Label:
         text: (root.avatar_text or "U")
-        halign: "center"
-        valign: "middle"
-        text_size: self.size
+        # Avoid binding text_size to both width+height (can cause texture/layout churn).
+        # Center the glyph by sizing to the texture and centering in the avatar.
+        size_hint: None, None
+        size: self.texture_size
+        center: root.center
         opacity: 0 if root.avatar_source else 1
         color: (1, 1, 1, 0.95)
         canvas.before:
@@ -244,7 +248,7 @@
 <NavButtonWrap@NavButton>:
     size_hint_x: 1
     width: 0
-    text_size: self.size
+    text_size: (self.width, None)
     halign: "center"
     valign: "middle"
     padding: [dp(8), dp(6)]
@@ -506,7 +510,8 @@
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         Image:
-            source: "assets/QuickRent.png"
+            # NOTE: avoid any QuickRent presplash asset references.
+            source: "assets/flatnow_all.png"
             fit_mode: "contain"
             size_hint: None, None
             size: min(root.width * 0.7, dp(320)), min(root.width * 0.7, dp(320))
@@ -742,7 +747,7 @@
                                 color: 1, 1, 1, 0.9
                                 halign: "left"
                                 valign: "middle"
-                                text_size: self.size
+                                text_size: (self.width, None)
 
                         BoxLayout:
                             size_hint_y: None
@@ -1694,7 +1699,7 @@
                     text: "[b]Filters[/b]"
                     halign: "left"
                     valign: "middle"
-                    text_size: self.size
+                    text_size: (self.width, None)
                 Widget:
                 AppButton:
                     text: "Close"
@@ -1783,7 +1788,7 @@
                             color: TEXT_MUTED
                             halign: "left"
                             valign: "middle"
-                            text_size: self.size
+                            text_size: (self.width, None)
                             size_hint_y: None
                             height: dp(44)
 
@@ -1816,7 +1821,7 @@
                             color: TEXT_MUTED
                             halign: "left"
                             valign: "middle"
-                            text_size: self.size
+                            text_size: (self.width, None)
                     Widget:
 
                     BoxLayout:
@@ -1835,7 +1840,7 @@
                             color: TEXT_MUTED
                             halign: "left"
                             valign: "middle"
-                            text_size: self.size
+                            text_size: (self.width, None)
 
                     BoxLayout:
                         orientation: "vertical"
@@ -1984,7 +1989,7 @@
                         font_size: sp(18)
                         halign: "left"
                         valign: "middle"
-                        text_size: self.size
+                        text_size: (self.width, None)
                     Widget:
                     AppButton:
                         text: "Refresh"
@@ -2059,7 +2064,7 @@
                             font_size: sp(18)
                             halign: "left"
                             valign: "middle"
-                            text_size: self.size
+                            text_size: (self.width, None)
                         Widget:
                         AppButton:
                             text: "Share"

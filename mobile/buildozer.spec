@@ -5,7 +5,9 @@ package.domain = in.flatnow
 
 # Use the same PNG for app icon and presplash.
 icon.filename = assets/flatnow_icon.png
-presplash.filename = assets/flatnow_all.png
+# Disable presplash to avoid Android auto-scaling/stretching to full screen.
+# (We use the in-app `SplashScreen` instead.)
+# presplash.filename = assets/flatnow_all.png
 
 # Your main.py lives inside the mobile/ folder.
 source.dir = .
@@ -24,7 +26,6 @@ p4a.local_recipes = recipes
 
 # UI
 orientation = portrait
-# Fullscreen ensures the presplash covers the entire device screen.
 fullscreen = 1
 
 # Android specific

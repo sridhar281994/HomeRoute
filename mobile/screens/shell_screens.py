@@ -751,9 +751,14 @@ class SettingsScreen(GestureNavigationMixin, Screen):
         try:
             from kivy.resources import resource_find
 
-            self.default_profile_image = resource_find("assets/QuickRent.png") or "assets/QuickRent.png"
+            # Prefer a bundled Flatnow asset; avoid referencing removed QuickRent.png.
+            self.default_profile_image = (
+                resource_find("assets/flatnow_icon.png")
+                or resource_find("assets/flatnow.png")
+                or "assets/flatnow_icon.png"
+            )
         except Exception:
-            self.default_profile_image = "assets/QuickRent.png"
+            self.default_profile_image = "assets/flatnow_icon.png"
 
     def on_pre_enter(self, *args):
         sess = get_session() or {}
