@@ -597,29 +597,87 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                         # Fall back to the in-app chooser below.
                         pass
 
-            chooser = FileChooserListView(
-                path=_default_media_dir(),
-                filters=["*.png", "*.jpg", "*.jpeg", "*.webp"],
-            )
+            from kivy.uix.behaviors import ButtonBehavior
+            from kivy.uix.floatlayout import FloatLayout
+            from kivy.uix.gridlayout import GridLayout
+            from kivy.uix.image import AsyncImage
+            from kivy.uix.scrollview import ScrollView
 
-            # Auto-upload on selection (no separate Save/Upload button).
-            popup = Popup(title="Choose Profile Image", size_hint=(0.9, 0.9), auto_dismiss=False)
+            def _collect_roots() -> list[str]:
+                roots: list[str] = []
+                primary = _default_media_dir()
+                if primary:
+                    roots.append(primary)
+                for extra in [
+                    "/storage/emulated/0/DCIM",
+                    "/storage/emulated/0/Pictures",
+                    "/sdcard/DCIM",
+                    "/sdcard/Pictures",
+                ]:
+                    if extra not in roots and os.path.isdir(extra):
+                        roots.append(extra)
+                return roots
 
-            def on_selection(*_args):
+            def _list_images() -> list[str]:
+                exts = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+                seen: set[str] = set()
+                out: list[str] = []
+                for root in _collect_roots():
+                    for dirpath, _dirs, files in os.walk(root):
+                        for name in files:
+                            ext = os.path.splitext(name.lower())[1]
+                            if ext not in exts:
+                                continue
+                            fp = os.path.join(dirpath, name)
+                            if fp in seen:
+                                continue
+                            seen.add(fp)
+                            out.append(fp)
+                            if len(out) >= 400:
+                                break
+                        if len(out) >= 400:
+                            break
+                    if len(out) >= 400:
+                        break
+
+                def _mtime(path: str) -> float:
+                    try:
+                        return os.path.getmtime(path)
+                    except Exception:
+                        return 0.0
+
+                out.sort(key=_mtime, reverse=True)
+                return out
+
+            class _ImageTile(ButtonBehavior, FloatLayout):
+                def __init__(self, file_path: str, **kwargs):
+                    super().__init__(**kwargs)
+                    self.file_path = file_path
+                    img = AsyncImage(source=file_path, allow_stretch=True, keep_ratio=False)
+                    self.add_widget(img)
+
+            popup = Popup(title="Choose Profile Image", size_hint=(0.94, 0.94), auto_dismiss=False)
+
+            grid = GridLayout(cols=3, spacing=dp(8), size_hint_y=None)
+            grid.bind(minimum_height=grid.setter("height"))
+            scroll = ScrollView(do_scroll_x=False, bar_width=dp(6))
+            scroll.add_widget(grid)
+
+            def select_image(fp: str) -> None:
                 try:
-                    if not chooser.selection:
-                        return
-                    fp = chooser.selection[0]
                     popup.dismiss()
                     self.upload_profile_image(fp)
                 except Exception:
-                    # Never crash UI due to picker errors.
                     popup.dismiss()
 
-            try:
-                chooser.bind(selection=lambda *_: on_selection())
-            except Exception:
-                pass
+            images = _list_images()
+            for fp in images:
+                tile = _ImageTile(fp, size_hint_y=None, height=dp(110))
+                tile.bind(on_release=lambda _btn, p=fp: select_image(p))
+                grid.add_widget(tile)
+
+            if not images:
+                grid.add_widget(Label(text="No photos found.", size_hint_y=None, height=dp(32), color=(1, 1, 1, 0.75)))
 
             buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10), padding=[dp(10), dp(10)])
             btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
@@ -627,7 +685,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
 
             root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
             root.add_widget(Label(text="Tap an image to upload immediately."))
-            root.add_widget(chooser)
+            root.add_widget(scroll)
             root.add_widget(buttons)
 
             popup.content = root
@@ -1215,7 +1273,8 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     # Header (path + actions)
                     header = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
                     btn_up = Factory.AppButton(text="Up", size_hint_x=None, width=dp(90))
-                    self._path_lbl = Label(text=self._path, halign="left", valign="middle", color=(1, 1, 1, 0.78))
+                    path_label = os.path.basename(self._path) or "Photos"
+                    self._path_lbl = Label(text=path_label, halign="left", valign="middle", color=(1, 1, 1, 0.78))
                     self._path_lbl.text_size = (0, None)
                     header.add_widget(btn_up)
                     header.add_widget(self._path_lbl)
@@ -1256,7 +1315,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                             return
                         self._path = p
                         try:
-                            self._path_lbl.text = p
+                            self._path_lbl.text = os.path.basename(p) or "Photos"
                         except Exception:
                             pass
                         try:
@@ -1308,9 +1367,8 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                         self._grid.add_widget(tile)
 
                     def _render_tile_media(fp: str) -> None:
-                        name = os.path.basename(fp) or fp
                         # ToggleButton lets the user tap to select/deselect.
-                        wrap = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(160), spacing=dp(6))
+                        wrap = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(150), spacing=dp(6))
                         if _is_image(fp):
                             img = AsyncImage(source=fp, allow_stretch=True, keep_ratio=False)
                             img.size_hint_y = None
@@ -1320,9 +1378,18 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                             # Video: simple placeholder tile (thumbnail extraction is expensive).
                             wrap.add_widget(Label(text="[b]Video[/b]", size_hint_y=None, height=dp(110), color=(1, 1, 1, 0.78)))
 
-                        tb = ToggleButton(text=name[:26] + ("…" if len(name) > 26 else ""), size_hint_y=None, height=dp(44))
+                        tb = ToggleButton(text="", size_hint_y=None, height=dp(32))
                         tb.state = "down" if fp in self._selected else "normal"
-                        tb.bind(on_press=lambda btn: _toggle_select(fp, btn.state == "down"))
+
+                        def _sync_label(btn):
+                            btn.text = "✓" if btn.state == "down" else ""
+
+                        def _on_state(btn, value):
+                            _toggle_select(fp, value == "down")
+                            _sync_label(btn)
+
+                        _sync_label(tb)
+                        tb.bind(state=_on_state)
                         wrap.add_widget(tb)
                         self._grid.add_widget(wrap)
 

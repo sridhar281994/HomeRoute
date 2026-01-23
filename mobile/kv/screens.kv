@@ -587,8 +587,6 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            AuthHeader:
-
             ScrollView:
                 id: login_scroll
                 do_scroll_x: False
@@ -599,6 +597,8 @@
                     width: min(root.width * 0.95, dp(980))
                     x: (root.width - self.width) / 2
                     spacing: dp(15)
+
+                    AuthHeader:
 
                     Label:
                         text: "[b]Secure Login[/b]  [font=EmojiFont]🔐[/font]"
@@ -645,6 +645,8 @@
                             height: dp(48)
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
+                            on_focus:
+                                if self.focus: root.scroll_to_field(self)
 
                         RelativeLayout:
                             size_hint_y: None
@@ -659,6 +661,8 @@
                                 background_color: (1, 1, 1, 0.18)
                                 foreground_color: TEXT_MAIN
                                 padding: [dp(10), dp(10), dp(40), dp(10)]
+                                on_focus:
+                                    if self.focus: root.scroll_to_field(self)
                             ToggleButton:
                                 id: login_password_toggle
                                 size_hint: None, None
@@ -759,7 +763,7 @@
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
                             on_focus:
-                                if self.focus: root.scroll_to_otp()
+                                if self.focus: root.scroll_to_field(self)
 
                         AppButton:
                             id: verify_login_btn
@@ -1325,8 +1329,6 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            AuthHeader:
-
             ScrollView:
                 do_scroll_x: False
                 bar_width: dp(6)
@@ -1336,6 +1338,8 @@
                     width: min(root.width * 0.95, dp(980))
                     x: (root.width - self.width) / 2
                     spacing: dp(12)
+
+                    AuthHeader:
 
                     Label:
                         text: "[b]Create Account[/b]  [font=EmojiFont]✨[/font]"

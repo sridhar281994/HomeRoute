@@ -54,7 +54,7 @@ class LoginScreen(GestureNavigationMixin, Screen):
         # Ensure soft keyboard does not hide OTP input.
         try:
             self._prev_softinput_mode = Window.softinput_mode
-            Window.softinput_mode = "below_target"
+            Window.softinput_mode = "resize"
         except Exception:
             pass
         # Make swipe-back work even when TextInput captures touch.
@@ -85,21 +85,22 @@ class LoginScreen(GestureNavigationMixin, Screen):
         height_ratio = height / 720.0
         self.font_scale = max(0.75, min(1.25, min(width_ratio, height_ratio)))
 
-    def scroll_to_otp(self, *_):
+    def scroll_to_field(self, widget, *_):
         """
-        Ensure the OTP input stays above the soft keyboard.
+        Ensure a focused field stays above the soft keyboard.
         """
         def _do(*_dt):
             try:
                 sv = self.ids.get("login_scroll")
-                otp = self.ids.get("otp_input")
-                if sv is None or otp is None:
+                if sv is None or widget is None:
                     return
-                sv.scroll_to(otp, padding=dp(120), animate=True)
+                sv.scroll_to(widget, padding=dp(160), animate=True)
             except Exception:
                 return
 
         Clock.schedule_once(_do, 0.05)
+        Clock.schedule_once(_do, 0.2)
+        Clock.schedule_once(_do, 0.4)
 
     # -----------------------
     # Navigation
