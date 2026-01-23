@@ -84,7 +84,11 @@ class QuickRentApp(App):
             (OwnerAddPropertyScreen, "owner_add_property"),
         ]
 
-        add_delay_s = 0.03
+        # Add screens slowly enough that each addition gets its own rendered frame.
+        # On slower devices/Windows builds, even "small" screens can trigger many
+        # Label.texture_update + layout passes; too small a delay will still trip
+        # Clock.max_iteration warnings.
+        add_delay_s = 0.18
 
         def _add_next(_dt=0.0) -> None:
             if not pending:
