@@ -119,10 +119,11 @@
         opacity: 1 if root.avatar_source else 0
     Label:
         text: (root.avatar_text or "U")
-        halign: "center"
-        valign: "middle"
-        # Constrain alignment without binding to dynamic height rules.
-        text_size: (self.width, self.height)
+        # Avoid binding text_size to both width+height (can cause texture/layout churn).
+        # Center the glyph by sizing to the texture and centering in the avatar.
+        size_hint: None, None
+        size: self.texture_size
+        center: root.center
         opacity: 0 if root.avatar_source else 1
         color: (1, 1, 1, 0.95)
         canvas.before:

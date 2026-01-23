@@ -641,7 +641,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
             row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(38), spacing=dp(8))
             cb = CheckBox(active=(area in selected), size_hint=(None, None), size=(dp(32), dp(32)))
             lbl = Label(text=area, halign="left", valign="middle", color=(1, 1, 1, 0.92))
-            lbl.text_size = (0, None)
 
             def _toggle(_cb, value, area=area):
                 self.toggle_area(area, bool(value))
@@ -670,12 +669,28 @@ class HomeScreen(GestureNavigationMixin, Screen):
             btn = Factory.AppButton(text=f"{area}  ✕")
             btn.size_hint = (None, None)
             btn.height = dp(32)
+            # IMPORTANT: avoid circular dependency:
+            # width -> text_size/shorten -> texture_size -> width
+            # For "chip" buttons, we want intrinsic width from the text only.
+            try:
+                btn.text_size = (None, None)
+                btn.shorten = False
+            except Exception:
+                pass
 
-            def _resize(_btn, _):
-                _btn.width = max(dp(90), _btn.texture_size[0] + dp(18))
+            def _resize_once(_btn, _ts):
+                # Resize a single time once texture is available, then unbind.
+                try:
+                    _btn.width = max(dp(90), _btn.texture_size[0] + dp(18))
+                finally:
+                    try:
+                        _btn.unbind(texture_size=_resize_once)
+                    except Exception:
+                        pass
 
-            btn.bind(texture_size=_resize)
-            _resize(btn, btn.texture_size)
+            btn.bind(texture_size=_resize_once)
+            # Best-effort initial sizing (some platforms compute texture immediately).
+            _resize_once(btn, btn.texture_size)
             btn.bind(on_release=lambda _btn, a=area: self.remove_area(a))
             container.add_widget(btn)
         if len(areas) > max_show:
@@ -685,8 +700,24 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 height=dp(32),
                 color=(1, 1, 1, 0.75),
             )
-            lbl_more.bind(texture_size=lambda _lbl, _ts: setattr(_lbl, "width", max(dp(70), _lbl.texture_size[0] + dp(12))))
-            lbl_more.width = max(dp(70), lbl_more.texture_size[0] + dp(12))
+            # Same circular-dependency guard as chip buttons.
+            try:
+                lbl_more.text_size = (None, None)
+                lbl_more.shorten = False
+            except Exception:
+                pass
+
+            def _more_resize_once(_lbl, _ts):
+                try:
+                    _lbl.width = max(dp(70), _lbl.texture_size[0] + dp(12))
+                finally:
+                    try:
+                        _lbl.unbind(texture_size=_more_resize_once)
+                    except Exception:
+                        pass
+
+            lbl_more.bind(texture_size=_more_resize_once)
+            _more_resize_once(lbl_more, lbl_more.texture_size)
             container.add_widget(lbl_more)
 
     # -----------------------
