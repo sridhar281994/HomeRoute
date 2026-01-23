@@ -1957,7 +1957,7 @@
                             text_size: self.size
                         Widget:
                         AppButton:
-                            text: "Share post"
+                        text: "Share"
                             size_hint_x: None
                             width: dp(140)
                             on_release: root.share_current()
@@ -1993,12 +1993,15 @@
                             height: self.minimum_height
 
                     WebCard:
+                        opacity: 1 if len(root.property_data.get("amenities") or []) > 0 else 0
+                        disabled: not (len(root.property_data.get("amenities") or []) > 0)
+                        height: self.minimum_height if len(root.property_data.get("amenities") or []) > 0 else 0
                         Label:
                             text: "[b]Amenities[/b]"
                             size_hint_y: None
                             height: dp(22)
                         Label:
-                            text: (", ".join(root.property_data.get("amenities") or []) if root.property_data.get("amenities") else "—")
+                            text: ", ".join(root.property_data.get("amenities") or [])
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: self.texture_size[1] + dp(6)

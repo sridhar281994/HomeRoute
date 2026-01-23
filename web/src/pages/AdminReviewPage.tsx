@@ -434,7 +434,7 @@ export default function AdminReviewPage() {
                       }}
                       style={{ padding: "8px 10px", minWidth: 44 }}
                     >
-                      Share post
+                      Share
                     </button>
                     <button
                       type="button"
@@ -884,7 +884,7 @@ export default function AdminReviewPage() {
                   }}
                   style={{ padding: "8px 10px", minWidth: 44 }}
                 >
-                  Share post
+                  Share
                 </button>
                 {p.images?.length ? (
                   String(p.images[0]?.content_type || "").toLowerCase().startsWith("video/") ? (
