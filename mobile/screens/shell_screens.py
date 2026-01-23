@@ -114,8 +114,20 @@ def _default_media_dir() -> str:
 
 class SplashScreen(GestureNavigationMixin, Screen):
     def on_enter(self, *args):
+        # Enable gesture capture even when child widgets consume touches.
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
         # Small delay then continue to Welcome or Home (if already logged in).
         Clock.schedule_once(lambda _dt: self._go_next(), 0.9)
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def _go_next(self):
         if not self.manager:
@@ -131,6 +143,10 @@ class SplashScreen(GestureNavigationMixin, Screen):
 
 class WelcomeScreen(GestureNavigationMixin, Screen):
     def on_pre_enter(self, *args):
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
         # If user is already authenticated, skip Welcome.
         if not self.manager:
             return
@@ -142,6 +158,13 @@ class WelcomeScreen(GestureNavigationMixin, Screen):
                 self.manager.current = "home"
         except Exception:
             return
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def continue_as_guest(self):
         """
@@ -186,6 +209,19 @@ class WelcomeScreen(GestureNavigationMixin, Screen):
 class PropertyDetailScreen(GestureNavigationMixin, Screen):
     property_id = NumericProperty(0)
     property_data = DictProperty({})
+
+    def on_pre_enter(self, *args):
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def load_property(self, property_id: int):
         self.property_id = int(property_id)
@@ -332,7 +368,18 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
     is_loading = BooleanProperty(False)
 
     def on_pre_enter(self, *args):
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
         self.refresh()
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def refresh(self):
         if self.is_loading:
@@ -435,6 +482,10 @@ class SettingsScreen(GestureNavigationMixin, Screen):
             self.default_profile_image = "assets/flatnow_all.png"
 
     def on_pre_enter(self, *args):
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
         sess = get_session() or {}
         if not (sess.get("token") or ""):
             _popup("Login required", "Please login to open Settings.")
@@ -448,6 +499,13 @@ class SettingsScreen(GestureNavigationMixin, Screen):
         # Avoid loading potentially stale/broken cached upload URLs before refresh.
         self.profile_image_url = ""
         self._refresh_profile_from_server()
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def _apply_user(self, u: dict[str, Any]) -> None:
         self.user_summary = f"{u.get('name') or 'User'}"
@@ -700,7 +758,18 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
     is_loading = BooleanProperty(False)
 
     def on_pre_enter(self, *args):
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
         self.refresh_status()
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def refresh_status(self):
         if self.is_loading:
@@ -883,6 +952,10 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         Thread(target=work, daemon=True).start()
 
     def on_pre_enter(self, *args):
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
         # Load location dropdowns from backend (and default to profile state/district if present).
         u = get_user() or {}
         p = self._edit_data or {}
@@ -920,6 +993,13 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 Clock.schedule_once(lambda *_: setattr(self, "_states_cache", []), 0)
 
         Thread(target=work, daemon=True).start()
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def _apply_preferred_district(self, preferred_district: str):
         try:

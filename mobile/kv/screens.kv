@@ -328,98 +328,49 @@
             width: 1.0
             rounded_rectangle: [self.x, self.y, self.width, self.height, 999]
 
-<WebTopBar@BoxLayout>:
-    orientation: "vertical"
-    size_hint_y: None
-    height: self.minimum_height
-    spacing: dp(10)
-    padding: dp(16)
+<HamburgerButton@Button>:
+    text: ""
+    size_hint: None, None
+    size: dp(44), dp(44)
+    background_normal: ""
+    background_down: ""
+    background_color: (0, 0, 0, 0)
     canvas.before:
+        # Button bg + border (matches the panel style).
         Color:
-            rgba: PANEL_BG
+            rgba: (1, 1, 1, 0.18) if self.state == "down" else (1, 1, 1, 0.12)
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [16]
+            radius: [12]
         Color:
-            rgba: (1, 1, 1, 0.12)
+            rgba: (1, 1, 1, 0.20)
         Line:
             width: 1.0
-            rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
-    BoxLayout:
-        size_hint_y: None
-        height: dp(28)
-        spacing: dp(10)
-        Label:
-            text: "[b]Flatnow.in[/b]"
-            font_size: sp(18)
-            size_hint_x: None
-            width: self.texture_size[0]
-            halign: "left"
-            valign: "middle"
-            text_size: self.size
-        Widget:
-        GuestPill:
-            opacity: 1 if (app.root and app.root.get_screen("home").is_guest) else 0
-            disabled: not (app.root and app.root.get_screen("home").is_guest)
-            width: self.minimum_width if (app.root and app.root.get_screen("home").is_guest) else 0
-            Label:
-                text: "[b]Guest mode[/b]"
-                font_size: sp(12)
-                color: TEXT_MAIN
-                size_hint: None, None
-                size: self.texture_size
-    GridLayout:
-        # Match web topbar-links behavior: wrap into 2 columns on narrow screens.
-        cols: 2 if self.width < dp(520) else (3 if self.width < dp(720) else 6)
-        spacing: dp(10)
-        size_hint_y: None
-        height: self.minimum_height
-        row_default_height: dp(40)
-        row_force_default: True
-        NavButtonWrap:
-            text: "Home"
-            on_release: app.root.current = "home"
-        NavButtonWrap:
-            text: "My Posts"
-            on_release: app.root.current = "my_posts"
-        NavButtonWrap:
-            text: "Settings"
-            on_release: app.root.current = "profile"
-        NavButtonWrap:
-            text: "Publish Ad"
-            on_release:
-                app.root.get_screen("owner_add_property").start_new()
-                app.root.current = "owner_add_property"
-        # Auth buttons (match web: show Login/Register when not logged in).
-        NavButtonWrap:
-            text: "Login"
-            opacity: 1 if (app.root and not app.root.get_screen("home").is_logged_in) else 0
-            disabled: (not app.root) or app.root.get_screen("home").is_logged_in
-            on_release: app.root.current = "login"
-        NavButtonWrap:
-            text: "Register"
-            opacity: 1 if (app.root and not app.root.get_screen("home").is_logged_in) else 0
-            disabled: (not app.root) or app.root.get_screen("home").is_logged_in
-            on_release: app.root.current = "register"
-        # Exit Guest (web: only visible in guest mode).
-        NavButtonWrap:
-            text: "Exit Guest"
-            opacity: 1 if (app.root and app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in) else 0
-            disabled: not (app.root and app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in)
-            color: (0.94, 0.27, 0.27, 1)
-            on_release:
-                app.root.get_screen("home").do_logout()
-                app.root.current = "welcome"
-        # Logout (web: visible when logged in).
-        NavButtonWrap:
-            text: "Logout"
-            opacity: 1 if (app.root and app.root.get_screen("home").is_logged_in) else 0
-            disabled: not (app.root and app.root.get_screen("home").is_logged_in)
-            color: (0.94, 0.27, 0.27, 1)
-            on_release:
-                app.root.get_screen("home").do_logout()
-                app.root.current = "login"
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 12]
+        # Hamburger lines
+        Color:
+            rgba: (1, 1, 1, 0.92)
+        Rectangle:
+            pos: self.x + dp(12), self.center_y + dp(8)
+            size: self.width - dp(24), dp(2)
+        Rectangle:
+            pos: self.x + dp(12), self.center_y - dp(1)
+            size: self.width - dp(24), dp(2)
+        Rectangle:
+            pos: self.x + dp(12), self.center_y - dp(10)
+            size: self.width - dp(24), dp(2)
+
+<MobileTopBar@BoxLayout>:
+    orientation: "horizontal"
+    size_hint_y: None
+    height: dp(52)
+    padding: [dp(6), 0, dp(6), 0]
+    spacing: dp(10)
+    HamburgerButton:
+        # Use current_screen so this works for every Screen.
+        on_release: app.root.current_screen.open_hamburger_menu(self) if (app and app.root and app.root.current_screen) else None
+    Widget:
 
 <SplashScreen>:
     name: "splash"
@@ -491,7 +442,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -570,7 +521,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -788,7 +739,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -867,7 +818,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -987,7 +938,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -1234,7 +1185,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -1305,7 +1256,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -1489,7 +1440,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             WebPanel:
                 size_hint_y: 1
@@ -1881,7 +1832,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             WebPanel:
                 size_hint_y: 1
@@ -1951,7 +1902,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -2049,7 +2000,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
