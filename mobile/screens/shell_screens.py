@@ -195,6 +195,8 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
             try:
                 data = api_get_property(self.property_id)
                 Clock.schedule_once(lambda *_: setattr(self, "property_data", data), 0)
+                # Also rebuild media grid (if KV container exists).
+                Clock.schedule_once(lambda *_: self._render_media_grid(data), 0)
             except ApiError as e:
                 err_msg = str(e)
                 Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
@@ -202,6 +204,47 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         from threading import Thread
 
         Thread(target=work, daemon=True).start()
+
+    def _render_media_grid(self, data: dict[str, Any]) -> None:
+        """
+        Match web Property page "Photos" grid:
+        - 2 columns
+        - render images (AsyncImage)
+        - render videos as a simple placeholder tile (video thumbnails are expensive)
+        """
+        try:
+            container = (self.ids or {}).get("property_media_container")
+        except Exception:
+            container = None
+        if container is None:
+            return
+        try:
+            container.clear_widgets()
+        except Exception:
+            return
+
+        items = list((data or {}).get("images") or [])
+        if not items:
+            container.add_widget(Label(text="No Photos", size_hint_y=None, height=dp(42), color=(1, 1, 1, 0.75)))
+            return
+
+        # Use web-like tile height (~220px). Kivy dp() scales across DPI.
+        tile_h = dp(220)
+        for it in items:
+            it = it or {}
+            url = to_api_url(str(it.get("url") or "").strip())
+            ctype = str(it.get("content_type") or "").lower().strip()
+            if not url:
+                continue
+            if ctype.startswith("video/"):
+                tile = BoxLayout(size_hint_y=None, height=tile_h, padding=dp(10))
+                tile.canvas.before.clear()
+                container.add_widget(Label(text="[b]Video[/b]", size_hint_y=None, height=tile_h, color=(1, 1, 1, 0.78)))
+            else:
+                img = Factory.AsyncImage(source=url, allow_stretch=True, keep_ratio=False)
+                img.size_hint_y = None
+                img.height = tile_h
+                container.add_widget(img)
 
     def back(self):
         if self.manager:
