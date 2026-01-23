@@ -57,6 +57,10 @@ class LoginScreen(GestureNavigationMixin, Screen):
             Window.softinput_mode = "resize"
         except Exception:
             pass
+        try:
+            Window.bind(on_keyboard_height=self._on_keyboard_height)
+        except Exception:
+            pass
         # Make swipe-back work even when TextInput captures touch.
         try:
             self.gesture_bind_window()
@@ -64,6 +68,10 @@ class LoginScreen(GestureNavigationMixin, Screen):
             pass
 
     def on_leave(self, *args):
+        try:
+            Window.unbind(on_keyboard_height=self._on_keyboard_height)
+        except Exception:
+            pass
         try:
             if hasattr(self, "_prev_softinput_mode"):
                 Window.softinput_mode = self._prev_softinput_mode
@@ -101,6 +109,28 @@ class LoginScreen(GestureNavigationMixin, Screen):
         Clock.schedule_once(_do, 0.05)
         Clock.schedule_once(_do, 0.2)
         Clock.schedule_once(_do, 0.4)
+        Clock.schedule_once(_do, 0.8)
+
+    def _focused_input(self):
+        for key in ("otp_input", "password_input", "phone_input"):
+            try:
+                w = (self.ids or {}).get(key)
+            except Exception:
+                w = None
+            if w is not None and getattr(w, "focus", False):
+                return w
+        return None
+
+    def _on_keyboard_height(self, _window, height):
+        try:
+            if float(height or 0) <= 0:
+                return
+        except Exception:
+            return
+        w = self._focused_input()
+        if w is None:
+            return
+        self.scroll_to_field(w)
 
     # -----------------------
     # Navigation

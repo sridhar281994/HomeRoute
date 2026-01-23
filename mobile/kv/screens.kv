@@ -591,6 +591,8 @@
                 id: login_scroll
                 do_scroll_x: False
                 bar_width: dp(6)
+                scroll_type: ["content"]
+                scroll_timeout: 150
 
                 WebPanel:
                     size_hint_x: None
@@ -1291,6 +1293,26 @@
                             color: TEXT_MUTED
 
                         AppButton:
+                            text: "[b]FREE - 0[/b]\nUnlock 30 owner/service contacts"
+                            size_hint_y: None
+                            height: dp(64)
+
+                        AppButton:
+                            text: "[b]INSTANT - ₹10[/b]\nUnlock 60 owner/service contacts"
+                            size_hint_y: None
+                            height: dp(64)
+
+                        AppButton:
+                            text: "[b]SMART - ₹50[/b]\nUnlock 200 contacts"
+                            size_hint_y: None
+                            height: dp(64)
+
+                        AppButton:
+                            text: "[b]BUSINESS - ₹150[/b]\nUnlimited contact unlocks/Month"
+                            size_hint_y: None
+                            height: dp(64)
+
+                        AppButton:
                             text: "Refresh"
                             size_hint_y: None
                             height: dp(44)
@@ -1709,32 +1731,52 @@
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
-                        height: dp(118)
-                        spacing: dp(4)
+                        height: dp(260)
+                        spacing: dp(6)
                         Label:
                             text: "Area (optional)"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
-                        AppButton:
-                            text: "Select Areas"
+                        TextInput:
+                            hint_text: "Search areas ..."
+                            text: root.home.area_search if root.home else ""
+                            multiline: False
                             disabled: (not root.home) or (root.home.state_value == "Any") or (root.home.district_value == "Any")
-                            on_release:
-                                if root.home: root.home.open_area_picker()
+                            on_text:
+                                if root.home: root.home.area_search = self.text
+                                if root.home: root.home.render_area_options(root.ids.area_options_container)
                             size_hint_y: None
                             height: dp(48)
-                        Label:
-                            text:
-                                ("Any" if (not root.home) or (not root.home.selected_areas) else (
-                                (", ".join(root.home.selected_areas[:2])) + (
-                                (" (+" + str(len(root.home.selected_areas) - 2) + " more)") if len(root.home.selected_areas) > 2 else ""
-                                )))
-                            color: TEXT_MUTED
-                            halign: "left"
-                            valign: "middle"
-                            text_size: self.size
+                        ScrollView:
+                            do_scroll_x: False
+                            bar_width: dp(6)
                             size_hint_y: None
-                            height: dp(44)
+                            height: dp(150)
+                            GridLayout:
+                                id: area_options_container
+                                cols: 1
+                                size_hint_y: None
+                                height: self.minimum_height
+                                spacing: dp(6)
+                        BoxLayout:
+                            size_hint_y: None
+                            height: dp(40)
+                            spacing: dp(10)
+                            AppButton:
+                                text: "Clear Areas"
+                                disabled: (not root.home) or (not root.home.selected_areas)
+                                on_release:
+                                    if root.home: root.home.clear_areas()
+                                    if root.home: root.home.render_area_options(root.ids.area_options_container)
+                                size_hint_x: None
+                                width: dp(140)
+                            Label:
+                                text: ("Any" if (not root.home) or (not root.home.selected_areas) else (str(len(root.home.selected_areas)) + " selected"))
+                                color: TEXT_MUTED
+                                halign: "left"
+                                valign: "middle"
+                                text_size: self.size
 
                     BoxLayout:
                         orientation: "vertical"
@@ -1799,14 +1841,11 @@
                             halign: "left"
                             valign: "middle"
                             text_size: self.width, None
-                        TextInput:
-                            text: ("" if (root.home and root.home.need_category == "Any") else (root.home.need_category if root.home else ""))
-                            hint_text: "Any / type to search…"
-                            multiline: False
+                        PrettySpinner:
+                            text: root.home.need_category if root.home else "Any"
+                            values: root.home.need_values if root.home else ["Any"]
                             on_text:
-                                if root.home: root.home.on_need_input_changed(self)
-                            on_focus:
-                                if root.home: root.home.on_need_input_focus(self, self.focus)
+                                if root.home: root.home.need_category = self.text
                             size_hint_y: None
                             height: dp(48)
 

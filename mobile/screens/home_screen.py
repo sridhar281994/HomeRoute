@@ -77,6 +77,24 @@ class FilterPopup(Popup):
 
     home = ObjectProperty(None)
 
+    def on_open(self):
+        try:
+            if self.home is not None:
+                setattr(self.home, "_filter_popup", self)
+                container = self.ids.get("area_options_container")
+                if container is not None:
+                    self.home.render_area_options(container)
+        except Exception:
+            return
+
+    def on_dismiss(self):
+        try:
+            if self.home is not None and getattr(self.home, "_filter_popup", None) is self:
+                setattr(self.home, "_filter_popup", None)
+        except Exception:
+            pass
+        return super().on_dismiss()
+
 
 class AreaSelectPopup(Popup):
     """
@@ -436,15 +454,27 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
     def _schedule_area_render(self) -> None:
         Clock.schedule_once(lambda *_: self._render_area_options(), 0)
+        try:
+            popup = getattr(self, "_filter_popup", None)
+        except Exception:
+            popup = None
+        if popup is not None:
+            try:
+                container = popup.ids.get("area_options_container")
+                if container is not None:
+                    Clock.schedule_once(lambda *_: self.render_area_options(container), 0)
+            except Exception:
+                pass
 
     def _schedule_area_chips(self) -> None:
         Clock.schedule_once(lambda *_: self._render_area_chips(), 0)
 
-    def _render_area_options(self) -> None:
-        try:
-            container = (self.ids or {}).get("area_options_container")
-        except Exception:
-            container = None
+    def render_area_options(self, container=None) -> None:
+        if container is None:
+            try:
+                container = (self.ids or {}).get("area_options_container")
+            except Exception:
+                container = None
         if container is None:
             return
         try:
@@ -490,6 +520,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
             row.add_widget(cb)
             row.add_widget(lbl)
             container.add_widget(row)
+
+    def _render_area_options(self) -> None:
+        self.render_area_options()
 
     def _render_area_chips(self) -> None:
         try:

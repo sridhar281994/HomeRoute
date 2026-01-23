@@ -580,22 +580,25 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 except Exception:
                     filechooser = None
 
-                if filechooser is not None:
-                    def _on_sel(selection):
-                        try:
-                            paths = ensure_local_paths(selection or [])
-                            img = next((p for p in paths if is_image_path(p)), "")
-                            if img:
-                                self.upload_profile_image(img)
-                        except Exception:
-                            return
+                if filechooser is None:
+                    _popup("Gallery picker unavailable", "Please install or enable a gallery app to choose photos.")
+                    return
 
+                def _on_sel(selection):
                     try:
-                        filechooser.open_file(on_selection=_on_sel, multiple=False)
-                        return
+                        paths = ensure_local_paths(selection or [])
+                        img = next((p for p in paths if is_image_path(p)), "")
+                        if img:
+                            self.upload_profile_image(img)
                     except Exception:
-                        # Fall back to the in-app chooser below.
-                        pass
+                        return
+
+                try:
+                    filechooser.open_file(on_selection=_on_sel, multiple=False)
+                    return
+                except Exception:
+                    _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+                    return
 
             from kivy.uix.behaviors import ButtonBehavior
             from kivy.uix.floatlayout import FloatLayout
@@ -1217,30 +1220,33 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 except Exception:
                     filechooser = None
 
-                if filechooser is not None:
-                    def _on_sel(selection):
-                        try:
-                            paths = ensure_local_paths(selection or [])
-                            media = [p for p in paths if is_image_path(p) or is_video_path(p)]
-                            self._selected_media = list(media)
-                            images = [x for x in self._selected_media if is_image_path(x)]
-                            videos = [x for x in self._selected_media if is_video_path(x)]
-                            if "media_summary" in self.ids:
-                                parts = []
-                                if images:
-                                    parts.append(f"{len(images)} image(s)")
-                                if videos:
-                                    parts.append(f"{len(videos)} video(s)")
-                                self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
-                        except Exception:
-                            return
+                if filechooser is None:
+                    _popup("Gallery picker unavailable", "Please install or enable a gallery app to choose media.")
+                    return
 
+                def _on_sel(selection):
                     try:
-                        filechooser.open_file(on_selection=_on_sel, multiple=True)
-                        return
+                        paths = ensure_local_paths(selection or [])
+                        media = [p for p in paths if is_image_path(p) or is_video_path(p)]
+                        self._selected_media = list(media)
+                        images = [x for x in self._selected_media if is_image_path(x)]
+                        videos = [x for x in self._selected_media if is_video_path(x)]
+                        if "media_summary" in self.ids:
+                            parts = []
+                            if images:
+                                parts.append(f"{len(images)} image(s)")
+                            if videos:
+                                parts.append(f"{len(videos)} video(s)")
+                            self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
                     except Exception:
-                        # Fall back to in-app picker below.
-                        pass
+                        return
+
+                try:
+                    filechooser.open_file(on_selection=_on_sel, multiple=True)
+                    return
+                except Exception:
+                    _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+                    return
 
             """
             Custom media picker:
