@@ -43,6 +43,19 @@ class ForgotPasswordScreen(GestureNavigationMixin, Screen):
     return_to = StringProperty("login")
     header_text = StringProperty("Forgot Password")
 
+    def on_pre_enter(self, *args):
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
+
     def go_back(self) -> None:
         if self.manager:
             # When opened from Choose ("Change Password"), Back should return to Choose.
@@ -114,6 +127,19 @@ class ResetPasswordScreen(GestureNavigationMixin, Screen):
     current_identifier = StringProperty("")
     current_otp = StringProperty("")
     is_processing = BooleanProperty(False)
+
+    def on_pre_enter(self, *args):
+        try:
+            self.gesture_bind_window()
+        except Exception:
+            pass
+
+    def on_leave(self, *args):
+        try:
+            self.gesture_unbind_window()
+        except Exception:
+            pass
+        return super().on_leave(*args)
 
     def go_back(self) -> None:
         if self.manager:

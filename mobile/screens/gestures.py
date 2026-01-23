@@ -3,7 +3,9 @@ from __future__ import annotations
 import time
 
 from kivy.core.window import Window
+from kivy.factory import Factory
 from kivy.metrics import dp
+from kivy.uix.dropdown import DropDown
 
 
 class GestureNavigationMixin:
@@ -23,14 +25,49 @@ class GestureNavigationMixin:
     _PULL_TO_REFRESH_DY = dp(110)
     _PULL_TO_REFRESH_DX_MAX = dp(80)
 
-    def __init__(self, **kwargs):
-        # Mixin init: ensure we don't rely on every Screen overriding on_pre_enter/on_leave
-        # to bind/unbind gestures. This keeps swipe-back consistent across all screens.
-        super().__init__(**kwargs)  # type: ignore[misc]
+    def gesture_can_refresh(self) -> bool:
+        """
+        Default pull-to-refresh gate:
+        - allow only when a known ScrollView is at the top
+        - and when the screen is not already loading (if it exposes is_loading)
+        """
         try:
-            # Bind/unbind at Window level so gestures work even if child widgets consume touch.
-            self.bind(on_pre_enter=lambda *_: self.gesture_bind_window())
-            self.bind(on_leave=lambda *_: self.gesture_unbind_window())
+            if bool(getattr(self, "is_loading", False)):
+                return False
+        except Exception:
+            pass
+        sv = None
+        try:
+            ids = getattr(self, "ids", {}) or {}
+            for key in ("feed_scroll", "my_posts_scroll"):
+                if key in ids:
+                    sv = ids.get(key)
+                    break
+        except Exception:
+            sv = None
+        if sv is None:
+            return False
+        try:
+            return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.99
+        except Exception:
+            return False
+
+    def gesture_refresh(self) -> None:
+        """
+        Default refresh action:
+        - call refresh() if present
+        - otherwise call refresh_status() if present
+        """
+        try:
+            if hasattr(self, "refresh"):
+                getattr(self, "refresh")()
+                return
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "refresh_status"):
+                getattr(self, "refresh_status")()
+                return
         except Exception:
             pass
 
@@ -188,17 +225,80 @@ class GestureNavigationMixin:
         except Exception:
             pass
 
-        # Fallback navigation: try to return to a reasonable root screen.
+    # -----------------------
+    # Hamburger menu (top-left)
+    # -----------------------
+    def open_hamburger_menu(self, anchor_widget) -> None:
+        """
+        Open the top-left hamburger dropdown menu.
+
+        - Auto-dismisses on outside tap (DropDown default behavior)
+        - Menu items navigate using the ScreenManager
+        """
         try:
-            mgr = getattr(self, "manager", None)
-            if mgr is not None:
-                names = [getattr(s, "name", "") for s in getattr(mgr, "screens", [])]
-                if "home" in names and str(getattr(mgr, "current", "")) != "home":
-                    mgr.current = "home"
-                    return
-                if "welcome" in names and str(getattr(mgr, "current", "")) != "welcome":
-                    mgr.current = "welcome"
-                    return
+            dd = getattr(self, "_hamburger_dd", None)
         except Exception:
-            pass
+            dd = None
+
+        if dd is None:
+            dd = DropDown(auto_width=False, width=dp(220))
+
+            def _mk_item(label: str, action: str) -> None:
+                try:
+                    btn = Factory.AppButton(text=label)
+                except Exception:
+                    btn = Factory.Button(text=label)
+                btn.size_hint_y = None
+                btn.height = dp(44)
+                btn.bind(on_release=lambda *_: (dd.dismiss(), self._hamburger_navigate(action)))
+                dd.add_widget(btn)
+
+            _mk_item("Home", "home")
+            _mk_item("My Posts", "my_posts")
+            _mk_item("Settings", "profile")
+            _mk_item("Publish Ad", "owner_add_property")
+            _mk_item("Subscription", "subscription")
+            _mk_item("Logout", "logout")
+
+            try:
+                setattr(self, "_hamburger_dd", dd)
+            except Exception:
+                pass
+
+        try:
+            dd.open(anchor_widget)
+        except Exception:
+            return
+
+    def _hamburger_navigate(self, action: str) -> None:
+        action = str(action or "").strip()
+        mgr = getattr(self, "manager", None)
+        if not mgr:
+            return
+
+        if action == "logout":
+            try:
+                from frontend_app.utils.storage import clear_session
+
+                clear_session()
+            except Exception:
+                pass
+            try:
+                mgr.current = "login"
+            except Exception:
+                pass
+            return
+
+        if action == "owner_add_property":
+            try:
+                scr = mgr.get_screen("owner_add_property")
+                if hasattr(scr, "start_new"):
+                    scr.start_new()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+        try:
+            mgr.current = action
+        except Exception:
+            return
 

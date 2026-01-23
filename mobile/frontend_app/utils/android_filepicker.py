@@ -18,9 +18,8 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     """
     Copy an Android content:// URI to the app's cache directory.
 
-    This is required because:
-    - SAF/file picker commonly returns content URIs.
-    - Our upload code uses `open(file_path, "rb")` which needs a real local path.
+    Needed because Android's file picker (SAF) often returns content URIs, while our
+    upload code expects a real local filesystem path.
     """
     from jnius import autoclass, jarray  # type: ignore
 
@@ -101,7 +100,6 @@ def ensure_local_path(p: str) -> str:
     if p.startswith("content://"):
         return _android_copy_content_uri_to_cache(p)
 
-    # Some pickers may return a raw path that is still readable.
     return p
 
 

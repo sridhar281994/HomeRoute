@@ -23,17 +23,6 @@
     bold: True
     color: TEXT_MAIN
     font_name: "AppFont"
-    # Responsiveness defaults:
-    # - keep alignment stable
-    # - avoid text spilling off-screen
-    halign: "left"
-    valign: "middle"
-    # IMPORTANT: don't bind text_size to (width,height). Doing so can create a
-    # layout loop when other rules bind width/height to texture_size.
-    # Keep only the width constrained; allow height to expand naturally.
-    text_size: (self.width, None)
-    shorten: True
-    shorten_from: "right"
 
 <Button>:
     markup: True
@@ -41,98 +30,6 @@
     bold: True
     font_name: "AppFont"
     color: ACCENT_PURPLE
-    # Responsiveness defaults:
-    # - center text in fixed-size buttons
-    # - ellipsize long labels instead of overflowing
-    halign: "center"
-    valign: "middle"
-    # IMPORTANT: never bind text_size to (width,height) for general widgets.
-    # Width-only keeps text wrapping stable and avoids layout feedback loops.
-    text_size: (self.width, None)
-    shorten: True
-    shorten_from: "right"
-
-<HamburgerButton@Button>:
-    # Minimal top-left "hamburger" icon button (3 lines).
-    text: ""
-    size_hint: None, None
-    size: dp(44), dp(44)
-    background_normal: ""
-    background_down: ""
-    background_color: (0, 0, 0, 0)
-    canvas.before:
-        # Button bg + border (match overall theme).
-        Color:
-            rgba: (1, 1, 1, 0.18) if self.state == "down" else (1, 1, 1, 0.12)
-        RoundedRectangle:
-            pos: self.pos
-            size: self.size
-            radius: [12]
-        Color:
-            rgba: (1, 1, 1, 0.20)
-        Line:
-            width: 1.0
-            rounded_rectangle: [self.x, self.y, self.width, self.height, 12]
-        # Hamburger lines
-        Color:
-            rgba: (1, 1, 1, 0.92)
-        Rectangle:
-            pos: self.x + dp(12), self.center_y + dp(8)
-            size: self.width - dp(24), dp(2)
-        Rectangle:
-            pos: self.x + dp(12), self.center_y - dp(1)
-            size: self.width - dp(24), dp(2)
-        Rectangle:
-            pos: self.x + dp(12), self.center_y - dp(10)
-            size: self.width - dp(24), dp(2)
-
-<AvatarButton>:
-    size_hint: None, None
-    size: dp(44), dp(44)
-    background_color: (0, 0, 0, 0)
-    canvas.before:
-        # Clip contents to circle.
-        StencilPush
-        RoundedRectangle:
-            pos: self.pos
-            size: self.size
-            radius: [999]
-        StencilUse
-    canvas.after:
-        StencilUnUse
-        RoundedRectangle:
-            pos: self.pos
-            size: self.size
-            radius: [999]
-        StencilPop
-        # Border
-        Color:
-            rgba: (1, 1, 1, 0.25)
-        Line:
-            width: 1.0
-            rounded_rectangle: [self.x, self.y, self.width, self.height, 999]
-    AsyncImage:
-        source: root.avatar_source if root.avatar_source else ""
-        # Kivy deprecated allow_stretch/keep_ratio in favor of fit_mode.
-        # "fill" matches: allow_stretch=True, keep_ratio=False
-        fit_mode: "fill"
-        opacity: 1 if root.avatar_source else 0
-    Label:
-        text: (root.avatar_text or "U")
-        # Avoid binding text_size to both width+height (can cause texture/layout churn).
-        # Center the glyph by sizing to the texture and centering in the avatar.
-        size_hint: None, None
-        size: self.texture_size
-        center: root.center
-        opacity: 0 if root.avatar_source else 1
-        color: (1, 1, 1, 0.95)
-        canvas.before:
-            Color:
-                rgba: ACCENT_PURPLE
-            RoundedRectangle:
-                pos: self.pos
-                size: self.size
-                radius: [999]
 
 <TextInput>:
     font_name: "AppFont"
@@ -248,7 +145,7 @@
 <NavButtonWrap@NavButton>:
     size_hint_x: 1
     width: 0
-    text_size: (self.width, None)
+    text_size: self.size
     halign: "center"
     valign: "middle"
     padding: [dp(8), dp(6)]
@@ -415,8 +312,6 @@
 
 <GuestPill@BoxLayout>:
     size_hint: None, None
-    # Fixed width avoids layout feedback loops (minimum_width <-> texture_size).
-    width: dp(110)
     height: dp(28)
     padding: [dp(10), dp(4), dp(10), dp(4)]
     spacing: dp(6)
@@ -433,56 +328,49 @@
             width: 1.0
             rounded_rectangle: [self.x, self.y, self.width, self.height, 999]
 
-<WebTopBar@BoxLayout>:
-    orientation: "vertical"
-    size_hint_y: None
-    height: self.minimum_height
-    spacing: dp(10)
-    padding: dp(16)
+<HamburgerButton@Button>:
+    text: ""
+    size_hint: None, None
+    size: dp(44), dp(44)
+    background_normal: ""
+    background_down: ""
+    background_color: (0, 0, 0, 0)
     canvas.before:
+        # Button bg + border (matches the panel style).
         Color:
-            rgba: PANEL_BG
+            rgba: (1, 1, 1, 0.18) if self.state == "down" else (1, 1, 1, 0.12)
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [16]
+            radius: [12]
         Color:
-            rgba: (1, 1, 1, 0.12)
+            rgba: (1, 1, 1, 0.20)
         Line:
             width: 1.0
-            rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
-    BoxLayout:
-        size_hint_y: None
-        height: dp(28)
-        spacing: dp(10)
-        Label:
-            text: "[b]Flatnow.in[/b]"
-            font_size: sp(18)
-            size_hint_x: None
-            width: self.texture_size[0] + dp(2)
-            halign: "left"
-            valign: "middle"
-            shorten: False
-            # Prevent circular dependency:
-            # width -> text_size -> texture_size -> width
-            text_size: (None, None)
-        Widget:
-        GuestPill:
-            # Guard get_screen() to avoid churn/errors during early startup.
-            opacity: 1 if (app.root and app.root.has_screen("home") and app.root.get_screen("home").is_guest) else 0
-            disabled: not (app.root and app.root.has_screen("home") and app.root.get_screen("home").is_guest)
-            width: dp(110) if (app.root and app.root.has_screen("home") and app.root.get_screen("home").is_guest) else 0
-            Label:
-                text: "[b]Guest mode[/b]"
-                font_size: sp(12)
-                color: TEXT_MAIN
-                size_hint_x: 1
-                shorten: False
-                # Prevent circular dependency:
-                # size -> text_size -> texture_size -> size
-                text_size: (None, None)
-    # NOTE: WebTopBar's link grid is intentionally removed in the mobile app UI.
-    # Navigation is handled via the Home hamburger menu and per-screen Back actions.
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 12]
+        # Hamburger lines
+        Color:
+            rgba: (1, 1, 1, 0.92)
+        Rectangle:
+            pos: self.x + dp(12), self.center_y + dp(8)
+            size: self.width - dp(24), dp(2)
+        Rectangle:
+            pos: self.x + dp(12), self.center_y - dp(1)
+            size: self.width - dp(24), dp(2)
+        Rectangle:
+            pos: self.x + dp(12), self.center_y - dp(10)
+            size: self.width - dp(24), dp(2)
+
+<MobileTopBar@BoxLayout>:
+    orientation: "horizontal"
+    size_hint_y: None
+    height: dp(52)
+    padding: [dp(6), 0, dp(6), 0]
+    spacing: dp(10)
+    HamburgerButton:
+        # Use current_screen so this works for every Screen.
+        on_release: app.root.current_screen.open_hamburger_menu(self) if (app and app.root and app.root.current_screen) else None
+    Widget:
 
 <SplashScreen>:
     name: "splash"
@@ -510,7 +398,6 @@
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         Image:
-            # NOTE: avoid any QuickRent presplash asset references.
             source: "assets/flatnow_all.png"
             fit_mode: "contain"
             size_hint: None, None
@@ -555,7 +442,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -634,7 +521,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -747,7 +634,7 @@
                                 color: 1, 1, 1, 0.9
                                 halign: "left"
                                 valign: "middle"
-                                text_size: (self.width, None)
+                                text_size: self.size
 
                         BoxLayout:
                             size_hint_y: None
@@ -852,7 +739,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -931,7 +818,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -1051,7 +938,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -1298,7 +1185,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -1329,24 +1216,6 @@
                             size_hint_y: None
                             height: dp(22)
                             color: TEXT_MUTED
-
-                        AppButton:
-                            text: "INSTANT - ₹10\nUnlock 30 owner/service contacts"
-                            size_hint_y: None
-                            height: dp(60)
-                            on_release: root.buy_instant()
-
-                        AppButton:
-                            text: "SMART - ₹50\nUnlock 150 contacts"
-                            size_hint_y: None
-                            height: dp(60)
-                            on_release: root.buy_smart()
-
-                        AppButton:
-                            text: "BUSINESS - ₹150\nUnlimited contact unlocks/Month"
-                            size_hint_y: None
-                            height: dp(64)
-                            on_release: root.buy_business()
 
                         AppButton:
                             text: "Refresh"
@@ -1387,7 +1256,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -1571,24 +1440,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            # Mobile home nav: hamburger menu (replaces WebTopBar).
-            BoxLayout:
-                size_hint_y: None
-                height: dp(52)
-                padding: [dp(6), 0, dp(6), 0]
-                spacing: dp(10)
-
-                HamburgerButton:
-                    id: home_hamburger_btn
-                    on_release: root.open_hamburger_menu(self)
-
-                Widget:
-
-                AvatarButton:
-                    id: home_avatar_btn
-                    avatar_source: root.profile_avatar_url
-                    avatar_text: root.profile_avatar_letter
-                    on_release: root.go_settings()
+            MobileTopBar:
 
             WebPanel:
                 size_hint_y: 1
@@ -1596,24 +1448,21 @@
 
                 BoxLayout:
                     size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(6)
-                    orientation: "vertical"
-
+                    height: dp(40)
+                    spacing: dp(10)
                     Label:
                         text: "[b]Uncover the Best, Good Luck[/b]"
                         font_name: "CursiveFont"
-                        font_size: sp(18)
+                        font_size: sp(20)
                         halign: "left"
                         valign: "middle"
-                        shorten: False
-                        text_size: (self.width, None)
+                        text_size: self.size
                         color: TEXT_MAIN
-
+                    Widget:
                     AppButton:
                         text: "Refresh"
-                        size_hint_y: None
-                        height: dp(44)
+                        size_hint_x: None
+                        width: dp(120)
                         on_release: root.refresh()
 
                 BoxLayout:
@@ -1621,11 +1470,19 @@
                     height: dp(44)
                     padding: [dp(4), dp(2), dp(4), dp(2)]
                     spacing: dp(8)
+                    Label:
+                        text: "Filters"
+                        color: TEXT_MUTED
+                        size_hint_x: None
+                        width: dp(70)
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
                     Widget:
                     AppButton:
-                        text: "Filter"
+                        text: "Open Filters"
                         size_hint_x: None
-                        width: dp(120)
+                        width: dp(150)
                         on_release: root.open_filters()
 
                 Label:
@@ -1699,7 +1556,7 @@
                     text: "[b]Filters[/b]"
                     halign: "left"
                     valign: "middle"
-                    text_size: (self.width, None)
+                    text_size: self.size
                 Widget:
                 AppButton:
                     text: "Close"
@@ -1788,7 +1645,7 @@
                             color: TEXT_MUTED
                             halign: "left"
                             valign: "middle"
-                            text_size: (self.width, None)
+                            text_size: self.size
                             size_hint_y: None
                             height: dp(44)
 
@@ -1821,7 +1678,7 @@
                             color: TEXT_MUTED
                             halign: "left"
                             valign: "middle"
-                            text_size: (self.width, None)
+                            text_size: self.size
                     Widget:
 
                     BoxLayout:
@@ -1840,7 +1697,7 @@
                             color: TEXT_MUTED
                             halign: "left"
                             valign: "middle"
-                            text_size: (self.width, None)
+                            text_size: self.size
 
                     BoxLayout:
                         orientation: "vertical"
@@ -1975,7 +1832,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             WebPanel:
                 size_hint_y: 1
@@ -1989,7 +1846,7 @@
                         font_size: sp(18)
                         halign: "left"
                         valign: "middle"
-                        text_size: (self.width, None)
+                        text_size: self.size
                     Widget:
                     AppButton:
                         text: "Refresh"
@@ -2009,16 +1866,15 @@
                     height: dp(22)
                     color: TEXT_MUTED
 
-            ScrollView:
-                id: my_posts_scroll
-                do_scroll_x: False
-                bar_width: dp(6)
-                GridLayout:
-                    id: my_posts_container
-                    cols: 1
-                    size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(8)
+                ScrollView:
+                    do_scroll_x: False
+                    bar_width: dp(6)
+                    GridLayout:
+                        id: my_posts_container
+                        cols: 1
+                        size_hint_y: None
+                        height: self.minimum_height
+                        spacing: dp(8)
 
 <PropertyDetailScreen>:
     name: "property_detail"
@@ -2046,7 +1902,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -2064,14 +1920,12 @@
                             font_size: sp(18)
                             halign: "left"
                             valign: "middle"
-                            text_size: (self.width, None)
+                            text_size: self.size
                         Widget:
                         AppButton:
-                            text: "Share"
+                            text: "Share post"
                             size_hint_x: None
-                            width: dp(110)
-                            background_color: ACCENT_PURPLE
-                            color: (1, 1, 1, 1)
+                            width: dp(140)
                             on_release: root.share_current()
                         AppButton:
                             text: "Back"
@@ -2105,6 +1959,10 @@
                             height: self.minimum_height
 
                     WebCard:
+                        Label:
+                            text: "[b]Amenities[/b]"
+                            size_hint_y: None
+                            height: dp(22)
                         Label:
                             text: (", ".join(root.property_data.get("amenities") or []) if root.property_data.get("amenities") else "—")
                             color: TEXT_MUTED
@@ -2142,7 +2000,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
+            MobileTopBar:
 
             ScrollView:
                 do_scroll_x: False

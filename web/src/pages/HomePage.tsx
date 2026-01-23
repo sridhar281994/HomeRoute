@@ -602,7 +602,16 @@ export default function HomePage() {
           const amenities = Array.isArray(p.amenities)
             ? p.amenities
                 .map((a: any) => String(a).trim())
-                .filter((v) => v && v !== "—" && v !== "-" && v.toLowerCase() !== "none")
+                .filter((v) => {
+                  const s = String(v || "").trim();
+                  if (!s) return false;
+                  const lc = s.toLowerCase();
+                  if (s === "—" || s === "-") return false;
+                  if (lc === "none") return false;
+                  // Hide accidental values like "Amenities—"
+                  if (lc.startsWith("amenities")) return false;
+                  return true;
+                })
             : [];
           return (
             <div className="col-12" key={p.id}>
