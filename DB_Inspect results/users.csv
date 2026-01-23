@@ -1,0 +1,8 @@
+id,email,phone,username,name,role,state,district,owner_category,company_name,approval_status,created_at,approval_reason,company_address,company_address_normalized,company_description,company_name_normalized,gender,gps_lat,gps_lng,password_hash,phone_normalized,profile_image_path
+10,sri198528@gmail.com,,sri198528,YO YO MIX,user,,,,,approved,2026-01-22 07:38:27.652668+00:00,,,,,,,10.90912061,79.45242249,$2b$12$ylV7DkV.8uST5Ky48lIt1uMiQsH9xKzOHiEb59hkfICNkngiaXciy,,
+9,sridharc982@gmail.com,,sridharc982,SRIDHAR C,user,,,,,approved,2026-01-21 20:46:31.970406+00:00,,,,,,,,,$2b$12$D35jKq/bnBv/D6L3bj4mJO5QdqpGTH6YVYjESC67lTKc825dqn5gS,,
+7,vsaakash8@gamil.com,6385265644,6385265644,Aakash,user,Tamil Nadu,Thanjavur,,,approved,2026-01-20 03:34:43.599622+00:00,,,,,,,,,$2b$12$M28esyimUoVJx6yzaSy4COGjUmTeMd5Ef7Hii5QcOarFe.uO9aBxK,6385265644,
+6,sridhar.christh@gmail.com,7200553957,7200553957,Sri,owner,Tamil Nadu,Chennai,Apartment Owner,,approved,2026-01-13 15:16:43.566988+00:00,,,,,,,10.90912061,79.45242249,$2b$12$ADlTNO4Cw5hPohptmLh0pufdAygnvvfh.V2g7YfzMjXWJqIHAaFxi,7200553957,
+3,owner@demo.local,,demo_owner,Demo Owner,owner,,,,,approved,2026-01-09 20:50:13.782565+00:00,,,,,,,,,$2b$12$vlp1Djh5bJdvion/5tyYwu8GEWZ4tzu8PALVyOxfMIPmvjFG7/iFm,,
+2,sri.christh@gmail.com,9360649151,9360649151,Sridhar,user,Tamil Nadu,Chennai,,,approved,2026-01-09 20:46:32.680630+00:00,,,,,,,10.90912061,79.45242249,$2b$12$KnWW9po4N/PvTdDbUxL/6OrDsE.kJEXRxxurkp1d/5emCsTdbfYzi,9360649151,u2_2c94f7667480176f.png
+1,admin@local,,Admin,Administrator,admin,,,,,approved,2026-01-09 15:29:53.889832+00:00,,,,,,,,,$2b$12$CoXnVPfSDak9Uu5kb/nYde0KGOpT7icjFJsLcbhaYTTGIBHtWgWg2,,

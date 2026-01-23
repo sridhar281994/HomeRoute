@@ -1,0 +1,15 @@
+{
+  "users_total": 7,
+  "users_by_role": {
+    "user": 4,
+    "owner": 2,
+    "admin": 1
+  },
+  "ads_total": 4,
+  "ads_by_status": {
+    "approved": 4
+  },
+  "property_images_total": 1,
+  "free_contact_usage_total": 3,
+  "contact_usage_total": 0
+}
