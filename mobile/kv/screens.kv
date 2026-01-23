@@ -510,7 +510,8 @@
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         Image:
-            source: "assets/QuickRent.png"
+            # NOTE: avoid any QuickRent presplash asset references.
+            source: "assets/flatnow_all.png"
             fit_mode: "contain"
             size_hint: None, None
             size: min(root.width * 0.7, dp(320)), min(root.width * 0.7, dp(320))
