@@ -388,18 +388,65 @@ def _public_image_url(file_path: str) -> str:
     Historical DB values may already include a leading "/uploads/" or "uploads/" prefix.
     Avoid duplicating that prefix (which would break image rendering as /uploads/uploads/...).
     """
+    def _normalize_upload_rel_path(fp: str) -> str:
+        """
+        Normalize a stored file_path into a relative path under uploads/.
+
+        We support historical/buggy values like:
+        - "/uploads/abc.jpg"
+        - "uploads/abc.jpg"
+        - "/var/app/uploads/abc.jpg" (absolute path mistakenly stored)
+        - "C:\\app\\uploads\\abc.jpg" (Windows path)
+        - "backend/uploads/abc.jpg" (repo-relative)
+        """
+        fp = (fp or "").strip()
+        if not fp:
+            return ""
+        fp = fp.replace("\\", "/")
+
+        # If an absolute URL is stored, keep it as-is (caller will bypass).
+        if fp.startswith(("http://", "https://", "//")):
+            return ""
+
+        low = fp.lower()
+        # If path already contains an uploads segment, strip everything before it.
+        idx = low.rfind("/uploads/")
+        if idx >= 0:
+            return fp[idx + len("/uploads/") :].lstrip("/")
+        idx2 = low.rfind("uploads/")
+        if idx2 >= 0:
+            return fp[idx2 + len("uploads/") :].lstrip("/")
+
+        # If an absolute path was stored, try to map it back to uploads/.
+        try:
+            if os.path.isabs(fp):
+                uploads_dir = os.path.abspath(_uploads_dir())
+                fp_abs = os.path.abspath(fp)
+                try:
+                    if os.path.commonpath([fp_abs, uploads_dir]) == uploads_dir:
+                        rel = os.path.relpath(fp_abs, uploads_dir).replace("\\", "/")
+                        return rel.lstrip("/")
+                except Exception:
+                    pass
+                # Last resort: assume basename lives under uploads/
+                return os.path.basename(fp_abs).lstrip("/")
+        except Exception:
+            pass
+
+        return fp.lstrip("/")
+
     fp = (file_path or "").strip()
     if not fp:
         return ""
     fp = fp.replace("\\", "/")
-    if fp.startswith("http://") or fp.startswith("https://"):
+    if fp.startswith(("http://", "https://")):
         return fp
     if fp.startswith("/uploads/"):
         return fp
-    fp = fp.lstrip("/")
-    if fp.startswith("uploads/"):
-        fp = fp[len("uploads/") :]
-    return f"/uploads/{fp}"
+    rel = _normalize_upload_rel_path(fp)
+    if not rel:
+        return ""
+    return f"/uploads/{rel}"
 
 
 def _public_image_url_if_exists(file_path: str) -> str:
@@ -411,30 +458,55 @@ def _public_image_url_if_exists(file_path: str) -> str:
     files may have been stored under a nested "uploads/" folder. This function tries
     both layouts and returns the first URL that maps to an existing file.
     """
+    def _normalize_upload_rel_path(fp: str) -> str:
+        # Keep logic in sync with _public_image_url (duplicated intentionally to avoid refactors).
+        fp = (fp or "").strip()
+        if not fp:
+            return ""
+        fp = fp.replace("\\", "/")
+        if fp.startswith(("http://", "https://", "//")):
+            return ""
+        low = fp.lower()
+        idx = low.rfind("/uploads/")
+        if idx >= 0:
+            return fp[idx + len("/uploads/") :].lstrip("/")
+        idx2 = low.rfind("uploads/")
+        if idx2 >= 0:
+            return fp[idx2 + len("uploads/") :].lstrip("/")
+        try:
+            if os.path.isabs(fp):
+                uploads_dir = os.path.abspath(_uploads_dir())
+                fp_abs = os.path.abspath(fp)
+                try:
+                    if os.path.commonpath([fp_abs, uploads_dir]) == uploads_dir:
+                        rel = os.path.relpath(fp_abs, uploads_dir).replace("\\", "/")
+                        return rel.lstrip("/")
+                except Exception:
+                    pass
+                return os.path.basename(fp_abs).lstrip("/")
+        except Exception:
+            pass
+        return fp.lstrip("/")
+
     fp = (file_path or "").strip()
     if not fp:
         return ""
     fp = fp.replace("\\", "/")
-    if fp.startswith("http://") or fp.startswith("https://") or fp.startswith("//"):
+    if fp.startswith(("http://", "https://", "//")):
         return fp
     if fp.startswith("/uploads/"):
         # Already a public path (can't reliably validate disk path here).
         return fp
 
-    rel = fp.lstrip("/")
+    rel = _normalize_upload_rel_path(fp)
+    if not rel:
+        return ""
+
     uploads_dir = _uploads_dir()
     try:
-        # Try direct path first.
         direct_path = os.path.join(uploads_dir, rel)
         if os.path.exists(direct_path):
             return f"/uploads/{rel}"
-
-        # Historical values may include "uploads/" prefix but files were stored without it.
-        if rel.startswith("uploads/"):
-            rel2 = rel[len("uploads/") :]
-            direct2 = os.path.join(uploads_dir, rel2)
-            if os.path.exists(direct2):
-                return f"/uploads/{rel2}"
 
         # Some deployments stored files under a nested "uploads/" folder.
         nested = os.path.join(uploads_dir, "uploads", rel)
@@ -444,7 +516,7 @@ def _public_image_url_if_exists(file_path: str) -> str:
         pass
 
     # Fallback to legacy behavior (may 404 if the file is missing).
-    return _public_image_url(rel)
+    return f"/uploads/{rel}"
 
 
 def _locations_json_path() -> str:
