@@ -692,6 +692,33 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
 
         Thread(target=work, daemon=True).start()
 
+    # -----------------------
+    # Gestures (pull-to-refresh)
+    # -----------------------
+    def gesture_can_refresh(self) -> bool:
+        """
+        Allow pull-to-refresh only when the list ScrollView is already at the top.
+        """
+        if self.is_loading:
+            return False
+        sv = None
+        try:
+            sv = (self.ids or {}).get("my_posts_scroll")
+        except Exception:
+            sv = None
+        if sv is None:
+            return False
+        try:
+            return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.99
+        except Exception:
+            return False
+
+    def gesture_refresh(self) -> None:
+        try:
+            self.refresh()
+        except Exception:
+            return
+
     def back(self):
         if self.manager:
             self.manager.current = "home"
