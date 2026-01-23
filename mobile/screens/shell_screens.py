@@ -47,6 +47,7 @@ from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
+from frontend_app.utils.android_filepicker import ensure_local_paths, is_image_path, is_video_path
 
 
 def _popup(title: str, msg: str) -> None:
@@ -828,28 +829,36 @@ class SettingsScreen(GestureNavigationMixin, Screen):
         Thread(target=work, daemon=True).start()
 
     def open_image_picker(self):
+        """
+        Use the Android system file picker (SAF) instead of scanning storage.
+        This avoids permission-denied issues and UI stalls on large folders.
+        """
+        try:
+            from plyer import filechooser  # type: ignore
+        except Exception:
+            filechooser = None
+
         def _open_picker() -> None:
-            def _done(files: list[str]) -> None:
-                try:
-                    if files:
-                        self.upload_profile_image(files[0])
-                except Exception:
-                    return
-
-            _MediaGridPickerPopup(
-                title="Choose Profile Image",
-                include_videos=False,
-                multiselect=False,
-                on_done=_done,
-            ).open()
-
-        def _after(ok: bool) -> None:
-            if not ok:
-                _popup("Permission required", "Please allow Photos/Media permission to upload images.")
+            if not filechooser:
+                _popup("Upload", "File picker is unavailable in this build.")
                 return
-            _open_picker()
 
-        ensure_permissions(required_media_permissions(), on_result=_after)
+            def _on_selection(selection):
+                picked = ensure_local_paths(selection or [])
+                if not picked:
+                    return
+                self.upload_profile_image(picked[0])
+
+            try:
+                filechooser.open_file(
+                    on_selection=_on_selection,
+                    multiple=False,
+                )
+            except Exception:
+                _popup("Upload", "Unable to open file picker.")
+
+        # Keep permissions best-effort (Android 13+ may not require these for SAF).
+        ensure_permissions(required_media_permissions(), on_result=lambda _ok: _open_picker())
 
     def upload_profile_image(self, file_path: str):
         from threading import Thread
@@ -1357,14 +1366,31 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
 
     def open_media_picker(self):
         """
-        Pick up to 10 images + 1 video to upload with the ad.
+        Pick up to 10 images + 1 video to upload with the ad (Android file picker).
         """
+        try:
+            from plyer import filechooser  # type: ignore
+        except Exception:
+            filechooser = None
+
         def _open_picker() -> None:
-            def _done(selected: list[str]) -> None:
+            if not filechooser:
+                _popup("Upload", "File picker is unavailable in this build.")
+                return
+
+            def _on_selection(selection):
+                picked = ensure_local_paths(selection or [])
+                # Treat unknown extensions as images (SAF display names typically include extensions).
+                videos = [p for p in picked if is_video_path(p)]
+                images = [p for p in picked if p not in videos]
+                if len(images) > 10:
+                    _popup("Error", "Maximum 10 images are allowed.")
+                    return
+                if len(videos) > 1:
+                    _popup("Error", "Maximum 1 video is allowed.")
+                    return
+                self._selected_media = images + videos
                 try:
-                    self._selected_media = list(selected or [])
-                    images = [x for x in self._selected_media if os.path.splitext(x.lower())[1] in _IMAGE_EXTS]
-                    videos = [x for x in self._selected_media if os.path.splitext(x.lower())[1] in _VIDEO_EXTS]
                     if "media_summary" in self.ids:
                         parts: list[str] = []
                         if images:
@@ -1375,20 +1401,15 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 except Exception:
                     pass
 
-            _MediaGridPickerPopup(
-                title="Choose Media (max 10 images + 1 video)",
-                include_videos=True,
-                multiselect=True,
-                on_done=_done,
-            ).open()
+            try:
+                filechooser.open_file(
+                    on_selection=_on_selection,
+                    multiple=True,
+                )
+            except Exception:
+                _popup("Upload", "Unable to open file picker.")
 
-        def _after(ok: bool) -> None:
-            if not ok:
-                _popup("Permission required", "Please allow Photos/Media permission to pick files for upload.")
-                return
-            _open_picker()
-
-        ensure_permissions(required_media_permissions(), on_result=_after)
+        ensure_permissions(required_media_permissions(), on_result=lambda _ok: _open_picker())
 
     def submit_listing(self):
         """
