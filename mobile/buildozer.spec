@@ -5,9 +5,7 @@ package.domain = in.flatnow
 
 # Use the same PNG for app icon and presplash.
 icon.filename = assets/flatnow_icon.png
-# Disable presplash to avoid Android auto-scaling/stretching to full screen.
-# (We use the in-app `SplashScreen` instead.)
-# presplash.filename = assets/flatnow_all.png
+presplash.filename = assets/flatnow_all.png
 
 # Your main.py lives inside the mobile/ folder.
 source.dir = .
@@ -19,13 +17,14 @@ version = 0.1
 
 # Core dependencies
 # Include certifi so the CA bundle is packaged (prevents SSL errors on device).
-requirements = python3,kivy,requests,certifi,pyjnius,websocket-client,plyer
+requirements = python3,kivy,requests,certifi,pyjnius,websocket-client
 
 # Local python-for-android recipe overrides.
 p4a.local_recipes = recipes
 
 # UI
 orientation = portrait
+# Fullscreen ensures the presplash covers the entire device screen.
 fullscreen = 1
 
 # Android specific

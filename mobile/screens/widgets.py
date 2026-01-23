@@ -3,10 +3,7 @@ from __future__ import annotations
 from kivy.core.window import Window
 from kivy.animation import Animation
 from kivy.properties import BooleanProperty, ListProperty, NumericProperty
-from kivy.properties import StringProperty
 from kivy.uix.button import Button
-from kivy.uix.behaviors import ButtonBehavior
-from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.togglebutton import ToggleButton
 from kivy.utils import platform
 import math
@@ -210,14 +207,4 @@ class HoverToggleButton(HoverBehavior, ToggleButton):
         self.ux_scale = 1.0
         self.ripple_alpha = 0.0
         self.ripple_radius = 0.0
-
-
-class AvatarButton(ButtonBehavior, FloatLayout):
-    """
-    Clickable circular avatar (used on Home header).
-    KV renders the circle + image/letter using stencil.
-    """
-
-    avatar_source = StringProperty("")
-    avatar_text = StringProperty("U")
 

@@ -4,9 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from kivy.animation import Animation
 from kivy.clock import Clock
-from kivy.core.window import Window
 from kivy.factory import Factory
 from kivy.metrics import dp
 from kivy.properties import (
@@ -17,11 +15,9 @@ from kivy.properties import (
 )
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.checkbox import CheckBox
-from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
-from kivy.uix.modalview import ModalView
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import Screen
@@ -184,131 +180,6 @@ class AreaSelectPopup(Popup):
         rebuild()
 
 
-class HomeHamburgerMenu(ModalView):
-    """
-    Full-screen modal overlay that anchors a small dropdown panel under the
-    hamburger button. Auto-dismisses on outside tap and animates open (slide+fade).
-    """
-
-    def __init__(self, home: "HomeScreen", anchor_widget: Widget, **kwargs):
-        super().__init__(**kwargs)
-        self._home = home
-        self._anchor = anchor_widget
-        self.size_hint = (1, 1)
-        self.auto_dismiss = True
-        self.background = ""
-        self.background_color = (0, 0, 0, 0)
-
-        # Root overlay that covers the screen; tapping outside the panel dismisses.
-        root = FloatLayout()
-        self._panel = BoxLayout(
-            orientation="vertical",
-            size_hint=(None, None),
-            padding=dp(10),
-            spacing=dp(8),
-        )
-        self._panel.bind(minimum_height=self._panel.setter("height"))
-
-        # Panel background + border (match the app theme).
-        from kivy.graphics import Color, Line, RoundedRectangle
-
-        with self._panel.canvas.before:
-            Color(1, 1, 1, 0.14)
-            self._bg = RoundedRectangle(pos=self._panel.pos, size=self._panel.size, radius=[dp(16)])
-            Color(1, 1, 1, 0.12)
-            self._border = Line(rounded_rectangle=[0, 0, 0, 0, dp(16)], width=1.0)
-
-        def _sync_panel_bg(*_):
-            self._bg.pos = self._panel.pos
-            self._bg.size = self._panel.size
-            self._border.rounded_rectangle = [self._panel.x, self._panel.y, self._panel.width, self._panel.height, dp(16)]
-
-        self._panel.bind(pos=_sync_panel_bg, size=_sync_panel_bg)
-
-        # Menu items (use existing navigation helpers on HomeScreen).
-        items: list[tuple[str, str]] = [
-            ("Home", "home"),
-            ("My Posts", "my_posts"),
-            ("Settings", "settings"),
-            ("Subscription", "subscription"),
-            ("Publish Ad", "publish"),
-            ("Logout", "logout"),
-        ]
-
-        for label, key in items:
-            btn = Factory.AppButton(text=label)
-            btn.size_hint_y = None
-            btn.height = dp(44)
-            # Make logout visually distinct.
-            if key == "logout":
-                btn.color = (0.94, 0.27, 0.27, 1)
-            btn.bind(on_release=lambda _btn, key=key: self._select(key))
-            self._panel.add_widget(btn)
-
-        root.add_widget(self._panel)
-        self.add_widget(root)
-
-        # Track state so HomeScreen can toggle the menu.
-        self.bind(on_dismiss=lambda *_: setattr(self._home, "_hamburger_menu", None))
-
-    def on_open(self, *args):
-        # After layout pass, compute anchor position and animate in.
-        Clock.schedule_once(lambda *_: self._position_and_animate(), 0)
-        return super().on_open(*args)
-
-    def _position_and_animate(self) -> None:
-        # Panel width responsive to screen size.
-        w = min(dp(260), Window.width * 0.78)
-        self._panel.width = w
-        # Ensure height is computed from children.
-        self._panel.height = max(self._panel.minimum_height, dp(44))
-
-        # Anchor position (window coords): use the bottom-left of the hamburger button.
-        try:
-            ax, ay = self._anchor.to_window(self._anchor.x, self._anchor.y)
-            ah = float(getattr(self._anchor, "height", dp(44)))
-        except Exception:
-            ax, ay, ah = (dp(12), Window.height - dp(60), dp(44))
-
-        # Place dropdown directly below the button.
-        top = ay - dp(6)
-        x_target = ax
-        y_target = top - self._panel.height
-
-        # Keep on-screen (still prefers "below").
-        x_target = max(dp(8), min(x_target, Window.width - self._panel.width - dp(8)))
-        y_target = max(dp(8), min(y_target, Window.height - self._panel.height - dp(8)))
-
-        # Start slightly above and transparent, then slide down + fade in.
-        self._panel.opacity = 0.0
-        self._panel.pos = (x_target, y_target + dp(14))
-        Animation.cancel_all(self._panel)
-        Animation(opacity=1.0, y=y_target, d=0.18, t="out_quad").start(self._panel)
-
-    def _select(self, key: str) -> None:
-        # Close first, then navigate (keeps UX snappy and avoids stray touches).
-        try:
-            self.dismiss()
-        except Exception:
-            pass
-
-        def nav(*_):
-            if key == "home":
-                self._home.go_home()
-            elif key == "my_posts":
-                self._home.go_my_posts()
-            elif key == "settings":
-                self._home.go_settings()
-            elif key == "subscription":
-                self._home.go_subscription()
-            elif key == "publish":
-                self._home.go_publish_ad()
-            elif key == "logout":
-                self._home.do_logout()
-
-        Clock.schedule_once(nav, 0)
-
-
 class HomeScreen(GestureNavigationMixin, Screen):
     """
     Home / Property Feed + Search & Filters.
@@ -345,10 +216,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
     is_logged_in = BooleanProperty(False)
     is_guest = BooleanProperty(False)
 
-    # Home header avatar
-    profile_avatar_url = StringProperty("")
-    profile_avatar_letter = StringProperty("U")
-
     def on_pre_enter(self, *args):
         # Gate buttons until user logs in.
         try:
@@ -359,9 +226,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
         except Exception:
             self.is_logged_in = False
             self.is_guest = False
-
-        # Update avatar from cached session user (fast).
-        self._apply_avatar_from_user(get_user() or {})
 
         # Seed preferred location from the stored profile.
         try:
@@ -395,44 +259,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
         self.gesture_bind_window()
 
     def on_leave(self, *args):
-        # Close any open hamburger menu overlay when navigating away.
-        try:
-            menu = getattr(self, "_hamburger_menu", None)
-            if menu is not None:
-                menu.dismiss()
-                self._hamburger_menu = None
-        except Exception:
-            pass
         # Avoid leaking Window bindings when screen is not visible.
         try:
             self.gesture_unbind_window()
         except Exception:
             pass
         return super().on_leave(*args)
-
-    def open_hamburger_menu(self, anchor_widget: Widget) -> None:
-        """
-        Toggle the Home hamburger dropdown menu.
-        """
-        try:
-            menu = getattr(self, "_hamburger_menu", None)
-        except Exception:
-            menu = None
-        if menu is not None:
-            try:
-                menu.dismiss()
-            except Exception:
-                pass
-            self._hamburger_menu = None
-            return
-
-        try:
-            menu = HomeHamburgerMenu(home=self, anchor_widget=anchor_widget)
-            self._hamburger_menu = menu
-            menu.open()
-        except Exception:
-            # Never crash the Home screen due to menu rendering errors.
-            return
 
     # -----------------------
     # Gesture handlers (pull-to-refresh)
@@ -641,6 +473,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
             row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(38), spacing=dp(8))
             cb = CheckBox(active=(area in selected), size_hint=(None, None), size=(dp(32), dp(32)))
             lbl = Label(text=area, halign="left", valign="middle", color=(1, 1, 1, 0.92))
+            lbl.text_size = (0, None)
 
             def _toggle(_cb, value, area=area):
                 self.toggle_area(area, bool(value))
@@ -669,28 +502,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
             btn = Factory.AppButton(text=f"{area}  ✕")
             btn.size_hint = (None, None)
             btn.height = dp(32)
-            # IMPORTANT: avoid circular dependency:
-            # width -> text_size/shorten -> texture_size -> width
-            # For "chip" buttons, we want intrinsic width from the text only.
-            try:
-                btn.text_size = (None, None)
-                btn.shorten = False
-            except Exception:
-                pass
 
-            def _resize_once(_btn, _ts):
-                # Resize a single time once texture is available, then unbind.
-                try:
-                    _btn.width = max(dp(90), _btn.texture_size[0] + dp(18))
-                finally:
-                    try:
-                        _btn.unbind(texture_size=_resize_once)
-                    except Exception:
-                        pass
+            def _resize(_btn, _):
+                _btn.width = max(dp(90), _btn.texture_size[0] + dp(18))
 
-            btn.bind(texture_size=_resize_once)
-            # Best-effort initial sizing (some platforms compute texture immediately).
-            _resize_once(btn, btn.texture_size)
+            btn.bind(texture_size=_resize)
+            _resize(btn, btn.texture_size)
             btn.bind(on_release=lambda _btn, a=area: self.remove_area(a))
             container.add_widget(btn)
         if len(areas) > max_show:
@@ -700,24 +517,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 height=dp(32),
                 color=(1, 1, 1, 0.75),
             )
-            # Same circular-dependency guard as chip buttons.
-            try:
-                lbl_more.text_size = (None, None)
-                lbl_more.shorten = False
-            except Exception:
-                pass
-
-            def _more_resize_once(_lbl, _ts):
-                try:
-                    _lbl.width = max(dp(70), _lbl.texture_size[0] + dp(12))
-                finally:
-                    try:
-                        _lbl.unbind(texture_size=_more_resize_once)
-                    except Exception:
-                        pass
-
-            lbl_more.bind(texture_size=_more_resize_once)
-            _more_resize_once(lbl_more, lbl_more.texture_size)
+            lbl_more.bind(texture_size=lambda _lbl, _ts: setattr(_lbl, "width", max(dp(70), _lbl.texture_size[0] + dp(12))))
+            lbl_more.width = max(dp(70), lbl_more.texture_size[0] + dp(12))
             container.add_widget(lbl_more)
 
     # -----------------------
@@ -742,7 +543,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 def apply(*_):
                     self._preferred_state = pref_state
                     self._preferred_district = pref_district
-                    self._apply_avatar_from_user(u)
                     self._apply_preferred_state()
 
                 Clock.schedule_once(apply, 0)
@@ -750,22 +550,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 return
 
         Thread(target=work, daemon=True).start()
-
-    def _apply_avatar_from_user(self, u: dict[str, Any]) -> None:
-        """
-        Set Home header avatar (URL or fallback letter).
-        """
-        try:
-            name = str(u.get("name") or u.get("email") or u.get("phone") or "User").strip()
-        except Exception:
-            name = "User"
-        letter = (name[:1].upper() if name else "U") or "U"
-        try:
-            url = to_api_url(str(u.get("profile_image_url") or "").strip())
-        except Exception:
-            url = ""
-        self.profile_avatar_letter = letter
-        self.profile_avatar_url = url
 
     def _apply_preferred_state(self) -> bool:
         pref = str(getattr(self, "_preferred_state", "") or "").strip()
@@ -1078,39 +862,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
         header.add_widget(avatar)
 
         hb = BoxLayout(orientation="vertical", spacing=dp(2))
-        lbl_title = Label(
-            text=f"[b]{title}[/b]",
-            size_hint_y=None,
-            height=dp(24),
-            halign="left",
-            valign="middle",
-            shorten=True,
-            shorten_from="right",
-        )
-        lbl_meta = Label(
-            text=str(meta),
-            size_hint_y=None,
-            height=dp(22),
-            color=(1, 1, 1, 0.78),
-            halign="left",
-            valign="middle",
-            shorten=True,
-            shorten_from="right",
-        )
-
-        def _sync_label(_lbl: Label, *_):
-            try:
-                _lbl.text_size = (_lbl.width, None)
-            except Exception:
-                pass
-
-        lbl_title.bind(size=_sync_label)
-        lbl_meta.bind(size=_sync_label)
-        _sync_label(lbl_title)
-        _sync_label(lbl_meta)
-
-        hb.add_widget(lbl_title)
-        hb.add_widget(lbl_meta)
+        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=dp(24)))
+        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
         header.add_widget(hb)
         header.add_widget(Widget())
         btn_share = Factory.AppButton(
@@ -1119,12 +872,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
             width=dp(96),
             height=dp(40),
         )
-        # Ensure the share label is visible.
-        try:
-            btn_share.background_color = (0.66, 0.33, 0.97, 1)
-            btn_share.color = (1, 1, 1, 1)
-        except Exception:
-            pass
         btn_share.bind(on_release=do_share)
         header.add_widget(btn_share)
         card.add_widget(header)
@@ -1146,7 +893,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 if ctype.startswith("video/"):
                     grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
                 else:
-                    img = AsyncImage(source=to_api_url(it.get("url") or ""), fit_mode="fill")
+                    img = AsyncImage(source=to_api_url(it.get("url") or ""), allow_stretch=True, keep_ratio=False)
                     img.size_hint_y = None
                     img.height = thumb_h
                     grid.add_widget(img)
@@ -1182,6 +929,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         amenities = [str(x).strip() for x in (p.get("amenities") or []) if str(x).strip()]
         if amenities:
+            card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
             card.add_widget(
                 Label(
                     text=", ".join(amenities),
@@ -1520,50 +1268,17 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
                 def done(*_):
                     self.items = cards
-
-                    # Render into the KV container in small batches to avoid
-                    # Clock "too much iteration" warnings on startup/refresh.
+                    # Render simple list into the KV container (no RecycleView dependency).
                     try:
                         container = self.ids.get("list_container")
+                        if container is not None:
+                            container.clear_widgets()
+                            for c in cards:
+                                raw = c.get("raw") or {}
+                                container.add_widget(self._feed_card(raw))
                     except Exception:
-                        container = None
-
-                    if container is None:
-                        self.is_loading = False
-                        return
-
-                    try:
-                        container.clear_widgets()
-                    except Exception:
-                        # If clear fails, don't keep loading spinner stuck.
-                        self.is_loading = False
-                        return
-
-                    raw_items: list[dict[str, Any]] = []
-                    try:
-                        for c in cards:
-                            raw_items.append((c or {}).get("raw") or {})
-                    except Exception:
-                        raw_items = []
-
-                    batch_size = 3
-                    idx = 0
-
-                    def _add_batch(_dt=0.0):
-                        nonlocal idx
-                        end = min(idx + batch_size, len(raw_items))
-                        for i in range(idx, end):
-                            try:
-                                container.add_widget(self._feed_card(raw_items[i]))
-                            except Exception:
-                                continue
-                        idx = end
-                        if idx < len(raw_items):
-                            Clock.schedule_once(_add_batch, 0)
-                            return
-                        self.is_loading = False
-
-                    Clock.schedule_once(_add_batch, 0)
+                        pass
+                    self.is_loading = False
 
                 Clock.schedule_once(done, 0)
             except ApiError as e:
