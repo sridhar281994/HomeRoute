@@ -1064,6 +1064,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
             width=dp(56),
             height=dp(40),
         )
+        # Ensure the share icon is visible (emoji can render as white on light button bg).
+        try:
+            btn_share.background_color = (0.66, 0.33, 0.97, 1)
+            btn_share.color = (1, 1, 1, 1)
+        except Exception:
+            pass
         btn_share.bind(on_release=do_share)
         header.add_widget(btn_share)
         card.add_widget(header)

@@ -292,28 +292,64 @@ class _MediaGridPickerPopup(Popup):
         # Square-ish tiles.
         tile_h = dp(118)
 
+        def _safe_image_tile(widget, source_path: str) -> None:
+            """
+            Render a thumbnail without crashing if SDL2 can't decode the file.
+
+            Setting `Button.background_normal` to an arbitrary filesystem path can
+            raise `Exception: SDL2: Unable to load image` and terminate the app.
+            Using `AsyncImage` avoids hard-crashes on decode failures.
+            """
+            try:
+                widget.background_normal = ""
+                widget.background_down = ""
+                widget.background_color = (1, 1, 1, 0.10)
+            except Exception:
+                pass
+
+            if os.path.splitext(str(source_path).lower())[1] not in _IMAGE_EXTS:
+                return
+            try:
+                img = Factory.AsyncImage(source=source_path, allow_stretch=True, keep_ratio=False)
+            except Exception:
+                return
+
+            def _sync(*_):
+                try:
+                    img.pos = widget.pos
+                    img.size = widget.size
+                except Exception:
+                    return
+
+            try:
+                widget.add_widget(img)
+                widget.bind(pos=_sync, size=_sync)
+                _sync()
+            except Exception:
+                return
+
         if not self._multiselect:
             # Single tap selects immediately (profile image).
             btn = Button(text="", size_hint_y=None, height=tile_h)
-            btn.background_normal = fp if (ext in _IMAGE_EXTS) else ""
-            btn.background_down = btn.background_normal
-            btn.background_color = (1, 1, 1, 1) if btn.background_normal else (1, 1, 1, 0.10)
+            _safe_image_tile(btn, fp)
             if is_video:
                 btn.text = "▶"
+                try:
+                    btn.color = (1, 1, 1, 0.92)
+                except Exception:
+                    pass
             btn.bind(on_release=lambda *_: self._done_single(fp))
             return btn
 
         tb = ToggleButton(text="", size_hint_y=None, height=tile_h)
-        if ext in _IMAGE_EXTS:
-            tb.background_normal = fp
-            tb.background_down = fp
-            tb.background_color = (1, 1, 1, 1)
-        else:
+        _safe_image_tile(tb, fp)
+        if ext in _VIDEO_EXTS:
             # Video tile: no filename, just a simple icon label.
-            tb.background_normal = ""
-            tb.background_down = ""
-            tb.background_color = (1, 1, 1, 0.12)
             tb.text = "▶"
+            try:
+                tb.color = (1, 1, 1, 0.92)
+            except Exception:
+                pass
 
         # Selection border (no filenames).
         from kivy.graphics import Color, Line
@@ -933,6 +969,12 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
     expires_text = StringProperty("")
     is_loading = BooleanProperty(False)
 
+    # Product IDs must match the Play Console subscription product IDs.
+    # These defaults are safe even if not configured (purchase flow just won't find products).
+    _PLAN_INSTANT = "instant_10"
+    _PLAN_SMART = "smart_50"
+    _PLAN_BUSINESS = "business_150"
+
     def on_pre_enter(self, *args):
         self.refresh_status()
 
@@ -980,6 +1022,26 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
     def go_back(self):
         if self.manager:
             self.manager.current = "home"
+
+    def _buy(self, product_id: str) -> None:
+        try:
+            from frontend_app.utils.billing import BillingUnavailable, buy_plan
+
+            buy_plan(str(product_id))
+            _popup("Subscription", "Opening Google Play purchase…")
+        except BillingUnavailable as e:
+            _popup("Subscription", str(e) or "Billing is unavailable on this device/build.")
+        except Exception:
+            _popup("Subscription", "Unable to start purchase. Please try again.")
+
+    def buy_instant(self) -> None:
+        self._buy(self._PLAN_INSTANT)
+
+    def buy_smart(self) -> None:
+        self._buy(self._PLAN_SMART)
+
+    def buy_business(self) -> None:
+        self._buy(self._PLAN_BUSINESS)
 
 
 class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):

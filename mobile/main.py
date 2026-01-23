@@ -4,6 +4,7 @@ import os
 
 from kivy.app import App
 from kivy.core.text import LabelBase
+from kivy.core.window import Window
 from kivy.lang import Builder
 from kivy.resources import resource_add_path, resource_find
 from kivy.uix.screenmanager import FadeTransition, ScreenManager
@@ -31,6 +32,14 @@ class QuickRentApp(App):
     title = "Flatnow.in"
 
     def build(self):
+        # Android: keep focused inputs above the soft keyboard (OTP fields, etc).
+        # This prevents the keyboard from covering TextInputs on smaller screens.
+        try:
+            if platform == "android":
+                Window.softinput_mode = "below_target"
+        except Exception:
+            pass
+
         base_dir = os.path.dirname(__file__)
         resource_add_path(base_dir)
         resource_add_path(os.path.join(base_dir, "kv"))

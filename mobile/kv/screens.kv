@@ -427,57 +427,8 @@
                 # Prevent circular dependency:
                 # size -> text_size -> texture_size -> size
                 text_size: (None, None)
-    GridLayout:
-        # Match web topbar-links behavior: wrap into 2 columns on narrow screens.
-        cols: 2 if self.width < dp(520) else (3 if self.width < dp(720) else 6)
-        spacing: dp(10)
-        size_hint_y: None
-        height: self.minimum_height
-        row_default_height: dp(40)
-        row_force_default: True
-        NavButtonWrap:
-            text: "Home"
-            on_release: app.root.current = "home"
-        NavButtonWrap:
-            text: "My Posts"
-            on_release: app.root.current = "my_posts"
-        NavButtonWrap:
-            text: "Settings"
-            on_release: app.root.current = "profile"
-        NavButtonWrap:
-            text: "Publish Ad"
-            on_release:
-                app.root.get_screen("owner_add_property").start_new()
-                app.root.current = "owner_add_property"
-        # Auth buttons (match web: show Login/Register when not logged in).
-        NavButtonWrap:
-            text: "Login"
-            opacity: 1 if (app.root and not app.root.get_screen("home").is_logged_in) else 0
-            disabled: (not app.root) or app.root.get_screen("home").is_logged_in
-            on_release: app.root.current = "login"
-        NavButtonWrap:
-            text: "Register"
-            opacity: 1 if (app.root and not app.root.get_screen("home").is_logged_in) else 0
-            disabled: (not app.root) or app.root.get_screen("home").is_logged_in
-            on_release: app.root.current = "register"
-        # Exit Guest (web: only visible in guest mode).
-        NavButtonWrap:
-            text: "Exit Guest"
-            opacity: 1 if (app.root and app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in) else 0
-            disabled: not (app.root and app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in)
-            color: (0.94, 0.27, 0.27, 1)
-            on_release:
-                app.root.get_screen("home").do_logout()
-                app.root.current = "welcome"
-        # Logout (web: visible when logged in).
-        NavButtonWrap:
-            text: "Logout"
-            opacity: 1 if (app.root and app.root.get_screen("home").is_logged_in) else 0
-            disabled: not (app.root and app.root.get_screen("home").is_logged_in)
-            color: (0.94, 0.27, 0.27, 1)
-            on_release:
-                app.root.get_screen("home").do_logout()
-                app.root.current = "login"
+    # NOTE: WebTopBar's link grid is intentionally removed in the mobile app UI.
+    # Navigation is handled via the Home hamburger menu and per-screen Back actions.
 
 <SplashScreen>:
     name: "splash"
@@ -1325,6 +1276,24 @@
                             color: TEXT_MUTED
 
                         AppButton:
+                            text: "INSTANT - ₹10\nUnlock 30 owner/service contacts"
+                            size_hint_y: None
+                            height: dp(60)
+                            on_release: root.buy_instant()
+
+                        AppButton:
+                            text: "SMART - ₹50\nUnlock 150 contacts"
+                            size_hint_y: None
+                            height: dp(60)
+                            on_release: root.buy_smart()
+
+                        AppButton:
+                            text: "BUSINESS - ₹150\nUnlimited contact unlocks/Month"
+                            size_hint_y: None
+                            height: dp(64)
+                            on_release: root.buy_business()
+
+                        AppButton:
                             text: "Refresh"
                             size_hint_y: None
                             height: dp(44)
@@ -1582,11 +1551,6 @@
                         size_hint_x: None
                         width: dp(120)
                         on_release: root.refresh()
-                    AppButton:
-                        text: "Subscription"
-                        size_hint_x: None
-                        width: dp(140)
-                        on_release: root.go_subscription()
 
                 BoxLayout:
                     size_hint_y: None
@@ -2049,6 +2013,8 @@
                             text: "[font=EmojiFont]↗️[/font]"
                             size_hint_x: None
                             width: dp(56)
+                        background_color: ACCENT_PURPLE
+                        color: (1, 1, 1, 1)
                             on_release: root.share_current()
                         AppButton:
                             text: "Back"
