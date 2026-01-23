@@ -311,7 +311,7 @@ class _MediaGridPickerPopup(Popup):
             if os.path.splitext(str(source_path).lower())[1] not in _IMAGE_EXTS:
                 return
             try:
-                img = Factory.AsyncImage(source=source_path, allow_stretch=True, keep_ratio=False)
+                img = Factory.AsyncImage(source=source_path, fit_mode="fill")
             except Exception:
                 return
 
@@ -535,7 +535,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
                 tile.canvas.before.clear()
                 container.add_widget(Label(text="[b]Video[/b]", size_hint_y=None, height=tile_h, color=(1, 1, 1, 0.78)))
             else:
-                img = Factory.AsyncImage(source=url, allow_stretch=True, keep_ratio=False)
+                img = Factory.AsyncImage(source=url, fit_mode="fill")
                 img.size_hint_y = None
                 img.height = tile_h
                 container.add_widget(img)

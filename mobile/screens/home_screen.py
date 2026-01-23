@@ -1115,7 +1115,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 if ctype.startswith("video/"):
                     grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
                 else:
-                    img = AsyncImage(source=to_api_url(it.get("url") or ""), allow_stretch=True, keep_ratio=False)
+                    img = AsyncImage(source=to_api_url(it.get("url") or ""), fit_mode="fill")
                     img.size_hint_y = None
                     img.height = thumb_h
                     grid.add_widget(img)
@@ -1489,17 +1489,50 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
                 def done(*_):
                     self.items = cards
-                    # Render simple list into the KV container (no RecycleView dependency).
+
+                    # Render into the KV container in small batches to avoid
+                    # Clock "too much iteration" warnings on startup/refresh.
                     try:
                         container = self.ids.get("list_container")
-                        if container is not None:
-                            container.clear_widgets()
-                            for c in cards:
-                                raw = c.get("raw") or {}
-                                container.add_widget(self._feed_card(raw))
                     except Exception:
-                        pass
-                    self.is_loading = False
+                        container = None
+
+                    if container is None:
+                        self.is_loading = False
+                        return
+
+                    try:
+                        container.clear_widgets()
+                    except Exception:
+                        # If clear fails, don't keep loading spinner stuck.
+                        self.is_loading = False
+                        return
+
+                    raw_items: list[dict[str, Any]] = []
+                    try:
+                        for c in cards:
+                            raw_items.append((c or {}).get("raw") or {})
+                    except Exception:
+                        raw_items = []
+
+                    batch_size = 3
+                    idx = 0
+
+                    def _add_batch(_dt=0.0):
+                        nonlocal idx
+                        end = min(idx + batch_size, len(raw_items))
+                        for i in range(idx, end):
+                            try:
+                                container.add_widget(self._feed_card(raw_items[i]))
+                            except Exception:
+                                continue
+                        idx = end
+                        if idx < len(raw_items):
+                            Clock.schedule_once(_add_batch, 0)
+                            return
+                        self.is_loading = False
+
+                    Clock.schedule_once(_add_batch, 0)
 
                 Clock.schedule_once(done, 0)
             except ApiError as e:
