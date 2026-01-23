@@ -23,6 +23,14 @@
     bold: True
     color: TEXT_MAIN
     font_name: "AppFont"
+    # Responsiveness defaults:
+    # - keep alignment stable
+    # - avoid text spilling off-screen
+    halign: "left"
+    valign: "middle"
+    text_size: self.size
+    shorten: True
+    shorten_from: "right"
 
 <Button>:
     markup: True
@@ -30,6 +38,14 @@
     bold: True
     font_name: "AppFont"
     color: ACCENT_PURPLE
+    # Responsiveness defaults:
+    # - center text in fixed-size buttons
+    # - ellipsize long labels instead of overflowing
+    halign: "center"
+    valign: "middle"
+    text_size: self.size
+    shorten: True
+    shorten_from: "right"
 
 <HamburgerButton@Button>:
     # Minimal top-left "hamburger" icon button (3 lines).

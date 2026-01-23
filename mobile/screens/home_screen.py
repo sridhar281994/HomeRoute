@@ -1020,8 +1020,39 @@ class HomeScreen(GestureNavigationMixin, Screen):
         header.add_widget(avatar)
 
         hb = BoxLayout(orientation="vertical", spacing=dp(2))
-        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=dp(24)))
-        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
+        lbl_title = Label(
+            text=f"[b]{title}[/b]",
+            size_hint_y=None,
+            height=dp(24),
+            halign="left",
+            valign="middle",
+            shorten=True,
+            shorten_from="right",
+        )
+        lbl_meta = Label(
+            text=str(meta),
+            size_hint_y=None,
+            height=dp(22),
+            color=(1, 1, 1, 0.78),
+            halign="left",
+            valign="middle",
+            shorten=True,
+            shorten_from="right",
+        )
+
+        def _sync_label(_lbl: Label, *_):
+            try:
+                _lbl.text_size = (_lbl.width, None)
+            except Exception:
+                pass
+
+        lbl_title.bind(size=_sync_label)
+        lbl_meta.bind(size=_sync_label)
+        _sync_label(lbl_title)
+        _sync_label(lbl_meta)
+
+        hb.add_widget(lbl_title)
+        hb.add_widget(lbl_meta)
         header.add_widget(hb)
         header.add_widget(Widget())
         btn_share = Factory.AppButton(
