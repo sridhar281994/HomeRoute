@@ -430,9 +430,9 @@ class SettingsScreen(GestureNavigationMixin, Screen):
         try:
             from kivy.resources import resource_find
 
-            self.default_profile_image = resource_find("assets/QuickRent.png") or "assets/QuickRent.png"
+            self.default_profile_image = resource_find("assets/flatnow_all.png") or "assets/flatnow_all.png"
         except Exception:
-            self.default_profile_image = "assets/QuickRent.png"
+            self.default_profile_image = "assets/flatnow_all.png"
 
     def on_pre_enter(self, *args):
         sess = get_session() or {}
