@@ -554,7 +554,9 @@ export default function HomePage() {
           const pidKey = Number.isInteger(pid) ? pid : Number.NaN;
           const shareUrl = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
           const amenities = Array.isArray(p.amenities)
-            ? p.amenities.map((a: any) => String(a).trim()).filter(Boolean)
+            ? p.amenities
+                .map((a: any) => String(a).trim())
+                .filter((v) => v && v !== "—" && v !== "-" && v.toLowerCase() !== "none")
             : [];
           return (
             <div className="col-12" key={p.id}>

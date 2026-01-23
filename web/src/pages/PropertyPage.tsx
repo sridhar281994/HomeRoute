@@ -43,7 +43,11 @@ export default function PropertyPage() {
     );
   }
 
-  const amenities = Array.isArray(p?.amenities) ? p.amenities.map((a: any) => String(a).trim()).filter(Boolean) : [];
+  const amenities = Array.isArray(p?.amenities)
+    ? p.amenities
+        .map((a: any) => String(a).trim())
+        .filter((v: string) => v && v !== "—" && v !== "-" && v.toLowerCase() !== "none")
+    : [];
 
   return (
     <div className="panel">
