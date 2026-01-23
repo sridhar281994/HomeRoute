@@ -464,9 +464,10 @@
             text_size: (None, None)
         Widget:
         GuestPill:
-            opacity: 1 if (app.root and app.root.get_screen("home").is_guest) else 0
-            disabled: not (app.root and app.root.get_screen("home").is_guest)
-            width: dp(110) if (app.root and app.root.get_screen("home").is_guest) else 0
+            # Guard get_screen() to avoid churn/errors during early startup.
+            opacity: 1 if (app.root and app.root.has_screen("home") and app.root.get_screen("home").is_guest) else 0
+            disabled: not (app.root and app.root.has_screen("home") and app.root.get_screen("home").is_guest)
+            width: dp(110) if (app.root and app.root.has_screen("home") and app.root.get_screen("home").is_guest) else 0
             Label:
                 text: "[b]Guest mode[/b]"
                 font_size: sp(12)
