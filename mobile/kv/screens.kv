@@ -410,6 +410,8 @@
 
 <GuestPill@BoxLayout>:
     size_hint: None, None
+    # Fixed width avoids layout feedback loops (minimum_width <-> texture_size).
+    width: dp(110)
     height: dp(28)
     padding: [dp(10), dp(4), dp(10), dp(4)]
     spacing: dp(6)
@@ -463,13 +465,12 @@
         GuestPill:
             opacity: 1 if (app.root and app.root.get_screen("home").is_guest) else 0
             disabled: not (app.root and app.root.get_screen("home").is_guest)
-            width: self.minimum_width if (app.root and app.root.get_screen("home").is_guest) else 0
+            width: dp(110) if (app.root and app.root.get_screen("home").is_guest) else 0
             Label:
                 text: "[b]Guest mode[/b]"
                 font_size: sp(12)
                 color: TEXT_MAIN
-                size_hint: None, None
-                size: self.texture_size
+                size_hint_x: 1
                 shorten: False
                 # Prevent circular dependency:
                 # size -> text_size -> texture_size -> size
