@@ -51,6 +51,16 @@ class LoginScreen(GestureNavigationMixin, Screen):
             self.remember_me = bool(get_remember_me())
         except Exception:
             self.remember_me = False
+        # Ensure soft keyboard does not hide OTP input.
+        try:
+            self._prev_softinput_mode = Window.softinput_mode
+            Window.softinput_mode = "resize"
+        except Exception:
+            pass
+        try:
+            Window.bind(on_keyboard_height=self._on_keyboard_height)
+        except Exception:
+            pass
         # Make swipe-back work even when TextInput captures touch.
         try:
             self.gesture_bind_window()
@@ -58,6 +68,15 @@ class LoginScreen(GestureNavigationMixin, Screen):
             pass
 
     def on_leave(self, *args):
+        try:
+            Window.unbind(on_keyboard_height=self._on_keyboard_height)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "_prev_softinput_mode"):
+                Window.softinput_mode = self._prev_softinput_mode
+        except Exception:
+            pass
         try:
             self.gesture_unbind_window()
         except Exception:
@@ -73,6 +92,45 @@ class LoginScreen(GestureNavigationMixin, Screen):
         width_ratio = width / 520.0
         height_ratio = height / 720.0
         self.font_scale = max(0.75, min(1.25, min(width_ratio, height_ratio)))
+
+    def scroll_to_field(self, widget, *_):
+        """
+        Ensure a focused field stays above the soft keyboard.
+        """
+        def _do(*_dt):
+            try:
+                sv = self.ids.get("login_scroll")
+                if sv is None or widget is None:
+                    return
+                sv.scroll_to(widget, padding=dp(160), animate=True)
+            except Exception:
+                return
+
+        Clock.schedule_once(_do, 0.05)
+        Clock.schedule_once(_do, 0.2)
+        Clock.schedule_once(_do, 0.4)
+        Clock.schedule_once(_do, 0.8)
+
+    def _focused_input(self):
+        for key in ("otp_input", "password_input", "phone_input"):
+            try:
+                w = (self.ids or {}).get(key)
+            except Exception:
+                w = None
+            if w is not None and getattr(w, "focus", False):
+                return w
+        return None
+
+    def _on_keyboard_height(self, _window, height):
+        try:
+            if float(height or 0) <= 0:
+                return
+        except Exception:
+            return
+        w = self._focused_input()
+        if w is None:
+            return
+        self.scroll_to_field(w)
 
     # -----------------------
     # Navigation

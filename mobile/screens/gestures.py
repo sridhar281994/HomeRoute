@@ -18,7 +18,7 @@ class GestureNavigationMixin:
     """
 
     # Tunables (dp so they scale with DPI)
-    _SWIPE_BACK_EDGE = dp(48)  # must start near left edge
+    _SWIPE_BACK_EDGE = dp(10000)  # allow swipe-back from anywhere
     _SWIPE_BACK_DX = dp(90)  # horizontal distance
     _SWIPE_BACK_DY_MAX = dp(70)  # vertical wiggle allowed
 

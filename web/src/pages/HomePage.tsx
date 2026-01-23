@@ -376,6 +376,19 @@ export default function HomePage() {
         </p>
         <div className="spacer" />
         <button
+          onClick={() => {
+            const s = getSession();
+            if (!s.token) {
+              nav("/login");
+              return;
+            }
+            nav("/subscription");
+          }}
+        >
+          Subscription
+        </button>
+        <button onClick={load}>Refresh</button>
+        <button
           type="button"
           title="Profile"
           aria-label="Profile"
@@ -403,19 +416,6 @@ export default function HomePage() {
             <span style={{ fontWeight: 800 }}>{avatarLetter}</span>
           )}
         </button>
-        <button
-          onClick={() => {
-            const s = getSession();
-            if (!s.token) {
-              nav("/login");
-              return;
-            }
-            nav("/subscription");
-          }}
-        >
-          Subscription
-        </button>
-        <button onClick={load}>Refresh</button>
       </div>
 
       <div className="grid" style={{ marginTop: 12 }}>

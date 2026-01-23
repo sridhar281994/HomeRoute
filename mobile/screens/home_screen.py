@@ -77,6 +77,24 @@ class FilterPopup(Popup):
 
     home = ObjectProperty(None)
 
+    def on_open(self):
+        try:
+            if self.home is not None:
+                setattr(self.home, "_filter_popup", self)
+                container = self.ids.get("area_options_container")
+                if container is not None:
+                    self.home.render_area_options(container)
+        except Exception:
+            return
+
+    def on_dismiss(self):
+        try:
+            if self.home is not None and getattr(self.home, "_filter_popup", None) is self:
+                setattr(self.home, "_filter_popup", None)
+        except Exception:
+            pass
+        return super().on_dismiss()
+
 
 class AreaSelectPopup(Popup):
     """
@@ -211,6 +229,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
     area_options = ListProperty(["Any"])
 
     bg_image = StringProperty("")
+    profile_image_url = StringProperty("")
+    avatar_letter = StringProperty("U")
 
     is_loading = BooleanProperty(False)
     is_logged_in = BooleanProperty(False)
@@ -226,6 +246,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
         except Exception:
             self.is_logged_in = False
             self.is_guest = False
+
+        try:
+            u = get_user() or {}
+        except Exception:
+            u = {}
+        self._apply_avatar(u)
 
         # Seed preferred location from the stored profile.
         try:
@@ -428,15 +454,27 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
     def _schedule_area_render(self) -> None:
         Clock.schedule_once(lambda *_: self._render_area_options(), 0)
+        try:
+            popup = getattr(self, "_filter_popup", None)
+        except Exception:
+            popup = None
+        if popup is not None:
+            try:
+                container = popup.ids.get("area_options_container")
+                if container is not None:
+                    Clock.schedule_once(lambda *_: self.render_area_options(container), 0)
+            except Exception:
+                pass
 
     def _schedule_area_chips(self) -> None:
         Clock.schedule_once(lambda *_: self._render_area_chips(), 0)
 
-    def _render_area_options(self) -> None:
-        try:
-            container = (self.ids or {}).get("area_options_container")
-        except Exception:
-            container = None
+    def render_area_options(self, container=None) -> None:
+        if container is None:
+            try:
+                container = (self.ids or {}).get("area_options_container")
+            except Exception:
+                container = None
         if container is None:
             return
         try:
@@ -482,6 +520,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
             row.add_widget(cb)
             row.add_widget(lbl)
             container.add_widget(row)
+
+    def _render_area_options(self) -> None:
+        self.render_area_options()
 
     def _render_area_chips(self) -> None:
         try:
@@ -544,12 +585,19 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     self._preferred_state = pref_state
                     self._preferred_district = pref_district
                     self._apply_preferred_state()
+                    self._apply_avatar(u)
 
                 Clock.schedule_once(apply, 0)
             except Exception:
                 return
 
         Thread(target=work, daemon=True).start()
+
+    def _apply_avatar(self, u: dict[str, Any]) -> None:
+        name = str(u.get("name") or u.get("email") or u.get("phone") or "U").strip()
+        letter = name[:1].upper() if name else "U"
+        self.avatar_letter = letter or "U"
+        self.profile_image_url = to_api_url(str(u.get("profile_image_url") or ""))
 
     def _apply_preferred_state(self) -> bool:
         pref = str(getattr(self, "_preferred_state", "") or "").strip()
