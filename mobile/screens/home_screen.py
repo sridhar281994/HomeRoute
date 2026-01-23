@@ -670,7 +670,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
         card.add_widget(header)
 
         card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
-        thumb_h = dp(140)
+        # Match web UI tile height (HomePage uses ~220px preview tiles).
+        thumb_h = dp(220)
         if images:
             # Show up to 6 items as a 2-column grid (roughly like the web HomePage).
             media = list(images)[:6]
