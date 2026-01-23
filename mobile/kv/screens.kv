@@ -360,9 +360,9 @@
             text_size: self.size
         Widget:
         GuestPill:
-            opacity: 1 if app.root.get_screen("home").is_guest else 0
-            disabled: not app.root.get_screen("home").is_guest
-            width: self.minimum_width if app.root.get_screen("home").is_guest else 0
+            opacity: 1 if (app.root and app.root.get_screen("home").is_guest) else 0
+            disabled: not (app.root and app.root.get_screen("home").is_guest)
+            width: self.minimum_width if (app.root and app.root.get_screen("home").is_guest) else 0
             Label:
                 text: "[b]Guest mode[/b]"
                 font_size: sp(12)
@@ -394,19 +394,19 @@
         # Auth buttons (match web: show Login/Register when not logged in).
         NavButtonWrap:
             text: "Login"
-            opacity: 1 if not app.root.get_screen("home").is_logged_in else 0
-            disabled: app.root.get_screen("home").is_logged_in
+            opacity: 1 if (app.root and not app.root.get_screen("home").is_logged_in) else 0
+            disabled: (not app.root) or app.root.get_screen("home").is_logged_in
             on_release: app.root.current = "login"
         NavButtonWrap:
             text: "Register"
-            opacity: 1 if not app.root.get_screen("home").is_logged_in else 0
-            disabled: app.root.get_screen("home").is_logged_in
+            opacity: 1 if (app.root and not app.root.get_screen("home").is_logged_in) else 0
+            disabled: (not app.root) or app.root.get_screen("home").is_logged_in
             on_release: app.root.current = "register"
         # Exit Guest (web: only visible in guest mode).
         NavButtonWrap:
             text: "Exit Guest"
-            opacity: 1 if (app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in) else 0
-            disabled: not (app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in)
+            opacity: 1 if (app.root and app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in) else 0
+            disabled: not (app.root and app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in)
             color: (0.94, 0.27, 0.27, 1)
             on_release:
                 app.root.get_screen("home").do_logout()
@@ -414,8 +414,8 @@
         # Logout (web: visible when logged in).
         NavButtonWrap:
             text: "Logout"
-            opacity: 1 if app.root.get_screen("home").is_logged_in else 0
-            disabled: not app.root.get_screen("home").is_logged_in
+            opacity: 1 if (app.root and app.root.get_screen("home").is_logged_in) else 0
+            disabled: not (app.root and app.root.get_screen("home").is_logged_in)
             color: (0.94, 0.27, 0.27, 1)
             on_release:
                 app.root.get_screen("home").do_logout()
