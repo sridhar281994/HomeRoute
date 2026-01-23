@@ -35,6 +35,7 @@ export default function OwnerAddPage() {
   const [files, setFiles] = useState<FileList | null>(null);
   const [selectedMediaSummary, setSelectedMediaSummary] = useState<string>("");
   const [mediaMsg, setMediaMsg] = useState<string>("");
+  const [uploadStatus, setUploadStatus] = useState<string>("");
   const [myAds, setMyAds] = useState<any[]>([]);
   const [myAdsMsg, setMyAdsMsg] = useState<string>("");
   const [catalog, setCatalog] = useState<any>(null);
@@ -368,21 +369,24 @@ export default function OwnerAddPage() {
                   const v = validateSelectedMedia(files);
                   if (!v.ok) return setMsg(v.message);
                   try {
+                    setUploadStatus("Uploading…");
                     const ordered = [...v.images, ...v.videos];
                     for (let i = 0; i < ordered.length; i++) {
                       await uploadPropertyImage(propertyId, ordered[i], i);
                     }
                     const label = adNumber ? `Ad #${adNumber}` : `listing #${propertyId}`;
                     setMsg(`Uploaded ${ordered.length} file(s) to ${label}.`);
+                    setUploadStatus("Uploaded");
                   } catch (e: any) {
                     setMsg(e.message || "Upload failed");
+                    setUploadStatus("");
                   }
                 }}
               >
                 Upload
               </button>
               <span className="muted">
-                {propertyId ? `Ad: #${adNumber || propertyId}` : "Ad: (not created yet)"}
+                {uploadStatus ? uploadStatus : propertyId ? `Ad: #${adNumber || propertyId}` : ""}
               </span>
             </div>
           </div>

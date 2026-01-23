@@ -47,6 +47,7 @@ from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
+from frontend_app.utils.android_filepicker import ensure_local_paths, is_image_path, is_video_path
 
 
 def _popup(title: str, msg: str) -> None:
@@ -292,28 +293,64 @@ class _MediaGridPickerPopup(Popup):
         # Square-ish tiles.
         tile_h = dp(118)
 
+        def _safe_image_tile(widget, source_path: str) -> None:
+            """
+            Render a thumbnail without crashing if SDL2 can't decode the file.
+
+            Setting `Button.background_normal` to an arbitrary filesystem path can
+            raise `Exception: SDL2: Unable to load image` and terminate the app.
+            Using `AsyncImage` avoids hard-crashes on decode failures.
+            """
+            try:
+                widget.background_normal = ""
+                widget.background_down = ""
+                widget.background_color = (1, 1, 1, 0.10)
+            except Exception:
+                pass
+
+            if os.path.splitext(str(source_path).lower())[1] not in _IMAGE_EXTS:
+                return
+            try:
+                img = Factory.AsyncImage(source=source_path, allow_stretch=True, keep_ratio=False)
+            except Exception:
+                return
+
+            def _sync(*_):
+                try:
+                    img.pos = widget.pos
+                    img.size = widget.size
+                except Exception:
+                    return
+
+            try:
+                widget.add_widget(img)
+                widget.bind(pos=_sync, size=_sync)
+                _sync()
+            except Exception:
+                return
+
         if not self._multiselect:
             # Single tap selects immediately (profile image).
             btn = Button(text="", size_hint_y=None, height=tile_h)
-            btn.background_normal = fp if (ext in _IMAGE_EXTS) else ""
-            btn.background_down = btn.background_normal
-            btn.background_color = (1, 1, 1, 1) if btn.background_normal else (1, 1, 1, 0.10)
+            _safe_image_tile(btn, fp)
             if is_video:
                 btn.text = "▶"
+                try:
+                    btn.color = (1, 1, 1, 0.92)
+                except Exception:
+                    pass
             btn.bind(on_release=lambda *_: self._done_single(fp))
             return btn
 
         tb = ToggleButton(text="", size_hint_y=None, height=tile_h)
-        if ext in _IMAGE_EXTS:
-            tb.background_normal = fp
-            tb.background_down = fp
-            tb.background_color = (1, 1, 1, 1)
-        else:
+        _safe_image_tile(tb, fp)
+        if ext in _VIDEO_EXTS:
             # Video tile: no filename, just a simple icon label.
-            tb.background_normal = ""
-            tb.background_down = ""
-            tb.background_color = (1, 1, 1, 0.12)
             tb.text = "▶"
+            try:
+                tb.color = (1, 1, 1, 0.92)
+            except Exception:
+                pass
 
         # Selection border (no filenames).
         from kivy.graphics import Color, Line
@@ -656,6 +693,33 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
 
         Thread(target=work, daemon=True).start()
 
+    # -----------------------
+    # Gestures (pull-to-refresh)
+    # -----------------------
+    def gesture_can_refresh(self) -> bool:
+        """
+        Allow pull-to-refresh only when the list ScrollView is already at the top.
+        """
+        if self.is_loading:
+            return False
+        sv = None
+        try:
+            sv = (self.ids or {}).get("my_posts_scroll")
+        except Exception:
+            sv = None
+        if sv is None:
+            return False
+        try:
+            return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.99
+        except Exception:
+            return False
+
+    def gesture_refresh(self) -> None:
+        try:
+            self.refresh()
+        except Exception:
+            return
+
     def back(self):
         if self.manager:
             self.manager.current = "home"
@@ -765,28 +829,36 @@ class SettingsScreen(GestureNavigationMixin, Screen):
         Thread(target=work, daemon=True).start()
 
     def open_image_picker(self):
+        """
+        Use the Android system file picker (SAF) instead of scanning storage.
+        This avoids permission-denied issues and UI stalls on large folders.
+        """
+        try:
+            from plyer import filechooser  # type: ignore
+        except Exception:
+            filechooser = None
+
         def _open_picker() -> None:
-            def _done(files: list[str]) -> None:
-                try:
-                    if files:
-                        self.upload_profile_image(files[0])
-                except Exception:
-                    return
-
-            _MediaGridPickerPopup(
-                title="Choose Profile Image",
-                include_videos=False,
-                multiselect=False,
-                on_done=_done,
-            ).open()
-
-        def _after(ok: bool) -> None:
-            if not ok:
-                _popup("Permission required", "Please allow Photos/Media permission to upload images.")
+            if not filechooser:
+                _popup("Upload", "File picker is unavailable in this build.")
                 return
-            _open_picker()
 
-        ensure_permissions(required_media_permissions(), on_result=_after)
+            def _on_selection(selection):
+                picked = ensure_local_paths(selection or [])
+                if not picked:
+                    return
+                self.upload_profile_image(picked[0])
+
+            try:
+                filechooser.open_file(
+                    on_selection=_on_selection,
+                    multiple=False,
+                )
+            except Exception:
+                _popup("Upload", "Unable to open file picker.")
+
+        # Keep permissions best-effort (Android 13+ may not require these for SAF).
+        ensure_permissions(required_media_permissions(), on_result=lambda _ok: _open_picker())
 
     def upload_profile_image(self, file_path: str):
         from threading import Thread
@@ -933,6 +1005,12 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
     expires_text = StringProperty("")
     is_loading = BooleanProperty(False)
 
+    # Product IDs must match the Play Console subscription product IDs.
+    # These defaults are safe even if not configured (purchase flow just won't find products).
+    _PLAN_INSTANT = "instant_10"
+    _PLAN_SMART = "smart_50"
+    _PLAN_BUSINESS = "business_150"
+
     def on_pre_enter(self, *args):
         self.refresh_status()
 
@@ -980,6 +1058,26 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
     def go_back(self):
         if self.manager:
             self.manager.current = "home"
+
+    def _buy(self, product_id: str) -> None:
+        try:
+            from frontend_app.utils.billing import BillingUnavailable, buy_plan
+
+            buy_plan(str(product_id))
+            _popup("Subscription", "Opening Google Play purchase…")
+        except BillingUnavailable as e:
+            _popup("Subscription", str(e) or "Billing is unavailable on this device/build.")
+        except Exception:
+            _popup("Subscription", "Unable to start purchase. Please try again.")
+
+    def buy_instant(self) -> None:
+        self._buy(self._PLAN_INSTANT)
+
+    def buy_smart(self) -> None:
+        self._buy(self._PLAN_SMART)
+
+    def buy_business(self) -> None:
+        self._buy(self._PLAN_BUSINESS)
 
 
 class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
@@ -1268,14 +1366,31 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
 
     def open_media_picker(self):
         """
-        Pick up to 10 images + 1 video to upload with the ad.
+        Pick up to 10 images + 1 video to upload with the ad (Android file picker).
         """
+        try:
+            from plyer import filechooser  # type: ignore
+        except Exception:
+            filechooser = None
+
         def _open_picker() -> None:
-            def _done(selected: list[str]) -> None:
+            if not filechooser:
+                _popup("Upload", "File picker is unavailable in this build.")
+                return
+
+            def _on_selection(selection):
+                picked = ensure_local_paths(selection or [])
+                # Treat unknown extensions as images (SAF display names typically include extensions).
+                videos = [p for p in picked if is_video_path(p)]
+                images = [p for p in picked if p not in videos]
+                if len(images) > 10:
+                    _popup("Error", "Maximum 10 images are allowed.")
+                    return
+                if len(videos) > 1:
+                    _popup("Error", "Maximum 1 video is allowed.")
+                    return
+                self._selected_media = images + videos
                 try:
-                    self._selected_media = list(selected or [])
-                    images = [x for x in self._selected_media if os.path.splitext(x.lower())[1] in _IMAGE_EXTS]
-                    videos = [x for x in self._selected_media if os.path.splitext(x.lower())[1] in _VIDEO_EXTS]
                     if "media_summary" in self.ids:
                         parts: list[str] = []
                         if images:
@@ -1286,20 +1401,15 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 except Exception:
                     pass
 
-            _MediaGridPickerPopup(
-                title="Choose Media (max 10 images + 1 video)",
-                include_videos=True,
-                multiselect=True,
-                on_done=_done,
-            ).open()
+            try:
+                filechooser.open_file(
+                    on_selection=_on_selection,
+                    multiple=True,
+                )
+            except Exception:
+                _popup("Upload", "Unable to open file picker.")
 
-        def _after(ok: bool) -> None:
-            if not ok:
-                _popup("Permission required", "Please allow Photos/Media permission to pick files for upload.")
-                return
-            _open_picker()
-
-        ensure_permissions(required_media_permissions(), on_result=_after)
+        ensure_permissions(required_media_permissions(), on_result=lambda _ok: _open_picker())
 
     def submit_listing(self):
         """

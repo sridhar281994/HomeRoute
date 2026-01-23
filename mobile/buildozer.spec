@@ -17,7 +17,7 @@ version = 0.1
 
 # Core dependencies
 # Include certifi so the CA bundle is packaged (prevents SSL errors on device).
-requirements = python3,kivy,requests,certifi,pyjnius,websocket-client
+requirements = python3,kivy,requests,certifi,pyjnius,websocket-client,plyer
 
 # Local python-for-android recipe overrides.
 p4a.local_recipes = recipes
