@@ -331,9 +331,7 @@
 <WebTopBar@BoxLayout>:
     orientation: "vertical"
     size_hint_y: None
-    height: self.minimum_height if (app.root and app.root.current == "home") else 0
-    opacity: 1 if (app.root and app.root.current == "home") else 0
-    disabled: not (app.root and app.root.current == "home")
+    height: self.minimum_height
     spacing: dp(10)
     padding: dp(16)
     canvas.before:
@@ -494,8 +492,6 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
-
             ScrollView:
                 do_scroll_x: False
                 bar_width: dp(6)
@@ -573,8 +569,6 @@
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
-
-            WebTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -792,8 +786,6 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
-
             ScrollView:
                 do_scroll_x: False
                 bar_width: dp(6)
@@ -870,8 +862,6 @@
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
-
-            WebTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -990,8 +980,6 @@
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
-
-            WebTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -1239,8 +1227,6 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
-
             ScrollView:
                 do_scroll_x: False
                 bar_width: dp(6)
@@ -1309,8 +1295,6 @@
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
-
-            WebTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -1886,8 +1870,6 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            WebTopBar:
-
             WebPanel:
                 size_hint_y: 1
 
@@ -1955,8 +1937,6 @@
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
-
-            WebTopBar:
 
             ScrollView:
                 do_scroll_x: False
@@ -2053,8 +2033,6 @@
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
-
-            WebTopBar:
 
             ScrollView:
                 do_scroll_x: False
