@@ -78,6 +78,33 @@ export default function SubscriptionPage() {
         </div>
       </div>
 
+      <div className="grid" style={{ marginTop: 12 }}>
+        <div className="col-6">
+          <button className="sub-plan" type="button">
+            <div className="sub-plan-title">FREE - 0</div>
+            <div className="sub-plan-desc">Unlock 30 owner/service contacts</div>
+          </button>
+        </div>
+        <div className="col-6">
+          <button className="sub-plan" type="button">
+            <div className="sub-plan-title">INSTANT - ₹10</div>
+            <div className="sub-plan-desc">Unlock 60 owner/service contacts</div>
+          </button>
+        </div>
+        <div className="col-6">
+          <button className="sub-plan" type="button">
+            <div className="sub-plan-title">SMART - ₹50</div>
+            <div className="sub-plan-desc">Unlock 200 contacts</div>
+          </button>
+        </div>
+        <div className="col-6">
+          <button className="sub-plan" type="button">
+            <div className="sub-plan-title">BUSINESS - ₹150</div>
+            <div className="sub-plan-desc">Unlimited contact unlocks/Month</div>
+          </button>
+        </div>
+      </div>
+
       {msg ? <div className="muted" style={{ marginTop: 8 }}>{msg}</div> : null}
     </div>
   );
