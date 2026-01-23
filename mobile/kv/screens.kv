@@ -372,6 +372,74 @@
         on_release: app.root.current_screen.open_hamburger_menu(self) if (app and app.root and app.root.current_screen) else None
     Widget:
 
+<AvatarButton@ButtonBehavior+FloatLayout>:
+    image_source: ""
+    fallback_text: ""
+    size_hint: None, None
+    size: dp(44), dp(44)
+    canvas.before:
+        Color:
+            rgba: (0, 0, 0, 0.18)
+        Ellipse:
+            pos: self.pos
+            size: self.size
+        Color:
+            rgba: (1, 1, 1, 0.28)
+        Line:
+            width: 1.0
+            ellipse: (self.x, self.y, self.width, self.height)
+        StencilPush
+        Ellipse:
+            pos: self.pos
+            size: self.size
+        StencilUse
+    canvas.after:
+        StencilUnUse
+        Ellipse:
+            pos: self.pos
+            size: self.size
+        StencilPop
+    AsyncImage:
+        source: root.image_source
+        allow_stretch: True
+        keep_ratio: False
+        opacity: 1 if root.image_source else 0
+        size_hint: 1, 1
+    Label:
+        text: root.fallback_text
+        font_size: sp(16)
+        color: (1, 1, 1, 0.95)
+        halign: "center"
+        valign: "middle"
+        text_size: self.size
+        size_hint: 1, 1
+        opacity: 0 if root.image_source else 1
+
+<AuthHeader@BoxLayout>:
+    orientation: "vertical"
+    size_hint_y: None
+    height: self.minimum_height
+    spacing: dp(2)
+    padding: [0, dp(4), 0, dp(4)]
+    Label:
+        text: "[b]flatnow.in[/b]"
+        markup: True
+        font_size: sp(26)
+        halign: "center"
+        valign: "middle"
+        text_size: self.width, None
+        size_hint_y: None
+        height: self.texture_size[1] + dp(4)
+    Label:
+        text: "UNLOCK your path"
+        font_size: sp(14)
+        color: TEXT_MUTED
+        halign: "center"
+        valign: "middle"
+        text_size: self.width, None
+        size_hint_y: None
+        height: self.texture_size[1] + dp(2)
+
 <SplashScreen>:
     name: "splash"
     FloatLayout:
@@ -521,9 +589,10 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            MobileTopBar:
+            AuthHeader:
 
             ScrollView:
+                id: login_scroll
                 do_scroll_x: False
                 bar_width: dp(6)
 
@@ -691,6 +760,8 @@
                             height: dp(48)
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
+                            on_focus:
+                                if self.focus: root.scroll_to_otp()
 
                         AppButton:
                             id: verify_login_btn
@@ -1256,7 +1327,7 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            MobileTopBar:
+            AuthHeader:
 
             ScrollView:
                 do_scroll_x: False
@@ -1440,7 +1511,19 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            MobileTopBar:
+            BoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: dp(52)
+                padding: [dp(6), 0, dp(6), 0]
+                spacing: dp(10)
+                HamburgerButton:
+                    on_release: app.root.current_screen.open_hamburger_menu(self) if (app and app.root and app.root.current_screen) else None
+                Widget:
+                AvatarButton:
+                    image_source: root.profile_image_url
+                    fallback_text: root.avatar_letter
+                    on_release: root.go_profile()
 
             WebPanel:
                 size_hint_y: 1
@@ -1448,41 +1531,38 @@
 
                 BoxLayout:
                     size_hint_y: None
-                    height: dp(40)
+                    height: max(dp(44), home_tagline.texture_size[1] + dp(8))
                     spacing: dp(10)
                     Label:
+                        id: home_tagline
                         text: "[b]Uncover the Best, Good Luck[/b]"
                         font_name: "CursiveFont"
                         font_size: sp(20)
                         halign: "left"
                         valign: "middle"
-                        text_size: self.size
+                        text_size: self.width, None
+                        size_hint_y: None
+                        height: self.texture_size[1] + dp(6)
                         color: TEXT_MAIN
-                    Widget:
                     AppButton:
                         text: "Refresh"
                         size_hint_x: None
-                        width: dp(120)
+                        width: dp(110)
                         on_release: root.refresh()
+                    Widget:
+                        size_hint_x: None
+                        width: 0
 
                 BoxLayout:
                     size_hint_y: None
                     height: dp(44)
                     padding: [dp(4), dp(2), dp(4), dp(2)]
                     spacing: dp(8)
-                    Label:
-                        text: "Filters"
-                        color: TEXT_MUTED
-                        size_hint_x: None
-                        width: dp(70)
-                        halign: "left"
-                        valign: "middle"
-                        text_size: self.size
                     Widget:
                     AppButton:
-                        text: "Open Filters"
+                        text: "Filter"
                         size_hint_x: None
-                        width: dp(150)
+                        width: dp(120)
                         on_release: root.open_filters()
 
                 Label:

@@ -211,6 +211,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
     area_options = ListProperty(["Any"])
 
     bg_image = StringProperty("")
+    profile_image_url = StringProperty("")
+    avatar_letter = StringProperty("U")
 
     is_loading = BooleanProperty(False)
     is_logged_in = BooleanProperty(False)
@@ -226,6 +228,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
         except Exception:
             self.is_logged_in = False
             self.is_guest = False
+
+        try:
+            u = get_user() or {}
+        except Exception:
+            u = {}
+        self._apply_avatar(u)
 
         # Seed preferred location from the stored profile.
         try:
@@ -544,12 +552,19 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     self._preferred_state = pref_state
                     self._preferred_district = pref_district
                     self._apply_preferred_state()
+                    self._apply_avatar(u)
 
                 Clock.schedule_once(apply, 0)
             except Exception:
                 return
 
         Thread(target=work, daemon=True).start()
+
+    def _apply_avatar(self, u: dict[str, Any]) -> None:
+        name = str(u.get("name") or u.get("email") or u.get("phone") or "U").strip()
+        letter = name[:1].upper() if name else "U"
+        self.avatar_letter = letter or "U"
+        self.profile_image_url = to_api_url(str(u.get("profile_image_url") or ""))
 
     def _apply_preferred_state(self) -> bool:
         pref = str(getattr(self, "_preferred_state", "") or "").strip()
