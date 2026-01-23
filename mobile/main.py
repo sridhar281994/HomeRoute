@@ -33,11 +33,17 @@ class QuickRentApp(App):
     title = "Flatnow.in"
 
     def build(self):
-        # Some screens have heavy layout trees; avoid Clock "too much iteration"
-        # by allowing more iterations and by deferring screen creation.
+        # NOTE:
+        # The real fix for "Clock: too much iteration" is to avoid creating many
+        # large widget trees (and triggering lots of Label texture/layout work)
+        # in a single frame. Do NOT "fix" by globally bumping max_iteration in
+        # production; keep it opt-in for debugging only.
         try:
-            Clock.max_iteration = max(int(getattr(Clock, "max_iteration", 20) or 20), 60)
+            env_max_it = (os.environ.get("KIVY_CLOCK_MAX_ITERATION") or "").strip()
+            if env_max_it:
+                Clock.max_iteration = int(env_max_it)
         except Exception:
+            # Never crash due to a bad debug env var.
             pass
 
         # Android: keep focused inputs above the soft keyboard (OTP fields, etc).
@@ -60,9 +66,10 @@ class QuickRentApp(App):
         sm.add_widget(SplashScreen(name="splash"))
         sm.current = "splash"
 
-        # Add remaining screens after the first frame, in small batches.
-        # This prevents startup from doing a large number of layout/texture updates
-        # before the app has a chance to render its first frame.
+        # Add remaining screens lazily across multiple frames.
+        # IMPORTANT: use a *positive* delay between additions. Using 0 can cause
+        # the Clock to process the whole chain in the same frame, leading to the
+        # very "too much iteration" warning we're trying to avoid.
         pending: list[tuple[type, str]] = [
             (WelcomeScreen, "welcome"),
             (LoginScreen, "login"),
@@ -77,6 +84,8 @@ class QuickRentApp(App):
             (OwnerAddPropertyScreen, "owner_add_property"),
         ]
 
+        add_delay_s = 0.03
+
         def _add_next(_dt=0.0) -> None:
             if not pending:
                 return
@@ -88,9 +97,9 @@ class QuickRentApp(App):
                 # Never crash due to an eager screen build.
                 pass
             if pending:
-                Clock.schedule_once(_add_next, 0)
+                Clock.schedule_once(_add_next, add_delay_s)
 
-        Clock.schedule_once(_add_next, 0.05)
+        Clock.schedule_once(_add_next, add_delay_s)
 
         return sm
 
