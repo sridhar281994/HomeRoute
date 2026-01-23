@@ -351,6 +351,15 @@
                 on_release: root.manager.current = 'login'
 
             AppButton:
+                text: "Login via Gmail"
+                font_size: min(root.width * 0.05, sp(18))
+                size_hint_y: None
+                height: dp(50)
+                background_color: (1, 1, 1, 0.96)
+                color: (0.12, 0.12, 0.12, 1)
+                on_release: root.google_login()
+
+            AppButton:
                 text: "Register  [font=EmojiFont]✨[/font]"
                 font_size: min(root.width * 0.05, sp(18))
                 size_hint_y: None
@@ -541,14 +550,6 @@
                         size_hint_y: None
                         height: dp(44)
                         on_press: root.send_otp_to_user()
-
-                AppButton:
-                    text: "Login via Gmail"
-                    size_hint_y: None
-                    height: dp(44)
-                    background_color: (1, 1, 1, 0.96)
-                    color: (0.12, 0.12, 0.12, 1)
-                    on_release: root.google_login()
 
                 # OTP Box
                 BoxLayout:

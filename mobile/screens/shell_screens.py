@@ -151,6 +151,37 @@ class WelcomeScreen(GestureNavigationMixin, Screen):
         if self.manager:
             self.manager.current = "home"
 
+    def google_login(self) -> None:
+        """
+        Delegate Google Sign-In to the existing Login screen implementation.
+        This keeps all auth/token storage behavior identical while placing the
+        button on the Welcome screen.
+        """
+        if not self.manager:
+            return
+        try:
+            login = self.manager.get_screen("login")
+        except Exception:
+            login = None
+        if login is not None and hasattr(login, "google_login"):
+            # Preserve the remembered-login preference if available.
+            try:
+                from frontend_app.utils.storage import get_remember_me
+
+                setattr(login, "remember_me", bool(get_remember_me()))
+            except Exception:
+                pass
+            try:
+                login.google_login()  # type: ignore[attr-defined]
+                return
+            except Exception:
+                pass
+        # Fallback: send user to Login screen.
+        try:
+            self.manager.current = "login"
+        except Exception:
+            return
+
 
 class PropertyDetailScreen(GestureNavigationMixin, Screen):
     property_id = NumericProperty(0)
