@@ -1,10 +1,15 @@
 # Shiny purple theme (professional)
 # NOTE: keep names stable to avoid touching every screen rule.
-#:set BG_PURPLE (0.15, 0.05, 0.30, 1)               # lighter purple base
-#:set SHINE_PURPLE (0.66, 0.33, 0.97, 0.30)         # purple shine (slightly stronger)
-#:set SHINE_WHITE (1, 1, 1, 0.14)
-#:set PANEL_BG (1, 1, 1, 0.17)
-#:set CARD_BG (0, 0, 0, 0.28)
+# Web theme parity (match `web/src/styles.css`)
+# Background base: #3b0c7a
+# Accent purple:  #a855f7
+# Accent blue:    #60a5fa
+# Panel/card/button opacity/borders match the web CSS closely.
+#:set BG_PURPLE (0.231, 0.047, 0.478, 1)             # #3b0c7a
+#:set SHINE_PURPLE (0.659, 0.333, 0.969, 0.26)       # rgba(168,85,247,.26)
+#:set SHINE_WHITE (1, 1, 1, 0.22)                    # common web shine alpha
+#:set PANEL_BG (1, 1, 1, 0.14)                       # --panel: rgba(255,255,255,.14)
+#:set CARD_BG (0, 0, 0, 0.35)                        # .card: rgba(0,0,0,.35)
 #:set TEXT_MAIN (1, 1, 1, 0.92)
 #:set TEXT_MUTED (1, 1, 1, 0.68)
 #:set ACCENT_PURPLE (0.66, 0.33, 0.97, 1)
@@ -30,11 +35,26 @@
     font_name: "AppFont"
     background_normal: ""
     background_active: ""
-    background_color: (1, 1, 1, 0.18)
+    # We'll draw the background/border ourselves to match web radius/border.
+    background_color: (0, 0, 0, 0)
     foreground_color: TEXT_MAIN
     cursor_color: TEXT_MAIN
     selection_color: (0.66, 0.33, 0.97, 0.35)
     padding: [dp(12), dp(10), dp(12), dp(10)]
+    canvas.before:
+        # Background
+        Color:
+            rgba: (1, 1, 1, 0.18)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [12]
+        # Border
+        Color:
+            rgba: (1, 1, 1, 0.55)
+        Line:
+            width: 1.1
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 12]
 
 <AppButton@HoverButton>:
     markup: True
@@ -105,7 +125,7 @@
         StencilPop:
 
         Color:
-            rgba: (1, 1, 1, 0) if self.background_color[3] == 0 else (1, 1, 1, 0.85)
+            rgba: (1, 1, 1, 0) if self.background_color[3] == 0 else (1, 1, 1, 0.90)
         Line:
             width: 1.1
             rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
@@ -249,6 +269,158 @@
             width: 1.0
             rounded_rectangle: [self.x, self.y, self.width, self.height, 12]
 
+# -----------------------
+# Web-parity layout blocks
+# -----------------------
+<WebPanel@BoxLayout>:
+    orientation: "vertical"
+    size_hint_y: None
+    height: self.minimum_height
+    padding: dp(16)
+    spacing: dp(12)
+    canvas.before:
+        Color:
+            rgba: PANEL_BG
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [16]
+        Color:
+            rgba: (1, 1, 1, 0.12)
+        Line:
+            width: 1.0
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
+
+<WebCard@BoxLayout>:
+    orientation: "vertical"
+    size_hint_y: None
+    height: self.minimum_height
+    padding: dp(12)
+    spacing: dp(10)
+    canvas.before:
+        Color:
+            rgba: CARD_BG
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14]
+        Color:
+            rgba: (1, 1, 1, 0.12)
+        Line:
+            width: 1.0
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
+
+<GuestPill@BoxLayout>:
+    size_hint: None, None
+    height: dp(28)
+    padding: [dp(10), dp(4), dp(10), dp(4)]
+    spacing: dp(6)
+    canvas.before:
+        Color:
+            rgba: (0.38, 0.65, 0.98, 0.22)  # rgba(96,165,250,.22)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [999]
+        Color:
+            rgba: (0.38, 0.65, 0.98, 0.55)  # border rgba(96,165,250,.55)
+        Line:
+            width: 1.0
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 999]
+
+<WebTopBar@BoxLayout>:
+    orientation: "vertical"
+    size_hint_y: None
+    height: self.minimum_height
+    spacing: dp(10)
+    padding: dp(16)
+    canvas.before:
+        Color:
+            rgba: PANEL_BG
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [16]
+        Color:
+            rgba: (1, 1, 1, 0.12)
+        Line:
+            width: 1.0
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
+    BoxLayout:
+        size_hint_y: None
+        height: dp(28)
+        spacing: dp(10)
+        Label:
+            text: "[b]Flatnow.in[/b]"
+            font_size: sp(18)
+            size_hint_x: None
+            width: self.texture_size[0]
+            halign: "left"
+            valign: "middle"
+            text_size: self.size
+        Widget:
+        GuestPill:
+            opacity: 1 if app.root.get_screen("home").is_guest else 0
+            disabled: not app.root.get_screen("home").is_guest
+            width: self.minimum_width if app.root.get_screen("home").is_guest else 0
+            Label:
+                text: "[b]Guest mode[/b]"
+                font_size: sp(12)
+                color: TEXT_MAIN
+                size_hint: None, None
+                size: self.texture_size
+    GridLayout:
+        # Match web topbar-links behavior: wrap into 2 columns on narrow screens.
+        cols: 2 if self.width < dp(520) else (3 if self.width < dp(720) else 6)
+        spacing: dp(10)
+        size_hint_y: None
+        height: self.minimum_height
+        row_default_height: dp(40)
+        row_force_default: True
+        NavButtonWrap:
+            text: "Home"
+            on_release: app.root.current = "home"
+        NavButtonWrap:
+            text: "My Posts"
+            on_release: app.root.current = "my_posts"
+        NavButtonWrap:
+            text: "Settings"
+            on_release: app.root.current = "profile"
+        NavButtonWrap:
+            text: "Publish Ad"
+            on_release:
+                app.root.get_screen("owner_add_property").start_new()
+                app.root.current = "owner_add_property"
+        # Auth buttons (match web: show Login/Register when not logged in).
+        NavButtonWrap:
+            text: "Login"
+            opacity: 1 if not app.root.get_screen("home").is_logged_in else 0
+            disabled: app.root.get_screen("home").is_logged_in
+            on_release: app.root.current = "login"
+        NavButtonWrap:
+            text: "Register"
+            opacity: 1 if not app.root.get_screen("home").is_logged_in else 0
+            disabled: app.root.get_screen("home").is_logged_in
+            on_release: app.root.current = "register"
+        # Exit Guest (web: only visible in guest mode).
+        NavButtonWrap:
+            text: "Exit Guest"
+            opacity: 1 if (app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in) else 0
+            disabled: not (app.root.get_screen("home").is_guest and not app.root.get_screen("home").is_logged_in)
+            color: (0.94, 0.27, 0.27, 1)
+            on_release:
+                app.root.get_screen("home").do_logout()
+                app.root.current = "welcome"
+        # Logout (web: visible when logged in).
+        NavButtonWrap:
+            text: "Logout"
+            opacity: 1 if app.root.get_screen("home").is_logged_in else 0
+            disabled: not app.root.get_screen("home").is_logged_in
+            color: (0.94, 0.27, 0.27, 1)
+            on_release:
+                app.root.get_screen("home").do_logout()
+                app.root.current = "login"
+
 <SplashScreen>:
     name: "splash"
     FloatLayout:
@@ -315,71 +487,64 @@
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
         BoxLayout:
-            orientation: 'vertical'
-            size_hint: None, None
-            # Responsive width/height
-            width: min(root.width * 0.9, dp(600))
-            height: min(self.minimum_height, root.height * 0.85)
-            spacing: dp(20)
-            padding: dp(20)
-            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
-            canvas.before:
-                Color:
-                    rgba: PANEL_BG
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [20]
-                Color:
-                    rgba: (1, 1, 1, 0.12)
-                Line:
-                    width: 1.0
-                    rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            orientation: "vertical"
+            size_hint: 0.95, 0.95
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(12)
 
-            Image:
-                source: "assets/flatnow.png"
-                allow_stretch: True
-                keep_ratio: True
-                size_hint_y: None
-                height: dp(140)
+            WebTopBar:
 
-            AppButton:
-                text: "Login"
-                font_size: min(root.width * 0.05, sp(18))
-                size_hint_y: None
-                height: dp(50)
-                on_release: root.manager.current = 'login'
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
 
-            AppButton:
-                text: "Login via Gmail"
-                font_size: min(root.width * 0.05, sp(18))
-                size_hint_y: None
-                height: dp(50)
-                background_color: (1, 1, 1, 0.96)
-                color: (0.12, 0.12, 0.12, 1)
-                on_release: root.google_login()
+                WebPanel:
+                    size_hint_x: None
+                    width: min(root.width * 0.95, dp(980))
+                    x: (root.width - self.width) / 2
 
-            AppButton:
-                text: "Register  [font=EmojiFont]✨[/font]"
-                font_size: min(root.width * 0.05, sp(18))
-                size_hint_y: None
-                height: dp(50)
-                on_release: root.manager.current = 'register'
+                    Image:
+                        source: "assets/flatnow.png"
+                        allow_stretch: True
+                        keep_ratio: True
+                        size_hint_y: None
+                        height: dp(140)
 
-            AppButton:
-                text: "Continue as Guest"
-                font_size: min(root.width * 0.05, sp(18))
-                size_hint_y: None
-                height: dp(50)
-                on_release: root.continue_as_guest()
+                    WebCard:
+                        Label:
+                            text: "[b]Welcome[/b]"
+                            font_size: sp(18)
+                            size_hint_y: None
+                            height: dp(24)
+                        Label:
+                            text: "Login, register, or continue as Guest."
+                            color: TEXT_MUTED
+                            size_hint_y: None
+                            height: dp(22)
 
-        Label:
-            text: "© 2025 SRTech Games"
-            font_size: min(root.width * 0.035, sp(14))
-            color: 1, 1, 1, 0.7
-            size_hint: None, None
-            size: self.texture_size
-            pos_hint: {"center_x": 0.5, "y": 0.05}
+                        AppButton:
+                            text: "Login"
+                            size_hint_y: None
+                            height: dp(44)
+                            on_release: app.root.current = "login"
+
+                        AppButton:
+                            text: "Login via Gmail"
+                            size_hint_y: None
+                            height: dp(44)
+                            on_release: root.google_login()
+
+                        AppButton:
+                            text: "Register  [font=EmojiFont]✨[/font]"
+                            size_hint_y: None
+                            height: dp(44)
+                            on_release: app.root.current = "register"
+
+                        AppButton:
+                            text: "Continue as Guest"
+                            size_hint_y: None
+                            height: dp(44)
+                            on_release: root.continue_as_guest()
 
 <LoginScreen>:
     name: "login"
@@ -401,35 +566,23 @@
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
-        ScrollView:
-            size_hint: 0.9, 0.9
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            do_scroll_x: False
-            bar_width: 0
+            spacing: dp(12)
 
-            BoxLayout:
-                orientation: "vertical"
-                size_hint_x: None
-                size_hint_y: None
-                height: self.minimum_height
-                width: min(root.width * 0.9, dp(500))
-                # ScrollView controls viewport size/pos when size_hint_x is set.
-                # Using explicit width without disabling size_hint_x can cause repeated relayout loops.
-                x: (root.width - self.width) / 2
-                spacing: dp(15)
-                padding: dp(20)
-                canvas.before:
-                    Color:
-                        rgba: PANEL_BG
-                    RoundedRectangle:
-                        pos: self.pos
-                        size: self.size
-                        radius: [20]
-                    Color:
-                        rgba: (1, 1, 1, 0.12)
-                    Line:
-                        width: 1.0
-                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            WebTopBar:
+
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+
+                WebPanel:
+                    size_hint_x: None
+                    width: min(root.width * 0.95, dp(980))
+                    x: (root.width - self.width) / 2
+                    spacing: dp(15)
 
                 Label:
                     text: "[b]Secure Login[/b]  [font=EmojiFont]🔐[/font]"
@@ -631,31 +784,22 @@
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
-        ScrollView:
-            size_hint: 0.9, 0.8
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(12)
 
-            BoxLayout:
-                orientation: "vertical"
-                size_hint_x: None
-                size_hint_y: None
-                height: self.minimum_height
-                width: min(root.width * 0.9, dp(500))
-                spacing: dp(15)
-                padding: dp(20)
-                x: (root.width - self.width) / 2
-                canvas.before:
-                    Color:
-                        rgba: PANEL_BG
-                    RoundedRectangle:
-                        pos: self.pos
-                        size: self.size
-                        radius: [20]
-                    Color:
-                        rgba: (1, 1, 1, 0.12)
-                    Line:
-                        width: 1.0
-                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            WebTopBar:
+
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+
+                WebPanel:
+                    size_hint_x: None
+                    width: min(root.width * 0.95, dp(980))
+                    x: (root.width - self.width) / 2
 
                 Label:
                     text: root.header_text
@@ -719,31 +863,22 @@
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
-        ScrollView:
-            size_hint: 0.9, 0.8
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(12)
 
-            BoxLayout:
-                orientation: "vertical"
-                size_hint_x: None
-                size_hint_y: None
-                height: self.minimum_height
-                width: min(root.width * 0.9, dp(500))
-                spacing: dp(15)
-                padding: dp(20)
-                x: (root.width - self.width) / 2
-                canvas.before:
-                    Color:
-                        rgba: PANEL_BG
-                    RoundedRectangle:
-                        pos: self.pos
-                        size: self.size
-                        radius: [20]
-                    Color:
-                        rgba: (1, 1, 1, 0.12)
-                    Line:
-                        width: 1.0
-                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            WebTopBar:
+
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+
+                WebPanel:
+                    size_hint_x: None
+                    width: min(root.width * 0.95, dp(980))
+                    x: (root.width - self.width) / 2
 
                 Label:
                     text: "Reset Password"
@@ -848,31 +983,39 @@
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
-        ScrollView:
-            size_hint: 0.9, 0.8
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(12)
 
-            BoxLayout:
-                orientation: "vertical"
-                size_hint_x: None
-                size_hint_y: None
-                height: self.minimum_height
-                width: min(root.width * 0.9, dp(500))
-                spacing: dp(15)
-                padding: dp(20)
-                x: (root.width - self.width) / 2
-                canvas.before:
-                    Color:
-                        rgba: PANEL_BG
-                    RoundedRectangle:
-                        pos: self.pos
-                        size: self.size
-                        radius: [20]
-                    Color:
-                        rgba: (1, 1, 1, 0.12)
-                    Line:
-                        width: 1.0
-                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            WebTopBar:
+
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_x: None
+                    size_hint_y: None
+                    height: self.minimum_height
+                    width: min(root.width * 0.95, dp(980))
+                    spacing: dp(15)
+                    padding: dp(16)
+                    x: (root.width - self.width) / 2
+                    canvas.before:
+                        Color:
+                            rgba: PANEL_BG
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [16]
+                        Color:
+                            rgba: (1, 1, 1, 0.12)
+                        Line:
+                            width: 1.0
+                            rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
 
                 Label:
                     text: "[b]Settings[/b]  [font=EmojiFont]⚙️[/font]"
@@ -1090,59 +1233,54 @@
 
         BoxLayout:
             orientation: "vertical"
-            size_hint: 0.9, 0.7
+            size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
-            padding: dp(16)
-            canvas.before:
-                Color:
-                    rgba: PANEL_BG
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [16]
-                Color:
-                    rgba: (1, 1, 1, 0.12)
-                Line:
-                    width: 1.0
-                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
 
-            Label:
-                text: "[b]Subscription[/b]  [font=EmojiFont]💳[/font]"
-                font_size: sp(24)
-                size_hint_y: None
-                height: dp(40)
+            WebTopBar:
 
-            Label:
-                text: root.status_text
-                size_hint_y: None
-                height: dp(28)
-                color: 1, 1, 1, 0.9
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+                WebPanel:
+                    size_hint_x: None
+                    width: min(root.width * 0.95, dp(980))
+                    x: (root.width - self.width) / 2
 
-            Label:
-                text: root.provider_text
-                size_hint_y: None
-                height: dp(24)
-                color: TEXT_MUTED
+                    WebCard:
+                        Label:
+                            text: "[b]Subscription[/b]  [font=EmojiFont]💳[/font]"
+                            font_size: sp(18)
+                            size_hint_y: None
+                            height: dp(26)
+                        Label:
+                            text: root.status_text
+                            size_hint_y: None
+                            height: dp(24)
+                            color: TEXT_MAIN
+                        Label:
+                            text: root.provider_text
+                            size_hint_y: None
+                            height: dp(22)
+                            color: TEXT_MUTED
+                        Label:
+                            text: root.expires_text
+                            size_hint_y: None
+                            height: dp(22)
+                            color: TEXT_MUTED
 
-            Label:
-                text: root.expires_text
-                size_hint_y: None
-                height: dp(24)
-                color: TEXT_MUTED
+                        AppButton:
+                            text: "Refresh"
+                            size_hint_y: None
+                            height: dp(44)
+                            on_release: root.refresh_status()
 
-            AppButton:
-                text: "Refresh"
-                size_hint_y: None
-                height: dp(44)
-                on_release: root.refresh_status()
-
-            AppButton:
-                text: "Back"
-                size_hint_y: None
-                height: dp(44)
-                color: (0.94, 0.27, 0.27, 1)
-                on_release: root.go_back()
+                        AppButton:
+                            text: "Back"
+                            size_hint_y: None
+                            height: dp(44)
+                            color: (0.94, 0.27, 0.27, 1)
+                            on_release: root.go_back()
 
 <RegisterScreen>:
     name: "register"
@@ -1164,32 +1302,23 @@
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
-        ScrollView:
-            size_hint: 0.94, 0.94
+        BoxLayout:
+            orientation: "vertical"
+            size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            do_scroll_x: False
+            spacing: dp(12)
 
-            BoxLayout:
-                orientation: "vertical"
-                size_hint_x: None
-                size_hint_y: None
-                height: self.minimum_height
-                width: min(root.width * 0.92, dp(600))
-                spacing: dp(12)
-                padding: dp(20)
-                x: (root.width - self.width) / 2
-                canvas.before:
-                    Color:
-                        rgba: PANEL_BG
-                    RoundedRectangle:
-                        pos: self.pos
-                        size: self.size
-                        radius: [20]
-                    Color:
-                        rgba: (1, 1, 1, 0.12)
-                    Line:
-                        width: 1.0
-                        rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            WebTopBar:
+
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+
+                WebPanel:
+                    size_hint_x: None
+                    width: min(root.width * 0.95, dp(980))
+                    x: (root.width - self.width) / 2
+                    spacing: dp(12)
 
                 Label:
                     text: "[b]Create Account[/b]  [font=EmojiFont]✨[/font]"
@@ -1361,131 +1490,70 @@
             orientation: "vertical"
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            spacing: dp(10)
-            padding: dp(12)
-            canvas.before:
-                Color:
-                    rgba: PANEL_BG
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [16]
-                Color:
-                    rgba: (1, 1, 1, 0.12)
-                Line:
-                    width: 1.0
-                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
+            spacing: dp(12)
 
-            BoxLayout:
-                size_hint_y: None
-                height: dp(44)
-                spacing: dp(8)
-                AppButton:
-                    text: "Home"
-                    size_hint_x: None
-                    width: dp(90)
-                    on_release: root.go_home()
-                AppButton:
-                    text: "Publish Ad"
-                    size_hint_x: None
-                    width: dp(130)
-                    on_release: root.go_publish_ad()
-                Widget:
-                AppButton:
-                    text: "Logout" if root.is_logged_in else "Exit Guest"
-                    size_hint_x: None
-                    width: dp(120)
-                    color: (0.94, 0.27, 0.27, 1)
-                    opacity: 1 if (root.is_logged_in or root.is_guest) else 0
-                    disabled: not (root.is_logged_in or root.is_guest)
-                    on_release: root.do_logout()
+            WebTopBar:
 
-            BoxLayout:
-                size_hint_y: None
-                height: dp(36)
-                spacing: dp(8)
-                Label:
-                    text: "[b]Uncover the Best, Good Luck[/b]"
-                    font_name: "CursiveFont"
-                    halign: "left"
-                    valign: "middle"
-                    text_size: self.size
-                    color: TEXT_MAIN
-                BoxLayout:
-                    size_hint_x: None
-                    width: self.minimum_width if root.is_guest else 0
-                    size_hint_y: None
-                    height: dp(26) if root.is_guest else 0
-                    padding: [dp(10), dp(3), dp(10), dp(3)]
-                    opacity: 1 if root.is_guest else 0
-                    canvas.before:
-                        Color:
-                            rgba: (1, 1, 1, 0.16)
-                        RoundedRectangle:
-                            pos: self.pos
-                            size: self.size
-                            radius: [12]
-                    Label:
-                        text: "[b]Guest mode[/b]"
-                        font_size: sp(12)
-                        color: ACCENT_BLUE
-                        size_hint: None, None
-                        size: self.texture_size
-
-            GridLayout:
-                cols: 2
-                size_hint_y: None
-                height: self.minimum_height
-                row_force_default: True
-                row_default_height: dp(44)
-                spacing: dp(8)
-                AppButton:
-                    text: "My Posts"
-                    on_release: root.go_my_posts()
-                AppButton:
-                    text: "Settings"
-                    on_release: root.go_settings()
-                AppButton:
-                    text: "Refresh"
-                    on_release: root.refresh()
-
-            BoxLayout:
-                size_hint_y: None
-                height: dp(44)
-                padding: [dp(4), dp(2), dp(4), dp(2)]
-                spacing: dp(8)
-                Label:
-                    text: "Filters"
-                    color: TEXT_MUTED
-                    size_hint_x: None
-                    width: dp(70)
-                    halign: "left"
-                    valign: "middle"
-                    text_size: self.size
-                Widget:
-                AppButton:
-                    text: "Open Filters"
-                    size_hint_x: None
-                    width: dp(150)
-                    on_release: root.open_filters()
-
-            Label:
-                text: "Loading..." if root.is_loading else "Posts"
-                size_hint_y: None
-                height: dp(24)
-                color: TEXT_MUTED
-
-            ScrollView:
-                id: feed_scroll
+            WebPanel:
                 size_hint_y: 1
-                do_scroll_x: False
-                bar_width: dp(6)
-                GridLayout:
-                    id: list_container
-                    cols: 1
+                spacing: dp(10)
+
+                BoxLayout:
                     size_hint_y: None
-                    height: self.minimum_height
+                    height: dp(40)
+                    spacing: dp(10)
+                    Label:
+                        text: "[b]Uncover the Best, Good Luck[/b]"
+                        font_name: "CursiveFont"
+                        font_size: sp(20)
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                        color: TEXT_MAIN
+                    Widget:
+                    AppButton:
+                        text: "Refresh"
+                        size_hint_x: None
+                        width: dp(120)
+                        on_release: root.refresh()
+
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(44)
+                    padding: [dp(4), dp(2), dp(4), dp(2)]
                     spacing: dp(8)
+                    Label:
+                        text: "Filters"
+                        color: TEXT_MUTED
+                        size_hint_x: None
+                        width: dp(70)
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                    Widget:
+                    AppButton:
+                        text: "Open Filters"
+                        size_hint_x: None
+                        width: dp(150)
+                        on_release: root.open_filters()
+
+                Label:
+                    text: "Loading..." if root.is_loading else "Posts"
+                    size_hint_y: None
+                    height: dp(24)
+                    color: TEXT_MUTED
+
+                ScrollView:
+                    id: feed_scroll
+                    size_hint_y: 1
+                    do_scroll_x: False
+                    bar_width: dp(6)
+                    GridLayout:
+                        id: list_container
+                        cols: 1
+                        size_hint_y: None
+                        height: self.minimum_height
+                        spacing: dp(8)
 
 <FilterPopup>:
     # Use a full-screen modal overlay and draw our own rounded panel,
@@ -1814,58 +1882,51 @@
             orientation: "vertical"
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            spacing: dp(10)
-            padding: dp(12)
-            canvas.before:
-                Color:
-                    rgba: PANEL_BG
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [16]
-                Color:
-                    rgba: (1, 1, 1, 0.12)
-                Line:
-                    width: 1.0
-                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
+            spacing: dp(12)
 
-            BoxLayout:
-                size_hint_y: None
-                height: dp(44)
-                spacing: dp(8)
-                Label:
-                    text: "[b]My Posts[/b]"
-                    halign: "left"
-                    valign: "middle"
-                    text_size: self.size
-                Widget:
-                AppButton:
-                    text: "Refresh"
-                    size_hint_x: None
-                    width: dp(100)
-                    on_release: root.refresh()
-                AppButton:
-                    text: "Back"
-                    size_hint_x: None
-                    width: dp(90)
-                    color: (0.94, 0.27, 0.27, 1)
-                    on_release: root.back()
+            WebTopBar:
 
-            Label:
-                text: "Loading..." if root.is_loading else ""
-                size_hint_y: None
-                height: dp(22)
-                color: TEXT_MUTED
+            WebPanel:
+                size_hint_y: 1
 
-            ScrollView:
-                do_scroll_x: False
-                bar_width: dp(6)
-                GridLayout:
-                    id: my_posts_container
-                    cols: 1
+                BoxLayout:
                     size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(8)
+                    height: dp(44)
+                    spacing: dp(10)
+                    Label:
+                        text: "[b]My Posts[/b]"
+                        font_size: sp(18)
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                    Widget:
+                    AppButton:
+                        text: "Refresh"
+                        size_hint_x: None
+                        width: dp(120)
+                        on_release: root.refresh()
+                    AppButton:
+                        text: "Back"
+                        size_hint_x: None
+                        width: dp(100)
+                        color: (0.94, 0.27, 0.27, 1)
+                        on_release: root.back()
+
+                Label:
+                    text: "Loading..." if root.is_loading else ""
+                    size_hint_y: None
+                    height: dp(22)
+                    color: TEXT_MUTED
+
+                ScrollView:
+                    do_scroll_x: False
+                    bar_width: dp(6)
+                    GridLayout:
+                        id: my_posts_container
+                        cols: 1
+                        size_hint_y: None
+                        height: self.minimum_height
+                        spacing: dp(8)
 
 <PropertyDetailScreen>:
     name: "property_detail"
@@ -1891,62 +1952,80 @@
             orientation: "vertical"
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            spacing: dp(10)
-            padding: dp(12)
-            canvas.before:
-                Color:
-                    rgba: PANEL_BG
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [16]
-                Color:
-                    rgba: (1, 1, 1, 0.12)
-                Line:
-                    width: 1.0
-                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
+            spacing: dp(12)
 
-            BoxLayout:
-                size_hint_y: None
-                height: dp(44)
-                spacing: dp(8)
-                AppButton:
-                    text: "Back"
-                    size_hint_x: None
-                    width: dp(90)
-                    on_release: root.back()
-                Label:
-                    text: "Property Detail"
-                    color: 1, 1, 1, 1
+            WebTopBar:
 
-            Label:
-                text: root.property_data.get("title","(loading...)")
-                color: 1, 1, 1, 1
-                font_size: sp(20)
-                size_hint_y: None
-                height: dp(32)
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+                WebPanel:
+                    size_hint_y: None
+                    height: self.minimum_height
 
-            Label:
-                text: (root.property_data.get("price_display") or "") + " • " + (root.property_data.get("location_display") or "")
-                color: 1, 1, 1, 0.9
-                size_hint_y: None
-                height: dp(24)
+                    BoxLayout:
+                        size_hint_y: None
+                        height: dp(44)
+                        spacing: dp(10)
+                        Label:
+                            text: "[b]Property[/b]"
+                            font_size: sp(18)
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.size
+                        Widget:
+                        AppButton:
+                            text: "Share post"
+                            size_hint_x: None
+                            width: dp(140)
+                            on_release: root.share_current()
+                        AppButton:
+                            text: "Back"
+                            size_hint_x: None
+                            width: dp(100)
+                            color: (0.94, 0.27, 0.27, 1)
+                            on_release: root.back()
 
-            Label:
-                text: "Amenities: " + (", ".join(root.property_data.get("amenities") or []) if root.property_data.get("amenities") else "—")
-                color: 1, 1, 1, 0.85
+                    Label:
+                        text: root.property_data.get("title","(loading...)")
+                        font_size: sp(20)
+                        size_hint_y: None
+                        height: dp(32)
 
-            AppButton:
-                text: "Unlock Contact"
-                size_hint_y: None
-                height: dp(50)
-                on_release: root.unlock_contact()
+                    Label:
+                        text: "Ad #" + (str(root.property_data.get("adv_number") or root.property_data.get("ad_number") or root.property_id) if root.property_id else "") + " • " + (root.property_data.get("rent_sale") or "") + " • " + (root.property_data.get("property_type") or "") + " • " + (root.property_data.get("price_display") or "") + " • " + (root.property_data.get("location_display") or "")
+                        color: TEXT_MUTED
+                        size_hint_y: None
+                        height: dp(24)
 
-            AppButton:
-                text: "Share post"
-                size_hint_y: None
-                height: dp(44)
-                on_release: root.share_current()
+                    WebCard:
+                        Label:
+                            text: "[b]Photos[/b]"
+                            size_hint_y: None
+                            height: dp(22)
+                        GridLayout:
+                            id: property_media_container
+                            cols: 2
+                            spacing: dp(8)
+                            size_hint_y: None
+                            height: self.minimum_height
+
+                    WebCard:
+                        Label:
+                            text: "[b]Amenities[/b]"
+                            size_hint_y: None
+                            height: dp(22)
+                        Label:
+                            text: (", ".join(root.property_data.get("amenities") or []) if root.property_data.get("amenities") else "—")
+                            color: TEXT_MUTED
+                            size_hint_y: None
+                            height: self.texture_size[1] + dp(6)
+
+                    AppButton:
+                        text: "Unlock Contact"
+                        size_hint_y: None
+                        height: dp(50)
+                        on_release: root.unlock_contact()
 
 <OwnerAddPropertyScreen>:
     name: "owner_add_property"
@@ -1969,28 +2048,25 @@
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
         BoxLayout:
             orientation: "vertical"
-            size_hint: 0.9, 0.85
+            size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            spacing: dp(10)
-            padding: dp(16)
-            canvas.before:
-                Color:
-                    rgba: PANEL_BG
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [16]
-                Color:
-                    rgba: (1, 1, 1, 0.12)
-                Line:
-                    width: 1.0
-                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
-            Label:
-                text: "Publish Ad"
-                font_size: sp(24)
-                size_hint_y: None
-                height: dp(40)
-                color: 1, 1, 1, 1
+            spacing: dp(12)
+
+            WebTopBar:
+
+            ScrollView:
+                do_scroll_x: False
+                bar_width: dp(6)
+                WebPanel:
+                    size_hint_x: None
+                    width: min(root.width * 0.95, dp(980))
+                    x: (root.width - self.width) / 2
+
+                    Label:
+                        text: "[b]Publish Ad[/b]  [font=EmojiFont]➕[/font]"
+                        font_size: sp(20)
+                        size_hint_y: None
+                        height: dp(32)
             PrettySpinner:
                 id: state_spinner
                 text: "Select State"

@@ -4,6 +4,7 @@ import os
 
 from kivy.clock import Clock
 from kivy.properties import StringProperty
+from kivy.metrics import dp
 from kivy.uix.popup import Popup
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
@@ -18,6 +19,9 @@ EMAIL_RE = re.compile(r"[^@]+@[^@]+\.[^@]+")
 
 
 class RegisterScreen(GestureNavigationMixin, Screen):
+    # For auth screens, allow swipe-back from anywhere (not only left-edge).
+    _SWIPE_BACK_EDGE = dp(10000)
+
     # Source of truth for the segmented control (Owner/Customer).
     # KV binds the toggle button "state" to this property so the active styling
     # cannot drift to the wrong button.

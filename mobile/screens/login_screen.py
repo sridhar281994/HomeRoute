@@ -2,6 +2,7 @@ from threading import Thread
 
 from kivy.clock import Clock
 from kivy.core.window import Window
+from kivy.metrics import dp
 from kivy.properties import BooleanProperty, NumericProperty
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
@@ -33,6 +34,9 @@ def _popup(title: str, msg: str) -> None:
 
 
 class LoginScreen(GestureNavigationMixin, Screen):
+    # For auth screens, allow swipe-back from anywhere (not only left-edge).
+    _SWIPE_BACK_EDGE = dp(10000)
+
     font_scale = NumericProperty(1.0)
     remember_me = BooleanProperty(False)
     is_processing = BooleanProperty(False)

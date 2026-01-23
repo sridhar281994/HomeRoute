@@ -195,6 +195,8 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
             try:
                 data = api_get_property(self.property_id)
                 Clock.schedule_once(lambda *_: setattr(self, "property_data", data), 0)
+                # Also rebuild media grid (if KV container exists).
+                Clock.schedule_once(lambda *_: self._render_media_grid(data), 0)
             except ApiError as e:
                 err_msg = str(e)
                 Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
@@ -202,6 +204,47 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         from threading import Thread
 
         Thread(target=work, daemon=True).start()
+
+    def _render_media_grid(self, data: dict[str, Any]) -> None:
+        """
+        Match web Property page "Photos" grid:
+        - 2 columns
+        - render images (AsyncImage)
+        - render videos as a simple placeholder tile (video thumbnails are expensive)
+        """
+        try:
+            container = (self.ids or {}).get("property_media_container")
+        except Exception:
+            container = None
+        if container is None:
+            return
+        try:
+            container.clear_widgets()
+        except Exception:
+            return
+
+        items = list((data or {}).get("images") or [])
+        if not items:
+            container.add_widget(Label(text="No Photos", size_hint_y=None, height=dp(42), color=(1, 1, 1, 0.75)))
+            return
+
+        # Use web-like tile height (~220px). Kivy dp() scales across DPI.
+        tile_h = dp(220)
+        for it in items:
+            it = it or {}
+            url = to_api_url(str(it.get("url") or "").strip())
+            ctype = str(it.get("content_type") or "").lower().strip()
+            if not url:
+                continue
+            if ctype.startswith("video/"):
+                tile = BoxLayout(size_hint_y=None, height=tile_h, padding=dp(10))
+                tile.canvas.before.clear()
+                container.add_widget(Label(text="[b]Video[/b]", size_hint_y=None, height=tile_h, color=(1, 1, 1, 0.78)))
+            else:
+                img = Factory.AsyncImage(source=url, allow_stretch=True, keep_ratio=False)
+                img.size_hint_y = None
+                img.height = tile_h
+                container.add_widget(img)
 
     def back(self):
         if self.manager:
@@ -1048,7 +1091,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     # Footer buttons
                     footer = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(10))
                     btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
-                    btn_open = Factory.AppButton(text="Open folder")
+                    btn_open = Factory.AppButton(text="Folders")
                     btn_use = Factory.AppButton(text="Use Selected")
                     footer.add_widget(btn_cancel)
                     footer.add_widget(btn_open)
@@ -1141,13 +1184,16 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                         self._body.clear_widgets()
                         self._body.add_widget(self._chooser)
                         btn_open.disabled = False
+                        btn_open.text = "Open folder"
                         btn_use.disabled = True
 
                     def _show_grid(*_) -> None:
                         self._mode = "grid"
                         self._body.clear_widgets()
                         self._body.add_widget(self._grid_scroll)
-                        btn_open.disabled = True
+                        # Keep a way to jump back to folder list if user prefers.
+                        btn_open.disabled = False
+                        btn_open.text = "Folders"
                         btn_use.disabled = False
 
                         # rebuild grid
@@ -1172,6 +1218,13 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                             pass
                         _show_grid()
 
+                    def _toggle_folders_or_open(*_):
+                        # In grid mode: show folder list. In folder mode: open selected folder.
+                        if self._mode == "grid":
+                            _show_folders()
+                        else:
+                            _open_folder()
+
                     def _apply(*_):
                         selected = sorted([x for x in self._selected if os.path.isfile(x)])
                         images = [x for x in selected if _is_image(x)]
@@ -1187,13 +1240,15 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
 
                     btn_up.bind(on_release=_go_up)
                     btn_cancel.bind(on_release=lambda *_: self.dismiss())
-                    btn_open.bind(on_release=_open_folder)
+                    btn_open.bind(on_release=_toggle_folders_or_open)
                     btn_use.bind(on_release=_apply)
 
                     # Expose selection to caller.
                     self._on_done = lambda _sel: None
 
-                    _show_folders()
+                    # UX: open straight into a scrollable preview grid (folders as tiles),
+                    # so users immediately see photos/videos instead of a folder list.
+                    _show_grid()
 
             popup = _MediaPickerPopup()
 
