@@ -44,6 +44,7 @@ from frontend_app.utils.storage import clear_session, get_session, get_user, set
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
 from frontend_app.utils.android_filepicker import ensure_local_paths, is_image_path, is_video_path
+from frontend_app.utils.android_intent_picker import open_android_gallery
 
 
 def _popup(title: str, msg: str) -> None:
@@ -580,10 +581,6 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 except Exception:
                     filechooser = None
 
-                if filechooser is None:
-                    _popup("Gallery picker unavailable", "Please install or enable a gallery app to choose photos.")
-                    return
-
                 def _on_sel(selection):
                     try:
                         paths = ensure_local_paths(selection or [])
@@ -594,11 +591,17 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                         return
 
                 try:
-                    filechooser.open_file(on_selection=_on_sel, multiple=False)
-                    return
+                    if filechooser is not None:
+                        filechooser.open_file(on_selection=_on_sel, multiple=False)
+                        return
                 except Exception:
+                    pass
+
+                # Fallback: native Intent picker (content:// URIs copied to cache by ensure_local_paths()).
+                launched = open_android_gallery(on_selection=_on_sel, multiple=False, mime_types=("image/*",), title="Select photo")
+                if not launched:
                     _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
-                    return
+                return
 
             from kivy.uix.behaviors import ButtonBehavior
             from kivy.uix.floatlayout import FloatLayout
@@ -1220,10 +1223,6 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 except Exception:
                     filechooser = None
 
-                if filechooser is None:
-                    _popup("Gallery picker unavailable", "Please install or enable a gallery app to choose media.")
-                    return
-
                 def _on_sel(selection):
                     try:
                         paths = ensure_local_paths(selection or [])
@@ -1242,11 +1241,22 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                         return
 
                 try:
-                    filechooser.open_file(on_selection=_on_sel, multiple=True)
-                    return
+                    if filechooser is not None:
+                        filechooser.open_file(on_selection=_on_sel, multiple=True)
+                        return
                 except Exception:
+                    pass
+
+                # Fallback: native Intent picker (content:// URIs copied to cache by ensure_local_paths()).
+                launched = open_android_gallery(
+                    on_selection=_on_sel,
+                    multiple=True,
+                    mime_types=("image/*", "video/*"),
+                    title="Select media",
+                )
+                if not launched:
                     _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
-                    return
+                return
 
             """
             Custom media picker:
