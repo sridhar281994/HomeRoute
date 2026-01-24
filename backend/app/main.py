@@ -53,6 +53,7 @@ from app.security import create_access_token, decode_access_token, hash_password
 
 from app.google_play import GooglePlayNotConfigured, verify_subscription_with_google_play
 from app.sms import send_sms
+from app.utils.cloudinary_storage import cloudinary_enabled, cloudinary_upload_bytes
 
 
 app = FastAPI(title="Quickrent4u API")
@@ -627,19 +628,12 @@ def _safe_upload_ext(*, filename: str, content_type: str) -> str:
 
 def _user_out(u: User) -> dict[str, Any]:
     img = (u.profile_image_path or "").strip()
-    # Only expose an upload URL if the file actually exists. This prevents clients
-    # from attempting to fetch stale/missing uploads (which leads to noisy 404s).
+    # Allow Cloudinary/remote URLs while still preventing broken local upload URLs.
     img_url = ""
-    if img:
-        try:
-            safe = img.lstrip("/").replace("\\", "/")
-            # Historical values might already include "uploads/".
-            rel = safe[len("uploads/") :] if safe.startswith("uploads/") else safe
-            disk_path = os.path.join(_uploads_dir(), rel)
-            if os.path.exists(disk_path):
-                img_url = _public_image_url(rel)
-        except Exception:
-            img_url = ""
+    try:
+        img_url = _public_image_url_if_exists(img) if img else ""
+    except Exception:
+        img_url = ""
     return {
         "id": u.id,
         "email": u.email,
@@ -1560,14 +1554,29 @@ def me_upload_profile_image(
 
     stored_ext = _safe_upload_ext(filename=(file.filename or ""), content_type=content_type)
     safe_name = f"u{me.id}_{secrets.token_hex(8)}{stored_ext}"
-    disk_path = os.path.join(_uploads_dir(), safe_name)
-    try:
-        with open(disk_path, "wb") as out:
-            out.write(raw)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to save upload")
+    stored_path = safe_name
+    if cloudinary_enabled():
+        try:
+            res = cloudinary_upload_bytes(
+                raw=raw,
+                filename=safe_name,
+                content_type=content_type,
+                folder=f"flatnow/profile/u{me.id}",
+                resource_type="image",
+                tags=["profile", "user", f"user_{me.id}"],
+            )
+            stored_path = str(res.get("secure_url") or res.get("url") or "").strip() or stored_path
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
+    else:
+        disk_path = os.path.join(_uploads_dir(), safe_name)
+        try:
+            with open(disk_path, "wb") as out:
+                out.write(raw)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to save upload")
 
-    me.profile_image_path = safe_name
+    me.profile_image_path = stored_path
     db.add(me)
     return {"ok": True, "user": _user_out(me)}
 
@@ -3242,16 +3251,31 @@ def upload_property_image(
         requested_sort = (max(used) + 1) if used else 0
 
     safe_name = f"p{p.id}_{secrets.token_hex(8)}{stored_ext}"
-    disk_path = os.path.join(_uploads_dir(), safe_name)
-    try:
-        with open(disk_path, "wb") as out:
-            out.write(stored_bytes)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to save upload")
+    stored_path = safe_name
+    if cloudinary_enabled():
+        try:
+            res = cloudinary_upload_bytes(
+                raw=stored_bytes,
+                filename=safe_name,
+                content_type=stored_content_type,
+                folder=f"flatnow/properties/p{p.id}",
+                resource_type=("image" if is_image else "video"),
+                tags=["property", ("image" if is_image else "video"), f"property_{p.id}"],
+            )
+            stored_path = str(res.get("secure_url") or res.get("url") or "").strip() or stored_path
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
+    else:
+        disk_path = os.path.join(_uploads_dir(), safe_name)
+        try:
+            with open(disk_path, "wb") as out:
+                out.write(stored_bytes)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to save upload")
 
     img = PropertyImage(
         property_id=p.id,
-        file_path=safe_name,
+        file_path=stored_path,
         sort_order=int(requested_sort),
         image_hash=img_hash,
         original_filename=(file.filename or "").strip(),
@@ -3271,7 +3295,7 @@ def upload_property_image(
         next_sort = int(max_sort or -1) + 1
         img = PropertyImage(
             property_id=p.id,
-            file_path=safe_name,
+            file_path=stored_path,
             sort_order=int(next_sort),
             image_hash=img_hash,
             original_filename=(file.filename or "").strip(),
