@@ -234,6 +234,13 @@
     color: (0.12, 0.12, 0.12, 1)
     size_hint_y: None
     height: dp(44)
+    # Ensure long option labels (e.g. Area names) render fully.
+    # Without an explicit text_size/halign, some devices render only the first character.
+    text_size: (self.width - dp(24)), None
+    halign: "left"
+    valign: "middle"
+    padding: [dp(12), dp(8)]
+    shorten: False
     canvas.before:
         Color:
             rgba: (1, 1, 1, 0.98) if self.state == "normal" else (1, 0.97, 0.93, 1)
@@ -407,7 +414,7 @@
         opacity: 1 if root.has_image else 0
         size_hint: 1, 1
     Label:
-        text: root.fallback_text
+        text: (root.fallback_text if root.fallback_text else "U")
         font_size: sp(16)
         color: (1, 1, 1, 0.95)
         halign: "center"
@@ -1575,6 +1582,7 @@
                         size_hint_y: None
                         height: dp(40)
                         spacing: dp(8)
+                        padding: [dp(4), dp(2), dp(4), dp(2)]
                         Widget:
                         AppButton:
                             text: "Refresh"
