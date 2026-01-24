@@ -36,6 +36,9 @@ android.gradle_dependencies = \
     com.google.android.gms:play-services-auth:21.0.0, \
     com.google.android.gms:play-services-base:18.5.0
 
+# Force Kotlin version to prevent duplicate class conflicts
+android.gradle_properties = kotlin.version=1.8.22
+
 android.gradle_options = -Dorg.gradle.jvmargs=-Xmx4096m
 android.release_artifact = aab
 android.api = 34
@@ -52,7 +55,7 @@ android.keystore_password = android
 android.keyalias_password = android
 
 [buildozer]
-log_level = 2
+log_level = 1
 warn_on_root = 1
 # build_dir = ./.buildozer
 # bin_dir = ./bin
