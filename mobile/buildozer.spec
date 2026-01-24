@@ -29,17 +29,20 @@ fullscreen = 1
 
 # Android specific
 android.enable_androidx = True
-android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_COARSE_LOCATION,ACCESS_FINE_LOCATION,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_IMAGES,READ_MEDIA_VIDEO
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_COARSE_LOCATION,ACCESS_FINE_LOCATION,READ_EXTERNAL_STORAGE,READ_MEDIA_IMAGES,READ_MEDIA_VIDEO
+
 android.gradle_dependencies = \
+    androidx.activity:activity:1.8.2, \
     com.google.android.gms:play-services-auth:21.0.0, \
     com.google.android.gms:play-services-base:18.5.0
+
 android.gradle_options = -Dorg.gradle.jvmargs=-Xmx4096m
 android.release_artifact = aab
 android.api = 34
 android.minapi = 21
 android.ndk = 25b
 android.copy_libs = 1
-android.strip = True
+android.strip = False
 android.archs = arm64-v8a,armeabi-v7a
 android.allow_backup = True
 android.accept_sdk_license = True
