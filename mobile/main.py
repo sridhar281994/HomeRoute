@@ -70,14 +70,6 @@ class QuickRentApp(App):
             # Use the same file for regular/bold; the font itself contains multiple weights.
             LabelBase.register(name="CursiveFont", fn_regular=cursive, fn_bold=cursive)
 
-        # Tagline font (Fredoka/Baloo2 style).
-        tagline = resource_find("fonts/Fredoka-Regular.ttf")
-        if tagline:
-            LabelBase.register(name="TaglineFont", fn_regular=tagline, fn_bold=tagline)
-        elif app_regular:
-            # Safe fallback so KV font_name always resolves.
-            LabelBase.register(name="TaglineFont", fn_regular=app_regular, fn_bold=app_bold or app_regular)
-
         emoji_candidates: list[str] = []
         env_path = (os.environ.get("EMOJI_FONT_PATH") or "").strip()
         if env_path:
