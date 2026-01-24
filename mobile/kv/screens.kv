@@ -372,7 +372,7 @@
         on_release: app.root.current_screen.open_hamburger_menu(self) if (app and app.root and app.root.current_screen) else None
     Widget:
 
-<AvatarButton@ButtonBehavior+FloatLayout>:
+<AvatarButton>:
     image_source: ""
     fallback_text: ""
     size_hint: None, None
@@ -400,10 +400,11 @@
             size: self.size
         StencilPop
     AsyncImage:
+        id: avatar_img
         source: root.image_source
         allow_stretch: True
         keep_ratio: False
-        opacity: 1 if root.image_source else 0
+        opacity: 1 if root.has_image else 0
         size_hint: 1, 1
     Label:
         text: root.fallback_text
@@ -413,7 +414,7 @@
         valign: "middle"
         text_size: self.size
         size_hint: 1, 1
-        opacity: 0 if root.image_source else 1
+        opacity: 0 if root.has_image else 1
 
 <AuthHeader@BoxLayout>:
     orientation: "vertical"
@@ -1560,7 +1561,7 @@
                     spacing: dp(6)
                     Label:
                         id: home_tagline
-                        text: "[b]Uncover the Best, Good Luck[/b]"
+                        text: "[b][i]Uncover the Best, Good Luck[/i][/b]"
                         font_name: "CursiveFont"
                         font_size: sp(20)
                         halign: "left"
@@ -1574,13 +1575,13 @@
                         size_hint_y: None
                         height: dp(40)
                         spacing: dp(8)
+                        Widget:
                         AppButton:
                             text: "Refresh"
                             size_hint: None, None
-                            width: dp(110)
+                            width: dp(120)
                             height: dp(40)
                             on_release: root.refresh()
-                        Widget:
 
                 BoxLayout:
                     size_hint_y: None
@@ -2049,11 +2050,6 @@
                             text_size: self.size
                         Widget:
                         AppButton:
-                            text: "Share post"
-                            size_hint_x: None
-                            width: dp(140)
-                            on_release: root.share_current()
-                        AppButton:
                             text: "Back"
                             size_hint_x: None
                             width: dp(100)
@@ -2095,11 +2091,18 @@
                             size_hint_y: None
                             height: self.texture_size[1] + dp(6)
 
-                    AppButton:
-                        text: "Unlock Contact"
+                    BoxLayout:
                         size_hint_y: None
                         height: dp(50)
-                        on_release: root.unlock_contact()
+                        spacing: dp(10)
+                        AppButton:
+                            text: "Contact owner"
+                            size_hint_x: 1
+                            on_release: root.unlock_contact()
+                        AppButton:
+                            text: "Share"
+                            size_hint_x: 1
+                            on_release: root.share_current()
 
 <OwnerAddPropertyScreen>:
     name: "owner_add_property"

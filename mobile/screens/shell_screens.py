@@ -43,7 +43,7 @@ from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
-from frontend_app.utils.android_filepicker import ensure_local_paths, is_image_path, is_video_path
+from frontend_app.utils.android_filepicker import android_open_gallery, ensure_local_paths, is_image_path, is_video_path
 
 
 def _popup(title: str, msg: str) -> None:
@@ -260,7 +260,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         except Exception:
             return
 
-        items = list((data or {}).get("images") or [])
+        items = self._extract_media_items(data)
         if not items:
             container.add_widget(Label(text="No Photos", size_hint_y=None, height=dp(42), color=(1, 1, 1, 0.75)))
             return
@@ -282,6 +282,63 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
                 img.size_hint_y = None
                 img.height = tile_h
                 container.add_widget(img)
+
+    def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        Normalize backend media shapes into a consistent list of dicts.
+        Keep this aligned with HomeScreen so posts display images reliably.
+        """
+        src = None
+        try:
+            if isinstance((p or {}).get("images"), list):
+                src = p.get("images")
+            elif isinstance((p or {}).get("image_urls"), list):
+                src = p.get("image_urls")
+            elif isinstance((p or {}).get("media"), list):
+                src = p.get("media")
+            elif isinstance((p or {}).get("photos"), list):
+                src = p.get("photos")
+            elif isinstance((p or {}).get("files"), list):
+                src = p.get("files")
+        except Exception:
+            src = None
+
+        items = list(src or [])
+        out: list[dict[str, Any]] = []
+
+        def _guess_type(url: str) -> str:
+            u = (url or "").lower()
+            for ext in (".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"):
+                if u.endswith(ext):
+                    return "video/*"
+            return "image/*"
+
+        for it in items:
+            if isinstance(it, str):
+                url = it.strip()
+                if not url:
+                    continue
+                out.append({"url": url, "content_type": _guess_type(url)})
+                continue
+            if isinstance(it, dict):
+                url = str(
+                    it.get("url")
+                    or it.get("image_url")
+                    or it.get("imageUrl")
+                    or it.get("src")
+                    or it.get("path")
+                    or it.get("image")
+                    or ""
+                ).strip()
+                if not url:
+                    continue
+                ctype = str(it.get("content_type") or it.get("contentType") or "").strip()
+                if not ctype:
+                    ctype = _guess_type(url)
+                out.append({"url": url, "content_type": ctype})
+                continue
+
+        return out
 
     def back(self):
         if self.manager:
@@ -338,7 +395,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         api_link = to_api_url(f"/property/{pid}") if pid else ""
         img_link = ""
         try:
-            imgs = p.get("images") or []
+            imgs = self._extract_media_items(p)
             if imgs:
                 img_link = to_api_url(str((imgs[0] or {}).get("url") or "").strip())
         except Exception:
@@ -580,10 +637,6 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 except Exception:
                     filechooser = None
 
-                if filechooser is None:
-                    _popup("Gallery picker unavailable", "Please install or enable a gallery app to choose photos.")
-                    return
-
                 def _on_sel(selection):
                     try:
                         paths = ensure_local_paths(selection or [])
@@ -593,11 +646,21 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                     except Exception:
                         return
 
+                if filechooser is None:
+                    # Fallback: use native Android Intent picker directly.
+                    launched = android_open_gallery(on_selection=_on_sel, multiple=False, mime_types=["image/*"])
+                    if not launched:
+                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+                    return
+
                 try:
                     filechooser.open_file(on_selection=_on_sel, multiple=False)
                     return
                 except Exception:
-                    _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+                    # Fallback: use native Android Intent picker directly.
+                    launched = android_open_gallery(on_selection=_on_sel, multiple=False, mime_types=["image/*"])
+                    if not launched:
+                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
                     return
 
             from kivy.uix.behaviors import ButtonBehavior
@@ -1220,17 +1283,20 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 except Exception:
                     filechooser = None
 
-                if filechooser is None:
-                    _popup("Gallery picker unavailable", "Please install or enable a gallery app to choose media.")
-                    return
-
                 def _on_sel(selection):
                     try:
                         paths = ensure_local_paths(selection or [])
                         media = [p for p in paths if is_image_path(p) or is_video_path(p)]
-                        self._selected_media = list(media)
-                        images = [x for x in self._selected_media if is_image_path(x)]
-                        videos = [x for x in self._selected_media if is_video_path(x)]
+                        images = [x for x in media if is_image_path(x)]
+                        videos = [x for x in media if is_video_path(x)]
+
+                        # Enforce limits for the Android picker as well.
+                        if len(images) > 10:
+                            images = images[:10]
+                        if len(videos) > 1:
+                            videos = videos[:1]
+
+                        self._selected_media = list(images + videos)
                         if "media_summary" in self.ids:
                             parts = []
                             if images:
@@ -1241,11 +1307,19 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     except Exception:
                         return
 
+                if filechooser is None:
+                    launched = android_open_gallery(on_selection=_on_sel, multiple=True, mime_types=["image/*", "video/*"])
+                    if not launched:
+                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+                    return
+
                 try:
                     filechooser.open_file(on_selection=_on_sel, multiple=True)
                     return
                 except Exception:
-                    _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+                    launched = android_open_gallery(on_selection=_on_sel, multiple=True, mime_types=["image/*", "video/*"])
+                    if not launched:
+                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
                     return
 
             """

@@ -148,7 +148,8 @@ class AreaSelectPopup(Popup):
                 row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(42), spacing=dp(10))
                 cb = CheckBox(active=(a in self._selected), size_hint=(None, None), size=(dp(32), dp(32)))
                 lbl = Label(text=a, halign="left", valign="middle", color=(1, 1, 1, 0.92))
-                lbl.text_size = (0, None)
+                # Do not force `text_size` to 0-width; it truncates to the first letter.
+                lbl.size_hint_x = 1
 
                 def _toggle(_cb, value, a=a):
                     if bool(value):
@@ -511,7 +512,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
             row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(38), spacing=dp(8))
             cb = CheckBox(active=(area in selected), size_hint=(None, None), size=(dp(32), dp(32)))
             lbl = Label(text=area, halign="left", valign="middle", color=(1, 1, 1, 0.92))
-            lbl.text_size = (0, None)
+            # Do not force `text_size` to 0-width; it truncates to the first letter.
+            lbl.size_hint_x = 1
 
             def _toggle(_cb, value, area=area):
                 self.toggle_area(area, bool(value))
@@ -824,7 +826,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 if x
             ]
         )
-        images = p.get("images") or []
+        images = self._extract_media_items(p)
         already_contacted = bool(p.get("contacted"))
 
         card = BoxLayout(orientation="vertical", padding=(12, 10), spacing=8, size_hint_y=None)
@@ -865,7 +867,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
             api_link = to_api_url(f"/property/{pid}") if pid else ""
             img_link = ""
             try:
-                imgs = p.get("images") or []
+                imgs = self._extract_media_items(p)
                 if imgs:
                     img_link = to_api_url(str((imgs[0] or {}).get("url") or "").strip())
             except Exception:
@@ -1050,6 +1052,66 @@ class HomeScreen(GestureNavigationMixin, Screen):
         card.add_widget(lbl_status)
 
         return card
+
+    def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        Normalize backend media shapes into a consistent list of dicts:
+        - supports `images` (list[dict] or list[str])
+        - supports `image_urls` (list[str])
+        - supports alternate keys used by older/mobile payloads
+        """
+        src = None
+        try:
+            if isinstance(p.get("images"), list):
+                src = p.get("images")
+            elif isinstance(p.get("image_urls"), list):
+                src = p.get("image_urls")
+            elif isinstance(p.get("media"), list):
+                src = p.get("media")
+            elif isinstance(p.get("photos"), list):
+                src = p.get("photos")
+            elif isinstance(p.get("files"), list):
+                src = p.get("files")
+        except Exception:
+            src = None
+
+        items = list(src or [])
+        out: list[dict[str, Any]] = []
+
+        def _guess_type(url: str) -> str:
+            u = (url or "").lower()
+            for ext in (".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"):
+                if u.endswith(ext):
+                    return "video/*"
+            return "image/*"
+
+        for it in items:
+            if isinstance(it, str):
+                url = it.strip()
+                if not url:
+                    continue
+                out.append({"url": url, "content_type": _guess_type(url)})
+                continue
+
+            if isinstance(it, dict):
+                url = str(
+                    it.get("url")
+                    or it.get("image_url")
+                    or it.get("imageUrl")
+                    or it.get("src")
+                    or it.get("path")
+                    or it.get("image")
+                    or ""
+                ).strip()
+                if not url:
+                    continue
+                ctype = str(it.get("content_type") or it.get("contentType") or "").strip()
+                if not ctype:
+                    ctype = _guess_type(url)
+                out.append({"url": url, "content_type": ctype})
+                continue
+
+        return out
 
     def _load_need_categories(self):
         def work():

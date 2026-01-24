@@ -124,3 +124,115 @@ def is_video_path(p: str) -> bool:
     ext = os.path.splitext(str(p).lower())[1]
     return ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 
+
+def android_open_gallery(
+    *,
+    on_selection,
+    multiple: bool = False,
+    mime_types: list[str] | None = None,
+) -> bool:
+    """
+    Android native gallery/document picker fallback using Intent.
+
+    This is used when `plyer.filechooser` is unavailable or fails.
+
+    - Returns True if an Intent was launched.
+    - Calls `on_selection(list_of_uris_or_paths)` on the Kivy main thread.
+    """
+    if platform != "android":
+        return False
+
+    try:
+        from android import activity  # type: ignore
+        from kivy.clock import Clock
+        from jnius import autoclass, cast, jarray  # type: ignore
+
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        Intent = autoclass("android.content.Intent")
+        String = autoclass("java.lang.String")
+        Activity = autoclass("android.app.Activity")
+
+        # ACTION_OPEN_DOCUMENT supports multi-select and returns content:// URIs.
+        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
+        if not mimes:
+            mimes = ["image/*"]
+
+        # Set a general type and optionally pass multiple MIME types.
+        intent.setType(str(mimes[0]))
+        if len(mimes) > 1:
+            arr = jarray("java.lang.String")([String(m) for m in mimes])
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+
+        # Use a request code that is unlikely to collide.
+        req_code = 13579
+
+        def _deliver(sel: list[str]) -> None:
+            try:
+                Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
+            except Exception:
+                pass
+
+        def _on_activity_result(requestCode, resultCode, data) -> None:  # noqa: N802 (android callback naming)
+            if int(requestCode) != int(req_code):
+                return
+            try:
+                activity.unbind(on_activity_result=_on_activity_result)
+            except Exception:
+                pass
+
+            if int(resultCode) != int(Activity.RESULT_OK) or data is None:
+                _deliver([])
+                return
+
+            out: list[str] = []
+            try:
+                clip = data.getClipData()
+            except Exception:
+                clip = None
+
+            if clip is not None:
+                try:
+                    n = int(clip.getItemCount())
+                except Exception:
+                    n = 0
+                for i in range(max(0, n)):
+                    try:
+                        item = clip.getItemAt(i)
+                        uri = item.getUri()
+                        if uri is not None:
+                            out.append(str(uri.toString()))
+                    except Exception:
+                        continue
+            else:
+                try:
+                    uri = data.getData()
+                    if uri is not None:
+                        out.append(str(uri.toString()))
+                except Exception:
+                    pass
+
+            _deliver(out)
+
+        try:
+            activity.bind(on_activity_result=_on_activity_result)
+        except Exception:
+            return False
+
+        try:
+            act = PythonActivity.mActivity
+            act.startActivityForResult(intent, req_code)
+            return True
+        except Exception:
+            try:
+                activity.unbind(on_activity_result=_on_activity_result)
+            except Exception:
+                pass
+            return False
+    except Exception:
+        return False
+
