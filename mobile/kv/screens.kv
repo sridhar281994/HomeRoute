@@ -2066,10 +2066,26 @@
                                 height: dp(46)
                                 spacing: dp(10)
 
-                                Image:
-                                    source: "assets/icons/home.png"
-                                    size_hint: None, None
-                                    size: dp(36), dp(36)
+
+                                AsyncImage:
+                                    id: avatar_img
+                                    source: root.image_source
+                                    allow_stretch: True
+                                    keep_ratio: False
+                                    opacity: 1 if self.texture else 0
+                                    size_hint: 1, 1
+                                    on_error:
+                                        root.image_source = ""
+                                
+                                Label:
+                                    text: (root.fallback_text if root.fallback_text else "ME")
+                                    font_size: sp(16)
+                                    color: (0.2, 0.2, 0.2, 1)
+                                    halign: "center"
+                                    valign: "middle"
+                                    text_size: self.size
+                                    size_hint: 1, 1
+                                    opacity: 0 if avatar_img.texture else 1
 
                                 BoxLayout:
                                     orientation: "vertical"
