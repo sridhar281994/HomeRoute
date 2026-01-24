@@ -36,8 +36,10 @@ android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_COARSE_LOCATION,ACCES
 # dependency resolution.
 android.gradle_dependencies = androidx.activity:activity:1.8.2,com.google.android.gms:play-services-auth:21.0.0,com.google.android.gms:play-services-base:18.5.0
 
-# Force Kotlin version to prevent duplicate class conflicts
-android.gradle_properties = kotlin.version=1.8.22
+# NOTE: Do not force Kotlin version here.
+# Forcing a Kotlin stdlib version can introduce duplicate classes when other
+# dependencies still pull kotlin-stdlib-jdk7/jdk8 at an older version.
+# Let Gradle/AGP resolve a consistent Kotlin stdlib set.
 
 android.gradle_options = -Dorg.gradle.jvmargs=-Xmx4096m
 android.release_artifact = aab
