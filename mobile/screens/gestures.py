@@ -6,25 +6,29 @@ from kivy.core.window import Window
 from kivy.factory import Factory
 from kivy.metrics import dp
 from kivy.uix.dropdown import DropDown
+from kivy.uix.label import Label
 
 
 class GestureNavigationMixin:
     """
     Adds simple gesture navigation to Kivy Screens:
-    - Horizontal swipe (from left edge) triggers back navigation.
-    - Optional pull-to-refresh (swipe down when at top) if screen implements:
-        - gesture_refresh() -> None
-        - gesture_can_refresh() -> bool
+    - Horizontal swipe triggers back navigation.
+    - Vertical swipe down triggers pull-to-refresh with visual indicator.
     """
 
-    # Tunables (dp so they scale with DPI)
-    _SWIPE_BACK_EDGE = dp(10000)  # allow swipe-back from anywhere
-    _SWIPE_BACK_DX = dp(90)  # horizontal distance
-    _SWIPE_BACK_DY_MAX = dp(70)  # vertical wiggle allowed
+    # Tunables
+    _SWIPE_BACK_DX = dp(70)          # horizontal distance
+    _SWIPE_BACK_DY_MAX = dp(40)      # vertical wiggle allowed
 
-    _PULL_TO_REFRESH_DY = dp(110)
-    _PULL_TO_REFRESH_DX_MAX = dp(80)
+    _PULL_TO_REFRESH_DY = dp(80)
+    _PULL_TO_REFRESH_DX_MAX = dp(40)
 
+    # Velocity thresholds (px/sec)
+    _MIN_SWIPE_VELOCITY = 900.0
+
+    # ------------------------------------------------------------------
+    # Refresh gate
+    # ------------------------------------------------------------------
     def gesture_can_refresh(self) -> bool:
         """
         Default pull-to-refresh gate:
@@ -36,6 +40,7 @@ class GestureNavigationMixin:
                 return False
         except Exception:
             pass
+
         sv = None
         try:
             ids = getattr(self, "ids", {}) or {}
@@ -45,8 +50,10 @@ class GestureNavigationMixin:
                     break
         except Exception:
             sv = None
+
         if sv is None:
             return False
+
         try:
             return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.99
         except Exception:
@@ -64,6 +71,7 @@ class GestureNavigationMixin:
                 return
         except Exception:
             pass
+
         try:
             if hasattr(self, "refresh_status"):
                 getattr(self, "refresh_status")()
@@ -71,100 +79,120 @@ class GestureNavigationMixin:
         except Exception:
             pass
 
-    def gesture_bind_window(self) -> None:
-        """
-        Bind gesture detection at Window level.
-
-        This makes gestures work even when child widgets (TextInput/ScrollView)
-        consume touch events before the Screen sees them.
-        """
-        try:
-            if getattr(self, "_g_window_bound", False):
-                return
-            Window.bind(on_touch_down=self._gesture_window_down, on_touch_move=self._gesture_window_move, on_touch_up=self._gesture_window_up)
-            self._g_window_bound = True
-        except Exception:
-            self._g_window_bound = False
-
-    def gesture_unbind_window(self) -> None:
-        try:
-            if not getattr(self, "_g_window_bound", False):
-                return
-            Window.unbind(on_touch_down=self._gesture_window_down, on_touch_move=self._gesture_window_move, on_touch_up=self._gesture_window_up)
-        except Exception:
-            pass
-        self._g_window_bound = False
-
-    def _gesture_is_active_screen(self) -> bool:
-        """
-        Only run gestures for the currently visible Screen.
-        """
-        try:
-            if not self.get_root_window():
-                return False
-        except Exception:
-            return False
-        try:
-            mgr = getattr(self, "manager", None)
-            name = getattr(self, "name", None)
-            if mgr is not None and name:
-                return str(getattr(mgr, "current", "") or "") == str(name)
-        except Exception:
-            pass
-        return True
-
+    # ------------------------------------------------------------------
+    # Touch tracking
+    # ------------------------------------------------------------------
     def _gesture_track_down(self, touch) -> None:
         # Ignore mouse wheel scrolling etc.
         if getattr(touch, "is_mouse_scrolling", False):
             return
+
         try:
             if self.collide_point(*touch.pos):
                 self._g_touch_uid = getattr(touch, "uid", None)
                 self._g_start = (float(touch.x), float(touch.y))
+                self._g_last = (float(touch.x), float(touch.y))
                 self._g_start_t = time.time()
                 self._g_handled = False
                 self._g_refreshed = False
         except Exception:
             return
 
+    def _show_refresh_indicator(self) -> None:
+        """
+        Lightweight visual indicator shown while pulling down.
+        """
+        try:
+            if getattr(self, "_g_refresh_label", None):
+                return
+
+            lbl = Label(
+                text="↓ Release to refresh",
+                size_hint=(None, None),
+                size=(dp(220), dp(36)),
+                pos=(self.center_x - dp(110), self.top - dp(60)),
+                color=(1, 1, 1, 0.9),
+            )
+            self._g_refresh_label = lbl
+            self.add_widget(lbl)
+        except Exception:
+            pass
+
+    def _hide_refresh_indicator(self) -> None:
+        try:
+            lbl = getattr(self, "_g_refresh_label", None)
+            if lbl is not None:
+                self.remove_widget(lbl)
+                self._g_refresh_label = None
+        except Exception:
+            pass
+
     def _gesture_track_move(self, touch) -> bool:
         if getattr(self, "_g_handled", False):
             return True
+
         if getattr(self, "_g_touch_uid", None) != getattr(touch, "uid", None):
             return False
 
         start = getattr(self, "_g_start", None)
-        if not start:
+        last = getattr(self, "_g_last", None)
+        if not start or not last:
             return False
+
         sx, sy = start
-        dx = float(touch.x) - float(sx)
-        dy = float(touch.y) - float(sy)
+        lx, ly = last
+        cx, cy = float(touch.x), float(touch.y)
 
-        # Pull-to-refresh (only if screen opts in).
-        if (not getattr(self, "_g_refreshed", False)) and dy > float(self._PULL_TO_REFRESH_DY) and abs(dx) < float(self._PULL_TO_REFRESH_DX_MAX):
-            can_refresh = False
-            try:
-                can_refresh = bool(getattr(self, "gesture_can_refresh")())
-            except Exception:
+        self._g_last = (cx, cy)
+
+        dx = cx - sx
+        dy = cy - sy
+
+        now = time.time()
+        dt = max(now - float(self._g_start_t or now), 0.001)
+        vx = dx / dt
+        vy = dy / dt
+
+        # ---------------------------------------------------
+        # Horizontal swipe → BACK (velocity OR distance)
+        # ---------------------------------------------------
+        if (
+            dx > float(self._SWIPE_BACK_DX)
+            and abs(dy) < float(self._SWIPE_BACK_DY_MAX)
+        ) or (
+            vx > self._MIN_SWIPE_VELOCITY
+            and abs(vy) < self._MIN_SWIPE_VELOCITY * 0.5
+        ):
+            self._g_handled = True
+            self._hide_refresh_indicator()
+            self._gesture_back()
+            return True
+
+        # ---------------------------------------------------
+        # Vertical swipe down → REFRESH (with indicator)
+        # ---------------------------------------------------
+        if dy > 0 and abs(dx) < float(self._PULL_TO_REFRESH_DX_MAX):
+            self._show_refresh_indicator()
+
+            if (
+                dy > float(self._PULL_TO_REFRESH_DY)
+                or vy > self._MIN_SWIPE_VELOCITY
+            ):
                 can_refresh = False
-            if can_refresh:
-                self._g_refreshed = True
                 try:
-                    getattr(self, "gesture_refresh")()
+                    can_refresh = bool(getattr(self, "gesture_can_refresh")())
                 except Exception:
-                    pass
-                return True
+                    can_refresh = False
 
-        # Swipe-back (start from left edge, move right).
-        if dx > float(self._SWIPE_BACK_DX) and abs(dy) < float(self._SWIPE_BACK_DY_MAX):
-            # Only trigger when swipe begins near the left edge of the screen widget.
-            try:
-                if sx <= float(self.x + self._SWIPE_BACK_EDGE):
+                if can_refresh and not getattr(self, "_g_refreshed", False):
+                    self._g_refreshed = True
                     self._g_handled = True
-                    self._gesture_back()
+                    self._hide_refresh_indicator()
+                    try:
+                        getattr(self, "gesture_refresh")()
+                    except Exception:
+                        pass
                     return True
-            except Exception:
-                pass
 
         return False
 
@@ -172,26 +200,14 @@ class GestureNavigationMixin:
         if getattr(self, "_g_touch_uid", None) == getattr(touch, "uid", None):
             self._g_touch_uid = None
             self._g_start = None
+            self._g_last = None
             self._g_handled = False
             self._g_refreshed = False
+            self._hide_refresh_indicator()
 
-    def _gesture_window_down(self, _window, touch):
-        if not self._gesture_is_active_screen():
-            return False
-        self._gesture_track_down(touch)
-        return False
-
-    def _gesture_window_move(self, _window, touch):
-        if not self._gesture_is_active_screen():
-            return False
-        return bool(self._gesture_track_move(touch))
-
-    def _gesture_window_up(self, _window, touch):
-        if not self._gesture_is_active_screen():
-            return False
-        self._gesture_track_up(touch)
-        return False
-
+    # ------------------------------------------------------------------
+    # Normal widget touch flow
+    # ------------------------------------------------------------------
     def on_touch_down(self, touch):
         self._gesture_track_down(touch)
         return super().on_touch_down(touch)
@@ -206,6 +222,9 @@ class GestureNavigationMixin:
         self._gesture_track_up(touch)
         return super().on_touch_up(touch)
 
+    # ------------------------------------------------------------------
+    # Back navigation target
+    # ------------------------------------------------------------------
     def _gesture_back(self) -> None:
         """
         Back navigation target:
@@ -301,4 +320,3 @@ class GestureNavigationMixin:
             mgr.current = action
         except Exception:
             return
-
