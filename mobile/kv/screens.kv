@@ -432,31 +432,6 @@
         opacity: 0 if avatar_img.texture else 1
 
 
-<AuthHeader@BoxLayout>:
-    orientation: "vertical"
-    size_hint_y: None
-    height: self.minimum_height
-    spacing: dp(2)
-    padding: [0, dp(4), 0, dp(4)]
-    Label:
-        text: "[b]flatnow.in[/b]"
-        markup: True
-        font_size: sp(26)
-        halign: "center"
-        valign: "middle"
-        text_size: self.width, None
-        size_hint_y: None
-        height: self.texture_size[1] + dp(4)
-    Label:
-        text: "UNLOCK your path"
-        font_size: sp(14)
-        color: TEXT_MUTED
-        halign: "center"
-        valign: "middle"
-        text_size: self.width, None
-        size_hint_y: None
-        height: self.texture_size[1] + dp(2)
-
 <SplashScreen>:
     name: "splash"
     FloatLayout:
@@ -616,8 +591,6 @@
                     width: min(root.width * 0.95, dp(980))
                     x: (root.width - self.width) / 2
                     spacing: dp(15)
-
-                    AuthHeader:
 
                     Label:
                         text: "[b]Secure Login[/b]  [font=EmojiFont]🔐[/font]"
@@ -1373,8 +1346,6 @@
                     x: (root.width - self.width) / 2
                     spacing: dp(12)
 
-                    AuthHeader:
-
                     Label:
                         text: "[b]Create Account[/b]  [font=EmojiFont]✨[/font]"
                         font_size: sp(26)
@@ -2066,26 +2037,13 @@
                                 height: dp(46)
                                 spacing: dp(10)
 
-
-                                AsyncImage:
-                                    id: avatar_img
-                                    source: root.image_source
-                                    allow_stretch: True
-                                    keep_ratio: False
-                                    opacity: 1 if self.texture else 0
-                                    size_hint: 1, 1
-                                    on_error:
-                                        root.image_source = ""
-                                
-                                Label:
-                                    text: (root.fallback_text if root.fallback_text else "ME")
-                                    font_size: sp(16)
-                                    color: (0.2, 0.2, 0.2, 1)
-                                    halign: "center"
-                                    valign: "middle"
-                                    text_size: self.size
-                                    size_hint: 1, 1
-                                    opacity: 0 if avatar_img.texture else 1
+                                AvatarButton:
+                                    # Use the existing avatar widget (fixed size + reliable fallback),
+                                    # otherwise the title block gets squeezed and appears "missing".
+                                    size_hint: None, None
+                                    size: dp(44), dp(44)
+                                    image_source: ""
+                                    fallback_text: str(root.property_data.get("title") or "P")[:1].upper()
 
                                 BoxLayout:
                                     orientation: "vertical"

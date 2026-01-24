@@ -70,10 +70,6 @@ export default function RegisterPage() {
 
   return (
     <div className="panel">
-      <div className="auth-header">
-        <div className="auth-title">flatnow.in</div>
-        <div className="auth-subtitle">UNLOCK your path</div>
-      </div>
       <p className="h1">Create Account  ✨</p>
       <p className="muted">
         Already have an account? <Link to="/login">Login</Link>
