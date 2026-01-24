@@ -1299,11 +1299,6 @@
                             height: dp(24)
                             color: TEXT_MAIN
                         Label:
-                            text: root.provider_text
-                            size_hint_y: None
-                            height: dp(22)
-                            color: TEXT_MUTED
-                        Label:
                             text: root.expires_text
                             size_hint_y: None
                             height: dp(22)
@@ -1311,36 +1306,36 @@
 
                         AppButton:
                             text: "[b]FREE - 0[/b]\nUnlock 30 owner/service contacts"
+                            size_hint_x: 1
                             size_hint_y: None
                             height: dp(64)
-
+                        
                         AppButton:
                             text: "[b]INSTANT - ₹10[/b]\nUnlock 60 owner/service contacts"
+                            size_hint_x: 1
                             size_hint_y: None
                             height: dp(64)
-
+                        
                         AppButton:
                             text: "[b]SMART - ₹50[/b]\nUnlock 200 contacts"
+                            size_hint_x: 1
                             size_hint_y: None
                             height: dp(64)
-
+                        
                         AppButton:
                             text: "[b]BUSINESS - ₹150[/b]\nUnlimited contact unlocks/Month"
+                            size_hint_x: 1
                             size_hint_y: None
                             height: dp(64)
-
-                        AppButton:
-                            text: "Refresh"
-                            size_hint_y: None
-                            height: dp(44)
-                            on_release: root.refresh_status()
-
+                        
                         AppButton:
                             text: "Back"
+                            size_hint_x: 1
                             size_hint_y: None
                             height: dp(44)
                             color: (0.94, 0.27, 0.27, 1)
                             on_release: root.go_back()
+
 
 <RegisterScreen>:
     name: "register"
