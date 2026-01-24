@@ -31,13 +31,15 @@ fullscreen = 1
 android.enable_androidx = True
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_COARSE_LOCATION,ACCESS_FINE_LOCATION,READ_EXTERNAL_STORAGE,READ_MEDIA_IMAGES,READ_MEDIA_VIDEO
 
-android.gradle_dependencies = \
-    androidx.activity:activity:1.8.2, \
-    com.google.android.gms:play-services-auth:21.0.0, \
-    com.google.android.gms:play-services-base:18.5.0
+# IMPORTANT: Keep this on a single line. Buildozer does not treat "\" as a line
+# continuation here; it will be passed literally to Gradle as "\n..." and break
+# dependency resolution.
+android.gradle_dependencies = androidx.activity:activity:1.8.2,com.google.android.gms:play-services-auth:21.0.0,com.google.android.gms:play-services-base:18.5.0,org.jetbrains.kotlin:kotlin-stdlib:1.8.22,org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22,org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22
 
-# Force Kotlin version to prevent duplicate class conflicts
-android.gradle_properties = kotlin.version=1.8.22
+# NOTE: Do not force Kotlin version here.
+# Forcing a Kotlin stdlib version can introduce duplicate classes when other
+# dependencies still pull kotlin-stdlib-jdk7/jdk8 at an older version.
+# Let Gradle/AGP resolve a consistent Kotlin stdlib set.
 
 android.gradle_options = -Dorg.gradle.jvmargs=-Xmx4096m
 android.release_artifact = aab
@@ -55,7 +57,7 @@ android.keystore_password = android
 android.keyalias_password = android
 
 [buildozer]
-log_level = 1
+log_level = 2
 warn_on_root = 1
 # build_dir = ./.buildozer
 # bin_dir = ./bin
