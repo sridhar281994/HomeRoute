@@ -165,14 +165,11 @@ class GestureNavigationMixin:
         # ---------------------------------------------------
         # Horizontal swipe → BACK (velocity OR distance)
         # ---------------------------------------------------
-        if bool(getattr(self, "_g_back_edge_ok", True)) and (
-            dx > float(self._SWIPE_BACK_DX)
-            and abs(dy) < float(self._SWIPE_BACK_DY_MAX)
-        ) or (
-            bool(getattr(self, "_g_back_edge_ok", True))
-            vx > self._MIN_SWIPE_VELOCITY
-            and abs(vy) < self._MIN_SWIPE_VELOCITY * 0.5
-        ):
+        back_edge_ok = bool(getattr(self, "_g_back_edge_ok", True))
+        back_by_distance = dx > float(self._SWIPE_BACK_DX) and abs(dy) < float(self._SWIPE_BACK_DY_MAX)
+        back_by_velocity = vx > self._MIN_SWIPE_VELOCITY and abs(vy) < self._MIN_SWIPE_VELOCITY * 0.5
+
+        if back_edge_ok and (back_by_distance or back_by_velocity):
             self._g_handled = True
             self._hide_refresh_indicator()
             self._gesture_back()
