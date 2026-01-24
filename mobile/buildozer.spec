@@ -34,7 +34,7 @@ android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_COARSE_LOCATION,ACCES
 # IMPORTANT: Keep this on a single line. Buildozer does not treat "\" as a line
 # continuation here; it will be passed literally to Gradle as "\n..." and break
 # dependency resolution.
-android.gradle_dependencies = androidx.activity:activity:1.8.2,com.google.android.gms:play-services-auth:21.0.0,com.google.android.gms:play-services-base:18.5.0
+android.gradle_dependencies = androidx.activity:activity:1.8.2,com.google.android.gms:play-services-auth:21.0.0,com.google.android.gms:play-services-base:18.5.0,org.jetbrains.kotlin:kotlin-stdlib:1.8.22,org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22,org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22
 
 # NOTE: Do not force Kotlin version here.
 # Forcing a Kotlin stdlib version can introduce duplicate classes when other
