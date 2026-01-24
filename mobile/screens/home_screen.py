@@ -148,7 +148,10 @@ class AreaSelectPopup(Popup):
                 row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(42), spacing=dp(10))
                 cb = CheckBox(active=(a in self._selected), size_hint=(None, None), size=(dp(32), dp(32)))
                 lbl = Label(text=a, halign="left", valign="middle", color=(1, 1, 1, 0.92))
-                lbl.text_size = (0, None)
+                # Important: do NOT set text_size width to 0, otherwise it wraps one character per line.
+                # Bind text_size to the allocated label width so the full area name is visible.
+                lbl.bind(size=lambda inst, *_: setattr(inst, "text_size", (inst.width, None)))
+                lbl.bind(texture_size=lambda *_: setattr(row, "height", max(dp(42), lbl.texture_size[1] + dp(10))))
 
                 def _toggle(_cb, value, a=a):
                     if bool(value):
@@ -511,7 +514,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
             row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(38), spacing=dp(8))
             cb = CheckBox(active=(area in selected), size_hint=(None, None), size=(dp(32), dp(32)))
             lbl = Label(text=area, halign="left", valign="middle", color=(1, 1, 1, 0.92))
-            lbl.text_size = (0, None)
+            # Important: do NOT set text_size width to 0, otherwise it wraps one character per line.
+            # Bind text_size to the allocated label width so the full area name is visible.
+            lbl.bind(size=lambda inst, *_: setattr(inst, "text_size", (inst.width, None)))
+            lbl.bind(texture_size=lambda *_: setattr(row, "height", max(dp(38), lbl.texture_size[1] + dp(10))))
 
             def _toggle(_cb, value, area=area):
                 self.toggle_area(area, bool(value))
