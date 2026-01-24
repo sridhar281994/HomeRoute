@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from kivy.core.window import Window
 from kivy.animation import Animation
-from kivy.properties import BooleanProperty, ListProperty, NumericProperty
+from kivy.clock import Clock
+from kivy.properties import BooleanProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.button import Button
+from kivy.uix.behaviors import ButtonBehavior
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.togglebutton import ToggleButton
 from kivy.utils import platform
 import math
@@ -207,4 +210,51 @@ class HoverToggleButton(HoverBehavior, ToggleButton):
         self.ux_scale = 1.0
         self.ripple_alpha = 0.0
         self.ripple_radius = 0.0
+
+
+class AvatarButton(ButtonBehavior, FloatLayout):
+    """
+    Clickable avatar that shows:
+    - the profile image when it successfully loads
+    - otherwise a fallback initial/letter
+
+    This fixes the case where an image URL exists but fails to load: Kivy's
+    AsyncImage stays blank, and the fallback text used to be hidden.
+    """
+
+    image_source = StringProperty("")
+    fallback_text = StringProperty("")
+    has_image = BooleanProperty(False)
+
+    def on_kv_post(self, _base_widget) -> None:
+        # KV ids are available after kv is applied.
+        Clock.schedule_once(lambda *_: self._bind_avatar_img(), 0)
+
+    def _bind_avatar_img(self) -> None:
+        try:
+            img = (self.ids or {}).get("avatar_img")
+        except Exception:
+            img = None
+        self._avatar_img = img
+        if img is not None:
+            try:
+                img.bind(texture=lambda *_: self._update_has_image(), source=lambda *_: self._update_has_image())
+            except Exception:
+                pass
+        self._update_has_image()
+
+    def on_image_source(self, *_):
+        self._update_has_image()
+
+    def _update_has_image(self) -> None:
+        src = str(self.image_source or "").strip()
+        img = getattr(self, "_avatar_img", None)
+        if not src or img is None:
+            self.has_image = False
+            return
+        try:
+            tex = getattr(img, "texture", None)
+            self.has_image = bool(tex is not None and getattr(tex, "size", None) and tex.size[0] > 0 and tex.size[1] > 0)
+        except Exception:
+            self.has_image = False
 
