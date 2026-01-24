@@ -1561,7 +1561,7 @@
                     spacing: dp(6)
                     Label:
                         id: home_tagline
-                        text: "[b]Uncover the Best, Good Luck[/b]"
+                        text: "[b][i]Uncover the Best, Good Luck[/i][/b]"
                         font_name: "CursiveFont"
                         font_size: sp(20)
                         halign: "left"
@@ -1575,13 +1575,13 @@
                         size_hint_y: None
                         height: dp(40)
                         spacing: dp(8)
+                        Widget:
                         AppButton:
                             text: "Refresh"
                             size_hint: None, None
-                            width: dp(110)
+                            width: dp(120)
                             height: dp(40)
                             on_release: root.refresh()
-                        Widget:
 
                 BoxLayout:
                     size_hint_y: None
