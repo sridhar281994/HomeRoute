@@ -31,10 +31,10 @@ fullscreen = 1
 android.enable_androidx = True
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_COARSE_LOCATION,ACCESS_FINE_LOCATION,READ_EXTERNAL_STORAGE,READ_MEDIA_IMAGES,READ_MEDIA_VIDEO
 
-android.gradle_dependencies = \
-    androidx.activity:activity:1.8.2, \
-    com.google.android.gms:play-services-auth:21.0.0, \
-    com.google.android.gms:play-services-base:18.5.0
+# IMPORTANT: Keep this on a single line. Buildozer does not treat "\" as a line
+# continuation here; it will be passed literally to Gradle as "\n..." and break
+# dependency resolution.
+android.gradle_dependencies = androidx.activity:activity:1.8.2,com.google.android.gms:play-services-auth:21.0.0,com.google.android.gms:play-services-base:18.5.0
 
 # Force Kotlin version to prevent duplicate class conflicts
 android.gradle_properties = kotlin.version=1.8.22
