@@ -55,7 +55,7 @@ android.keystore_password = android
 android.keyalias_password = android
 
 [buildozer]
-log_level = 1
+log_level = 2
 warn_on_root = 1
 # build_dir = ./.buildozer
 # bin_dir = ./bin
