@@ -39,6 +39,8 @@ class User(Base):
 
     # Profile image (optional). Stored as a relative uploads path or full URL.
     profile_image_path: Mapped[str] = mapped_column(String(512), default="")
+    # Cloudinary public_id for profile image (optional).
+    profile_image_cloudinary_public_id: Mapped[str] = mapped_column(String(255), default="")
 
     # Admin approval workflow for owners (role=owner)
     approval_status: Mapped[str] = mapped_column(String(40), default="approved")  # approved|pending|rejected|suspended
@@ -194,6 +196,8 @@ class PropertyImage(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"), index=True)
     file_path: Mapped[str] = mapped_column(String(512))  # relative path or URL
+    # Cloudinary public_id for cleanup (optional).
+    cloudinary_public_id: Mapped[str] = mapped_column(String(255), default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     # Metadata for duplicate detection and review.
     image_hash: Mapped[str] = mapped_column(String(64), default="", index=True)  # sha256 hex

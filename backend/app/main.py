@@ -53,6 +53,7 @@ from app.security import create_access_token, decode_access_token, hash_password
 
 from app.google_play import GooglePlayNotConfigured, verify_subscription_with_google_play
 from app.sms import send_sms
+from app.utils.cloudinary_storage import cloudinary_enabled, destroy as cloudinary_destroy, upload_bytes as cloudinary_upload_bytes
 
 
 app = FastAPI(title="Quickrent4u API")
@@ -633,6 +634,20 @@ def _user_out(u: User) -> dict[str, Any]:
     if img:
         try:
             safe = img.lstrip("/").replace("\\", "/")
+            # Cloudinary (or any remote) URL stored directly in DB.
+            if safe.startswith(("http://", "https://", "//")):
+                return {
+                    "id": u.id,
+                    "email": u.email,
+                    "name": u.name,
+                    "role": u.role,
+                    "phone": u.phone,
+                    "state": u.state,
+                    "district": u.district,
+                    "owner_category": u.owner_category,
+                    "company_name": u.company_name,
+                    "profile_image_url": img,
+                }
             # Historical values might already include "uploads/".
             rel = safe[len("uploads/") :] if safe.startswith("uploads/") else safe
             disk_path = os.path.join(_uploads_dir(), rel)
@@ -1559,15 +1574,38 @@ def me_upload_profile_image(
         raise HTTPException(status_code=400, detail="Unsafe media detected. Upload rejected.")
 
     stored_ext = _safe_upload_ext(filename=(file.filename or ""), content_type=content_type)
-    safe_name = f"u{me.id}_{secrets.token_hex(8)}{stored_ext}"
-    disk_path = os.path.join(_uploads_dir(), safe_name)
-    try:
-        with open(disk_path, "wb") as out:
-            out.write(raw)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to save upload")
+    token = secrets.token_hex(8)
+    safe_name = f"u{me.id}_{token}{stored_ext}"
 
-    me.profile_image_path = safe_name
+    # If Cloudinary is configured, store remotely and keep DB as a URL.
+    if cloudinary_enabled():
+        # Best-effort cleanup of previous profile image.
+        try:
+            if (me.profile_image_cloudinary_public_id or "").strip():
+                cloudinary_destroy(public_id=me.profile_image_cloudinary_public_id, resource_type="image")
+        except Exception:
+            pass
+        try:
+            url, pid = cloudinary_upload_bytes(
+                raw=raw,
+                resource_type="image",
+                public_id=f"user_profile_{me.id}_{token}",
+                filename=(file.filename or "").strip() or safe_name,
+                content_type=content_type,
+            )
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
+        me.profile_image_path = url
+        me.profile_image_cloudinary_public_id = pid
+    else:
+        disk_path = os.path.join(_uploads_dir(), safe_name)
+        try:
+            with open(disk_path, "wb") as out:
+                out.write(raw)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to save upload")
+        me.profile_image_path = safe_name
+        me.profile_image_cloudinary_public_id = ""
     db.add(me)
     return {"ok": True, "user": _user_out(me)}
 
@@ -2386,9 +2424,12 @@ def owner_delete_property(
     if me.role != "admin" and int(p.owner_id) != int(me.id):
         raise HTTPException(status_code=403, detail="Only the owner who created the ad can delete it")
 
-    # Best-effort: delete uploaded image files from disk.
+    # Best-effort: delete uploaded media (Cloudinary and/or local disk).
     try:
         for img in (p.images or []):
+            if (img.cloudinary_public_id or "").strip():
+                rt = "video" if str(img.content_type or "").lower().startswith("video/") else "image"
+                cloudinary_destroy(public_id=img.cloudinary_public_id, resource_type=rt)
             fp = (img.file_path or "").strip().lstrip("/")
             if fp and not fp.startswith("http"):
                 disk_path = os.path.join(_uploads_dir(), fp)
@@ -2742,9 +2783,12 @@ def admin_delete_property(
     if not p:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    # Best-effort: delete uploaded image files from disk.
+    # Best-effort: delete uploaded media (Cloudinary and/or local disk).
     try:
         for img in (p.images or []):
+            if (img.cloudinary_public_id or "").strip():
+                rt = "video" if str(img.content_type or "").lower().startswith("video/") else "image"
+                cloudinary_destroy(public_id=img.cloudinary_public_id, resource_type=rt)
             fp = (img.file_path or "").strip().lstrip("/")
             if fp and not fp.startswith("http"):
                 disk_path = os.path.join(_uploads_dir(), fp)
@@ -3241,17 +3285,36 @@ def upload_property_image(
     if requested_sort in used:
         requested_sort = (max(used) + 1) if used else 0
 
-    safe_name = f"p{p.id}_{secrets.token_hex(8)}{stored_ext}"
-    disk_path = os.path.join(_uploads_dir(), safe_name)
-    try:
-        with open(disk_path, "wb") as out:
-            out.write(stored_bytes)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to save upload")
+    token = secrets.token_hex(8)
+    safe_name = f"p{p.id}_{token}{stored_ext}"
+
+    cloud_pid = ""
+    stored_path = safe_name
+    if cloudinary_enabled():
+        try:
+            url, pid = cloudinary_upload_bytes(
+                raw=stored_bytes,
+                resource_type=("image" if is_image else "video"),
+                public_id=f"property_{p.id}_{token}",
+                filename=(file.filename or "").strip() or safe_name,
+                content_type=stored_content_type,
+            )
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
+        stored_path = url
+        cloud_pid = pid
+    else:
+        disk_path = os.path.join(_uploads_dir(), safe_name)
+        try:
+            with open(disk_path, "wb") as out:
+                out.write(stored_bytes)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to save upload")
 
     img = PropertyImage(
         property_id=p.id,
-        file_path=safe_name,
+        file_path=stored_path,
+        cloudinary_public_id=cloud_pid,
         sort_order=int(requested_sort),
         image_hash=img_hash,
         original_filename=(file.filename or "").strip(),
@@ -3271,7 +3334,8 @@ def upload_property_image(
         next_sort = int(max_sort or -1) + 1
         img = PropertyImage(
             property_id=p.id,
-            file_path=safe_name,
+            file_path=stored_path,
+            cloudinary_public_id=cloud_pid,
             sort_order=int(next_sort),
             image_hash=img_hash,
             original_filename=(file.filename or "").strip(),
