@@ -145,31 +145,20 @@ def android_open_gallery(
     try:
         from android import activity  # type: ignore
         from kivy.clock import Clock
-        from jnius import autoclass, cast, jarray  # type: ignore
+        from jnius import autoclass, jarray  # type: ignore
 
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
         String = autoclass("java.lang.String")
         Activity = autoclass("android.app.Activity")
 
-        # ACTION_OPEN_DOCUMENT supports multi-select and returns content:// URIs.
-        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        intent.addCategory(Intent.CATEGORY_OPENABLE)
-
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
             mimes = ["image/*"]
 
-        # Set a general type and optionally pass multiple MIME types.
-        intent.setType(str(mimes[0]))
-        if len(mimes) > 1:
-            arr = jarray("java.lang.String")([String(m) for m in mimes])
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
-
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-
         # Use a request code that is unlikely to collide.
         req_code = 13579
+        action_open_document = True
 
         def _deliver(sel: list[str]) -> None:
             try:
@@ -190,6 +179,25 @@ def android_open_gallery(
                 return
 
             out: list[str] = []
+
+            # If we used ACTION_OPEN_DOCUMENT, persist read permission when possible.
+            # This helps when we later open/copy content:// URIs.
+            if action_open_document:
+                try:
+                    flags = int(data.getFlags())
+                    take_flags = flags & int(
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                except Exception:
+                    take_flags = 0
+            else:
+                take_flags = 0
+
+            try:
+                resolver = PythonActivity.mActivity.getContentResolver()
+            except Exception:
+                resolver = None
+
             try:
                 clip = data.getClipData()
             except Exception:
@@ -205,6 +213,11 @@ def android_open_gallery(
                         item = clip.getItemAt(i)
                         uri = item.getUri()
                         if uri is not None:
+                            if action_open_document and resolver is not None and take_flags:
+                                try:
+                                    resolver.takePersistableUriPermission(uri, take_flags)
+                                except Exception:
+                                    pass
                             out.append(str(uri.toString()))
                     except Exception:
                         continue
@@ -212,6 +225,11 @@ def android_open_gallery(
                 try:
                     uri = data.getData()
                     if uri is not None:
+                        if action_open_document and resolver is not None and take_flags:
+                            try:
+                                resolver.takePersistableUriPermission(uri, take_flags)
+                            except Exception:
+                                pass
                         out.append(str(uri.toString()))
                 except Exception:
                     pass
@@ -223,10 +241,55 @@ def android_open_gallery(
         except Exception:
             return False
 
+        def _make_intent(action: str):
+            intent = Intent(action)
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+            # Always request read access for returned URIs.
+            try:
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            except Exception:
+                pass
+
+            # ACTION_OPEN_DOCUMENT can grant persistable permission.
+            if str(action) == str(Intent.ACTION_OPEN_DOCUMENT):
+                try:
+                    intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                except Exception:
+                    pass
+
+            # Set a general type and optionally pass multiple MIME types.
+            if len(mimes) <= 1:
+                intent.setType(str(mimes[0]))
+            else:
+                # Many devices are picky about EXTRA_MIME_TYPES. Best-effort only.
+                intent.setType("*/*")
+                try:
+                    arr = jarray("java.lang.String")([String(m) for m in mimes])
+                    intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+                except Exception:
+                    pass
+
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+            return intent
+
         try:
             act = PythonActivity.mActivity
-            act.startActivityForResult(intent, req_code)
-            return True
+            # Prefer SAF document picker; fall back to GET_CONTENT on devices where
+            # DocumentsUI isn't available or ACTION_OPEN_DOCUMENT fails.
+            try:
+                action_open_document = True
+                intent = _make_intent(Intent.ACTION_OPEN_DOCUMENT)
+                act.startActivityForResult(intent, req_code)
+                return True
+            except Exception:
+                try:
+                    action_open_document = False
+                    intent = _make_intent(Intent.ACTION_GET_CONTENT)
+                    act.startActivityForResult(intent, req_code)
+                    return True
+                except Exception:
+                    raise
         except Exception:
             try:
                 activity.unbind(on_activity_result=_on_activity_result)
