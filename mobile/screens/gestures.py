@@ -22,8 +22,10 @@ class GestureNavigationMixin:
     _SWIPE_BACK_DY_MAX = dp(40)      # vertical wiggle allowed
     _SWIPE_BACK_EDGE = dp(60)        # left edge activation zone
 
-    _PULL_TO_REFRESH_DY = dp(80)
-    _PULL_TO_REFRESH_DX_MAX = dp(90)   # widened tolerance
+    _PULL_TO_REFRESH_DY = dp(90)
+    _PULL_TO_REFRESH_DX_MAX = dp(120)
+    _REFRESH_START_DY = dp(12)       # minimum downward movement to show indicator
+    _VERTICAL_DOMINANCE = 1.3        # dy must dominate dx
 
     # Velocity thresholds (px/sec)
     _MIN_SWIPE_VELOCITY = 900.0
@@ -36,11 +38,6 @@ class GestureNavigationMixin:
     # Refresh gate
     # ------------------------------------------------------------------
     def gesture_can_refresh(self) -> bool:
-        """
-        Default pull-to-refresh gate:
-        - allow only when a known ScrollView is at the top
-        - and when the screen is not already loading (if it exposes is_loading)
-        """
         try:
             if bool(getattr(self, "is_loading", False)):
                 return False
@@ -61,16 +58,11 @@ class GestureNavigationMixin:
             return False
 
         try:
-            return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.99
+            return float(getattr(sv, "scroll_y", 0.0) or 0.0) >= 0.98
         except Exception:
             return False
 
     def gesture_refresh(self) -> None:
-        """
-        Default refresh action:
-        - call refresh() if present
-        - otherwise call refresh_status() if present
-        """
         try:
             if hasattr(self, "refresh"):
                 getattr(self, "refresh")()
@@ -86,16 +78,10 @@ class GestureNavigationMixin:
             pass
 
     # ------------------------------------------------------------------
-    # Touch tracking helpers
+    # Touch helpers
     # ------------------------------------------------------------------
     @staticmethod
     def _gesture_get_touch(*args):
-        """
-        Normalize Kivy touch callbacks.
-
-        - Widget handlers call: cb(touch)
-        - Window.bind handlers call: cb(window, touch)
-        """
         if not args:
             return None
         if len(args) >= 2:
@@ -112,7 +98,6 @@ class GestureNavigationMixin:
         if touch is None:
             return
 
-        # Ignore mouse wheel scrolling etc.
         if getattr(touch, "is_mouse_scrolling", False):
             return
 
@@ -128,23 +113,19 @@ class GestureNavigationMixin:
             return
 
     def _show_refresh_indicator(self) -> None:
-        """
-        Lightweight visual indicator shown while pulling down.
-        """
         try:
             if getattr(self, "_g_refresh_label", None):
                 return
 
             lbl = Label(
-                text="↓ Release to refresh",
+                text="Release to refresh",
                 size_hint=(None, None),
-                size=(dp(240), dp(40)),
-                pos=(self.center_x - dp(120), self.top - dp(80)),
+                size=(dp(260), dp(42)),
+                pos=(self.center_x - dp(130), self.top - dp(90)),
                 color=(1, 1, 1, 0.95),
             )
             self._g_refresh_label = lbl
             self.add_widget(lbl)
-            # Force to front (important for complex layouts)
             self.remove_widget(lbl)
             self.add_widget(lbl)
         except Exception:
@@ -173,8 +154,7 @@ class GestureNavigationMixin:
             return False
 
         start = getattr(self, "_g_start", None)
-        last = getattr(self, "_g_last", None)
-        if not start or not last:
+        if not start:
             return False
 
         sx, sy = start
@@ -190,31 +170,38 @@ class GestureNavigationMixin:
         vx = dx / dt
         vy = dy / dt
 
+        abs_dx = abs(dx)
+        abs_dy = abs(dy)
+
         # ---------------------------------------------------
         # Vertical swipe down → REFRESH (FIRST PRIORITY)
         # ---------------------------------------------------
-        if dy > 0 and abs(dx) < float(self._PULL_TO_REFRESH_DX_MAX):
-            self._show_refresh_indicator()
+        if (
+            dy >= float(self._REFRESH_START_DY)
+            and abs_dy > abs_dx * self._VERTICAL_DOMINANCE
+        ):
+            can_refresh_gate = False
+            try:
+                can_refresh_gate = bool(getattr(self, "gesture_can_refresh")())
+            except Exception:
+                can_refresh_gate = False
 
-            if (
-                dy > float(self._PULL_TO_REFRESH_DY)
-                or vy > self._MIN_SWIPE_VELOCITY
-            ):
-                can_refresh = False
-                try:
-                    can_refresh = bool(getattr(self, "gesture_can_refresh")())
-                except Exception:
-                    can_refresh = False
+            if can_refresh_gate:
+                self._show_refresh_indicator()
 
-                if can_refresh and not getattr(self, "_g_refreshed", False):
-                    self._g_refreshed = True
-                    self._g_handled = True
-                    self._hide_refresh_indicator()
-                    try:
-                        getattr(self, "gesture_refresh")()
-                    except Exception:
-                        pass
-                    return True
+                if (
+                    dy >= float(self._PULL_TO_REFRESH_DY)
+                    or vy > self._MIN_SWIPE_VELOCITY
+                ):
+                    if not getattr(self, "_g_refreshed", False):
+                        self._g_refreshed = True
+                        self._g_handled = True
+                        self._hide_refresh_indicator()
+                        try:
+                            getattr(self, "gesture_refresh")()
+                        except Exception:
+                            pass
+                        return True
 
         # ---------------------------------------------------
         # Horizontal swipe → BACK (LEFT EDGE ONLY)
@@ -222,7 +209,7 @@ class GestureNavigationMixin:
         if sx <= float(self._SWIPE_BACK_EDGE):
             if (
                 dx > float(self._SWIPE_BACK_DX)
-                and abs(dy) < float(self._SWIPE_BACK_DY_MAX)
+                and abs_dy < float(self._SWIPE_BACK_DY_MAX)
             ) or (
                 vx > self._MIN_SWIPE_VELOCITY
                 and abs(vy) < self._MIN_SWIPE_VELOCITY * 0.5
@@ -270,12 +257,6 @@ class GestureNavigationMixin:
     # Back navigation target
     # ------------------------------------------------------------------
     def _gesture_back(self) -> None:
-        """
-        Back navigation target:
-        - Prefer a screen-defined go_back()/back() handler.
-        - Otherwise do nothing (safe default).
-        """
-
         def _do_back(_dt):
             try:
                 if hasattr(self, "go_back"):
@@ -296,15 +277,9 @@ class GestureNavigationMixin:
             pass
 
     # -----------------------
-    # Hamburger menu (top-left)
+    # Hamburger menu
     # -----------------------
     def open_hamburger_menu(self, anchor_widget) -> None:
-        """
-        Open the top-left hamburger dropdown menu.
-
-        - Auto-dismisses on outside tap (DropDown default behavior)
-        - Menu items navigate using the ScreenManager
-        """
         try:
             dd = getattr(self, "_hamburger_dd", None)
         except Exception:
@@ -349,7 +324,6 @@ class GestureNavigationMixin:
         if action == "logout":
             try:
                 from frontend_app.utils.storage import clear_session
-
                 clear_session()
             except Exception:
                 pass
@@ -363,7 +337,7 @@ class GestureNavigationMixin:
             try:
                 scr = mgr.get_screen("owner_add_property")
                 if hasattr(scr, "start_new"):
-                    scr.start_new()  # type: ignore[attr-defined]
+                    scr.start_new()
             except Exception:
                 pass
 
@@ -373,13 +347,9 @@ class GestureNavigationMixin:
             return
 
     # ------------------------------------------------------------------
-    # Window-level binding (required for ScrollView / TextInput screens)
+    # Window-level binding
     # ------------------------------------------------------------------
     def gesture_bind_window(self) -> None:
-        """
-        Bind gesture handlers directly to Window so gestures work even when
-        child widgets (ScrollView, TextInput, FileChooser) consume touches.
-        """
         try:
             if getattr(self, "_gesture_window_bound", False):
                 return
@@ -397,9 +367,6 @@ class GestureNavigationMixin:
             pass
 
     def gesture_unbind_window(self) -> None:
-        """
-        Unbind window-level gesture handlers when leaving screen.
-        """
         try:
             if not getattr(self, "_gesture_window_bound", False):
                 return
