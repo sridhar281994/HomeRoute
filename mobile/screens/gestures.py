@@ -320,3 +320,40 @@ class GestureNavigationMixin:
             mgr.current = action
         except Exception:
             return
+    # ------------------------------------------------------------------
+    # Window-level binding (required for ScrollView / TextInput screens)
+    # ------------------------------------------------------------------
+    def gesture_bind_window(self) -> None:
+        """
+        Bind gesture handlers directly to Window so gestures work even when
+        child widgets (ScrollView, TextInput, FileChooser) consume touches.
+        """
+        try:
+            if getattr(self, "_gesture_window_bound", False):
+                return
+
+            Window.bind(
+                on_touch_down=self._gesture_track_down,
+                on_touch_move=self._gesture_track_move,
+                on_touch_up=self._gesture_track_up,
+            )
+            self._gesture_window_bound = True
+        except Exception:
+            pass
+
+    def gesture_unbind_window(self) -> None:
+        """
+        Unbind window-level gesture handlers when leaving screen.
+        """
+        try:
+            if not getattr(self, "_gesture_window_bound", False):
+                return
+
+            Window.unbind(
+                on_touch_down=self._gesture_track_down,
+                on_touch_move=self._gesture_track_move,
+                on_touch_up=self._gesture_track_up,
+            )
+            self._gesture_window_bound = False
+        except Exception:
+            pass
