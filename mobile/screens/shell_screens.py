@@ -280,7 +280,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
                 tile.canvas.before.clear()
                 container.add_widget(Label(text="[b]Video[/b]", size_hint_y=None, height=tile_h, color=(1, 1, 1, 0.78)))
             else:
-                img = Factory.AsyncImage(source=url, allow_stretch=True, keep_ratio=False)
+                img = Factory.AsyncImage(source=url, fit_mode="fill")
                 img.size_hint_y = None
                 img.height = tile_h
                 container.add_widget(img)
@@ -721,7 +721,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 def __init__(self, file_path: str, **kwargs):
                     super().__init__(**kwargs)
                     self.file_path = file_path
-                    img = AsyncImage(source=file_path, allow_stretch=True, keep_ratio=False)
+                    img = AsyncImage(source=file_path, fit_mode="fill")
                     self.add_widget(img)
 
             popup = Popup(title="Choose Profile Image", size_hint=(0.94, 0.94), auto_dismiss=False)
@@ -1452,7 +1452,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                         # ToggleButton lets the user tap to select/deselect.
                         wrap = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(150), spacing=dp(6))
                         if _is_image(fp):
-                            img = AsyncImage(source=fp, allow_stretch=True, keep_ratio=False)
+                            img = AsyncImage(source=fp, fit_mode="fill")
                             img.size_hint_y = None
                             img.height = dp(110)
                             wrap.add_widget(img)

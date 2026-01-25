@@ -413,8 +413,7 @@
     AsyncImage:
         id: avatar_img
         source: root.image_source
-        allow_stretch: True
-        keep_ratio: False
+        fit_mode: "fill"
         size_hint: 1, 1
         opacity: 1 if root.has_image else 0
         on_error:

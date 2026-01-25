@@ -943,7 +943,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 if ctype.startswith("video/"):
                     grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
                 else:
-                    img = AsyncImage(source=to_api_url(it.get("url") or ""), allow_stretch=True, keep_ratio=False)
+                    img = AsyncImage(source=to_api_url(it.get("url") or ""), fit_mode="fill")
                     img.size_hint_y = None
                     img.height = thumb_h
                     grid.add_widget(img)

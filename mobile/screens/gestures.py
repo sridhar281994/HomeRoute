@@ -87,8 +87,26 @@ class GestureNavigationMixin:
     # ------------------------------------------------------------------
     # Touch tracking
     # ------------------------------------------------------------------
-    def _gesture_track_down(self, touch) -> None:
+    @staticmethod
+    def _gesture_get_touch(*args):
+        """
+        Normalize Kivy touch callbacks.
+
+        - Widget handlers call: cb(touch)
+        - Window.bind handlers call: cb(window, touch)
+        """
+        if not args:
+            return None
+        # Window.bind passes (window, touch)
+        if len(args) >= 2:
+            return args[-1]
+        return args[0]
+
+    def _gesture_track_down(self, *args) -> None:
+        touch = self._gesture_get_touch(*args)
         if not getattr(self, "_gesture_active", False):
+            return
+        if touch is None:
             return
 
         # Ignore mouse wheel scrolling etc.
@@ -135,8 +153,11 @@ class GestureNavigationMixin:
         except Exception:
             self._g_refresh_label = None
 
-    def _gesture_track_move(self, touch) -> bool:
+    def _gesture_track_move(self, *args) -> bool:
+        touch = self._gesture_get_touch(*args)
         if not getattr(self, "_gesture_active", False):
+            return False
+        if touch is None:
             return False
 
         if getattr(self, "_g_handled", False):
@@ -207,8 +228,11 @@ class GestureNavigationMixin:
 
         return False
 
-    def _gesture_track_up(self, touch) -> None:
+    def _gesture_track_up(self, *args) -> None:
+        touch = self._gesture_get_touch(*args)
         if not getattr(self, "_gesture_active", False):
+            return
+        if touch is None:
             return
 
         if getattr(self, "_g_touch_uid", None) == getattr(touch, "uid", None):
