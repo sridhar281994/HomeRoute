@@ -13,16 +13,17 @@ from kivy.clock import Clock
 class GestureNavigationMixin:
     """
     Adds simple gesture navigation to Kivy Screens:
-    - Horizontal swipe triggers back navigation.
+    - Horizontal swipe triggers back navigation (LEFT EDGE ONLY).
     - Vertical swipe down triggers pull-to-refresh with visual indicator.
     """
 
     # Tunables
     _SWIPE_BACK_DX = dp(70)          # horizontal distance
     _SWIPE_BACK_DY_MAX = dp(40)      # vertical wiggle allowed
+    _SWIPE_BACK_EDGE = dp(60)        # left edge activation zone
 
     _PULL_TO_REFRESH_DY = dp(80)
-    _PULL_TO_REFRESH_DX_MAX = dp(40)
+    _PULL_TO_REFRESH_DX_MAX = dp(90)   # widened tolerance
 
     # Velocity thresholds (px/sec)
     _MIN_SWIPE_VELOCITY = 900.0
@@ -85,7 +86,7 @@ class GestureNavigationMixin:
             pass
 
     # ------------------------------------------------------------------
-    # Touch tracking
+    # Touch tracking helpers
     # ------------------------------------------------------------------
     @staticmethod
     def _gesture_get_touch(*args):
@@ -97,11 +98,13 @@ class GestureNavigationMixin:
         """
         if not args:
             return None
-        # Window.bind passes (window, touch)
         if len(args) >= 2:
             return args[-1]
         return args[0]
 
+    # ------------------------------------------------------------------
+    # Touch tracking
+    # ------------------------------------------------------------------
     def _gesture_track_down(self, *args) -> None:
         touch = self._gesture_get_touch(*args)
         if not getattr(self, "_gesture_active", False):
@@ -135,11 +138,14 @@ class GestureNavigationMixin:
             lbl = Label(
                 text="↓ Release to refresh",
                 size_hint=(None, None),
-                size=(dp(220), dp(36)),
-                pos=(self.center_x - dp(110), self.top - dp(60)),
-                color=(1, 1, 1, 0.9),
+                size=(dp(240), dp(40)),
+                pos=(self.center_x - dp(120), self.top - dp(80)),
+                color=(1, 1, 1, 0.95),
             )
             self._g_refresh_label = lbl
+            self.add_widget(lbl)
+            # Force to front (important for complex layouts)
+            self.remove_widget(lbl)
             self.add_widget(lbl)
         except Exception:
             pass
@@ -172,7 +178,6 @@ class GestureNavigationMixin:
             return False
 
         sx, sy = start
-        lx, ly = last
         cx, cy = float(touch.x), float(touch.y)
 
         self._g_last = (cx, cy)
@@ -186,22 +191,7 @@ class GestureNavigationMixin:
         vy = dy / dt
 
         # ---------------------------------------------------
-        # Horizontal swipe → BACK (velocity OR distance)
-        # ---------------------------------------------------
-        if (
-            dx > float(self._SWIPE_BACK_DX)
-            and abs(dy) < float(self._SWIPE_BACK_DY_MAX)
-        ) or (
-            vx > self._MIN_SWIPE_VELOCITY
-            and abs(vy) < self._MIN_SWIPE_VELOCITY * 0.5
-        ):
-            self._g_handled = True
-            self._hide_refresh_indicator()
-            self._gesture_back()
-            return True
-
-        # ---------------------------------------------------
-        # Vertical swipe down → REFRESH (with indicator)
+        # Vertical swipe down → REFRESH (FIRST PRIORITY)
         # ---------------------------------------------------
         if dy > 0 and abs(dx) < float(self._PULL_TO_REFRESH_DX_MAX):
             self._show_refresh_indicator()
@@ -225,6 +215,22 @@ class GestureNavigationMixin:
                     except Exception:
                         pass
                     return True
+
+        # ---------------------------------------------------
+        # Horizontal swipe → BACK (LEFT EDGE ONLY)
+        # ---------------------------------------------------
+        if sx <= float(self._SWIPE_BACK_EDGE):
+            if (
+                dx > float(self._SWIPE_BACK_DX)
+                and abs(dy) < float(self._SWIPE_BACK_DY_MAX)
+            ) or (
+                vx > self._MIN_SWIPE_VELOCITY
+                and abs(vy) < self._MIN_SWIPE_VELOCITY * 0.5
+            ):
+                self._g_handled = True
+                self._hide_refresh_indicator()
+                self._gesture_back()
+                return True
 
         return False
 
