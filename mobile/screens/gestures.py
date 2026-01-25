@@ -13,14 +13,13 @@ from kivy.clock import Clock
 class GestureNavigationMixin:
     """
     Adds simple gesture navigation to Kivy Screens:
-    - Horizontal swipe triggers back navigation (LEFT EDGE ONLY).
+    - Horizontal swipe (left ↔ right) triggers back navigation.
     - Vertical swipe down triggers pull-to-refresh with visual indicator.
     """
 
     # Tunables
     _SWIPE_BACK_DX = dp(70)          # horizontal distance
     _SWIPE_BACK_DY_MAX = dp(40)      # vertical wiggle allowed
-    _SWIPE_BACK_EDGE = dp(60)        # left edge activation zone
 
     _PULL_TO_REFRESH_DY = dp(90)
     _PULL_TO_REFRESH_DX_MAX = dp(120)
@@ -203,21 +202,23 @@ class GestureNavigationMixin:
                             pass
                         return True
 
-        # ---------------------------------------------------
-        # Horizontal swipe → BACK (LEFT EDGE ONLY)
-        # ---------------------------------------------------
-        if sx <= float(self._SWIPE_BACK_EDGE):
-            if (
-                dx > float(self._SWIPE_BACK_DX)
-                and abs_dy < float(self._SWIPE_BACK_DY_MAX)
-            ) or (
-                vx > self._MIN_SWIPE_VELOCITY
-                and abs(vy) < self._MIN_SWIPE_VELOCITY * 0.5
-            ):
-                self._g_handled = True
-                self._hide_refresh_indicator()
-                self._gesture_back()
+                # consume move so ScrollView bar does not appear
                 return True
+
+        # ---------------------------------------------------
+        # Horizontal swipe → BACK (BOTH DIRECTIONS)
+        # ---------------------------------------------------
+        if (
+            abs_dx > float(self._SWIPE_BACK_DX)
+            and abs_dy < float(self._SWIPE_BACK_DY_MAX)
+        ) or (
+            abs(vx) > self._MIN_SWIPE_VELOCITY
+            and abs(vy) < self._MIN_SWIPE_VELOCITY * 0.5
+        ):
+            self._g_handled = True
+            self._hide_refresh_indicator()
+            self._gesture_back()
+            return True
 
         return False
 
