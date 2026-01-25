@@ -1568,26 +1568,27 @@
                 BoxLayout:
                     orientation: "vertical"
                     size_hint_y: None
-                    height: home_tagline.texture_size[1] + dp(10) + refresh_row.height
+                    height: home_tagline.texture_size[1] + dp(10) + action_row.height
                     spacing: dp(6)
                     Label:
                         id: home_tagline
                         text: "[b][i]Uncover the Best, Good Luck[/i][/b]"
                         font_name: "CursiveFont"
-                        font_size: sp(20)
+                        font_size: sp(25)
                         halign: "left"
                         valign: "middle"
                         text_size: self.width, None
                         size_hint_y: None
                         height: self.texture_size[1] + dp(6)
                         color: TEXT_MAIN
+
                     BoxLayout:
-                        id: refresh_row
+                        id: action_row
                         size_hint_y: None
                         height: dp(40)
                         spacing: dp(8)
                         padding: [dp(4), dp(2), dp(4), dp(2)]
-                        Widget:
+
                         AppButton:
                             text: "Refresh"
                             size_hint: None, None
@@ -1595,17 +1596,14 @@
                             height: dp(40)
                             on_release: root.refresh()
 
-                BoxLayout:
-                    size_hint_y: None
-                    height: dp(44)
-                    padding: [dp(4), dp(2), dp(4), dp(2)]
-                    spacing: dp(8)
-                    Widget:
-                    AppButton:
-                        text: "Filter"
-                        size_hint_x: None
-                        width: dp(120)
-                        on_release: root.open_filters()
+                        Widget:
+
+                        AppButton:
+                            text: "Filter"
+                            size_hint: None, None
+                            width: dp(120)
+                            height: dp(40)
+                            on_release: root.open_filters()
 
                 Label:
                     text: "Loading..." if root.is_loading else "Posts"
