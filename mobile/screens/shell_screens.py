@@ -210,6 +210,8 @@ class WelcomeScreen(GestureNavigationMixin, Screen):
 class PropertyDetailScreen(GestureNavigationMixin, Screen):
     property_id = NumericProperty(0)
     property_data = DictProperty({})
+    fallback_text = StringProperty("ME")
+    image_source = StringProperty("")
 
     def on_pre_enter(self, *args):
         try:
