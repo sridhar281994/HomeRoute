@@ -596,10 +596,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
         Thread(target=work, daemon=True).start()
 
     def _apply_avatar(self, u: dict[str, Any]) -> None:
-        name = str(u.get("name") or u.get("email") or u.get("phone") or "U").strip()
-        letter = name[:1].upper() if name else "U"
-        self.avatar_letter = letter or "U"
+        # Always show "ME" when no profile image is available
+        self.avatar_letter = "ME"
         self.profile_image_url = to_api_url(str(u.get("profile_image_url") or ""))
+
 
     def _apply_preferred_state(self) -> bool:
         pref = str(getattr(self, "_preferred_state", "") or "").strip()
