@@ -7,6 +7,7 @@ from kivy.factory import Factory
 from kivy.metrics import dp
 from kivy.uix.dropdown import DropDown
 from kivy.uix.label import Label
+from kivy.clock import Clock
 
 
 class GestureNavigationMixin:
@@ -25,6 +26,10 @@ class GestureNavigationMixin:
 
     # Velocity thresholds (px/sec)
     _MIN_SWIPE_VELOCITY = 900.0
+
+    # Lifecycle guards
+    _gesture_active = False
+    _gesture_destroyed = False
 
     # ------------------------------------------------------------------
     # Refresh gate
@@ -83,6 +88,9 @@ class GestureNavigationMixin:
     # Touch tracking
     # ------------------------------------------------------------------
     def _gesture_track_down(self, touch) -> None:
+        if not getattr(self, "_gesture_active", False):
+            return
+
         # Ignore mouse wheel scrolling etc.
         if getattr(touch, "is_mouse_scrolling", False):
             return
@@ -121,13 +129,16 @@ class GestureNavigationMixin:
     def _hide_refresh_indicator(self) -> None:
         try:
             lbl = getattr(self, "_g_refresh_label", None)
-            if lbl is not None:
+            if lbl is not None and lbl.parent is not None:
                 self.remove_widget(lbl)
-                self._g_refresh_label = None
+            self._g_refresh_label = None
         except Exception:
-            pass
+            self._g_refresh_label = None
 
     def _gesture_track_move(self, touch) -> bool:
+        if not getattr(self, "_gesture_active", False):
+            return False
+
         if getattr(self, "_g_handled", False):
             return True
 
@@ -197,6 +208,9 @@ class GestureNavigationMixin:
         return False
 
     def _gesture_track_up(self, touch) -> None:
+        if not getattr(self, "_gesture_active", False):
+            return
+
         if getattr(self, "_g_touch_uid", None) == getattr(touch, "uid", None):
             self._g_touch_uid = None
             self._g_start = None
@@ -231,16 +245,23 @@ class GestureNavigationMixin:
         - Prefer a screen-defined go_back()/back() handler.
         - Otherwise do nothing (safe default).
         """
+
+        def _do_back(_dt):
+            try:
+                if hasattr(self, "go_back"):
+                    getattr(self, "go_back")()
+                    return
+            except Exception:
+                pass
+            try:
+                if hasattr(self, "back"):
+                    getattr(self, "back")()
+                    return
+            except Exception:
+                pass
+
         try:
-            if hasattr(self, "go_back"):
-                getattr(self, "go_back")()
-                return
-        except Exception:
-            pass
-        try:
-            if hasattr(self, "back"):
-                getattr(self, "back")()
-                return
+            Clock.schedule_once(_do_back, 0)
         except Exception:
             pass
 
@@ -320,6 +341,7 @@ class GestureNavigationMixin:
             mgr.current = action
         except Exception:
             return
+
     # ------------------------------------------------------------------
     # Window-level binding (required for ScrollView / TextInput screens)
     # ------------------------------------------------------------------
@@ -331,6 +353,9 @@ class GestureNavigationMixin:
         try:
             if getattr(self, "_gesture_window_bound", False):
                 return
+
+            self._gesture_active = True
+            self._gesture_destroyed = False
 
             Window.bind(
                 on_touch_down=self._gesture_track_down,
@@ -348,6 +373,9 @@ class GestureNavigationMixin:
         try:
             if not getattr(self, "_gesture_window_bound", False):
                 return
+
+            self._gesture_active = False
+            self._gesture_destroyed = True
 
             Window.unbind(
                 on_touch_down=self._gesture_track_down,
