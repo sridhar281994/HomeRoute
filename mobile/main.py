@@ -54,7 +54,7 @@ class QuickRentApp(App):
         sm.add_widget(SettingsScreen(name="profile"))
         sm.add_widget(SubscriptionScreen(name="subscription"))
 
-        sm.add_widget(OwnerAddwnershipAddPropertyScreen(name="owner_add_property"))
+        sm.add_widget(OwnerAddwnerAddPropertyScreen(name="owner_add_property"))
 
         sm.current = "splash"
 
