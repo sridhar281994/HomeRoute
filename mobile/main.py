@@ -4,6 +4,7 @@ import os
 
 from kivy.app import App
 from kivy.core.text import LabelBase
+from kivy.core.window import Window
 from kivy.lang import Builder
 from kivy.resources import resource_add_path, resource_find
 from kivy.uix.screenmanager import FadeTransition, ScreenManager
@@ -53,10 +54,55 @@ class QuickRentApp(App):
         sm.add_widget(SettingsScreen(name="profile"))
         sm.add_widget(SubscriptionScreen(name="subscription"))
 
-        sm.add_widget(OwnerAddPropertyScreen(name="owner_add_property"))
+        sm.add_widget(OwnerAddwnershipAddPropertyScreen(name="owner_add_property"))
 
         sm.current = "splash"
+
+        # ✅ Intercept Android BACK button / gesture
+        try:
+            Window.bind(on_key_down=self._on_android_back)
+        except Exception:
+            pass
+
         return sm
+
+    # ------------------------------------------------------------------
+    # Android BACK interception (maps to screen.back())
+    # ------------------------------------------------------------------
+    def _on_android_back(self, window, key, *args):
+        """
+        Intercept Android system back button / gesture and route it
+        to the current screen's back() or go_back() handler instead
+        of closing the app.
+        """
+        # 27 = ESC (desktop), 1001 = Android back on some devices
+        if key not in (27, 1001):
+            return False
+
+        try:
+            sm = self.root
+            if not sm:
+                return False
+
+            screen = sm.current_screen
+            if not screen:
+                return False
+
+            # Prefer screen.back()
+            if hasattr(screen, "back"):
+                screen.back()
+                return True
+
+            # Fallback: screen.go_back()
+            if hasattr(screen, "go_back"):
+                screen.go_back()
+                return True
+
+        except Exception:
+            pass
+
+        # Returning False allows OS default (exit app)
+        return False
 
     def _register_fonts(self) -> None:
         app_regular = resource_find("data/fonts/Roboto-Regular.ttf")
@@ -103,4 +149,3 @@ class QuickRentApp(App):
 
 if __name__ == "__main__":
     QuickRentApp().run()
-
