@@ -634,10 +634,6 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 _platform = ""
 
             if _platform == "android":
-                try:
-                    from plyer import filechooser  # type: ignore
-                except Exception:
-                    filechooser = None
 
                 def _on_sel(selection):
                     try:
@@ -647,23 +643,16 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                             self.upload_profile_image(img)
                     except Exception:
                         return
+            
+                launched = android_open_gallery(
+                    on_selection=_on_sel,
+                    multiple=False,
+                    mime_types=["image/*"],
+                )
+                if not launched:
+                    _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+                return
 
-                if filechooser is None:
-                    # Fallback: use native Android Intent picker directly.
-                    launched = android_open_gallery(on_selection=_on_sel, multiple=False, mime_types=["image/*"])
-                    if not launched:
-                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
-                    return
-
-                try:
-                    filechooser.open_file(on_selection=_on_sel, multiple=False)
-                    return
-                except Exception:
-                    # Fallback: use native Android Intent picker directly.
-                    launched = android_open_gallery(on_selection=_on_sel, multiple=False, mime_types=["image/*"])
-                    if not launched:
-                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
-                    return
 
             from kivy.uix.behaviors import ButtonBehavior
             from kivy.uix.floatlayout import FloatLayout
