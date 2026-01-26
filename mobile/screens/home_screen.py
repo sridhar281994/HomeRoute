@@ -1512,4 +1512,3 @@ def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
     def go_admin():
         # Removed from home page UI; keep method for backward KV compatibility.
         _popup("Not available", "Admin entry is hidden in the app UI.")
-
