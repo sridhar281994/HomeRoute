@@ -144,17 +144,39 @@ def android_open_gallery(
 
     try:
         from android import activity  # type: ignore
+        from android.permissions import Permission, request_permissions  # type: ignore
         from kivy.clock import Clock
-        from jnius import autoclass, cast, jarray  # type: ignore
+        from jnius import autoclass, jarray  # type: ignore
 
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
         String = autoclass("java.lang.String")
         Activity = autoclass("android.app.Activity")
 
-        # ACTION_OPEN_DOCUMENT supports multi-select and returns content:// URIs.
+        # -----------------------------
+        # Ensure runtime permissions
+        # -----------------------------
+        try:
+            perms = []
+            if hasattr(Permission, "READ_MEDIA_IMAGES"):
+                perms.append(Permission.READ_MEDIA_IMAGES)
+            if hasattr(Permission, "READ_EXTERNAL_STORAGE"):
+                perms.append(Permission.READ_EXTERNAL_STORAGE)
+            if perms:
+                request_permissions(perms)
+        except Exception:
+            pass
+
+        # -----------------------------
+        # Build intent safely
+        # -----------------------------
         intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.addCategory(Intent.CATEGORY_DEFAULT)
+
+        # Required URI permissions for Android 11+
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
 
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
@@ -168,6 +190,9 @@ def android_open_gallery(
 
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
 
+        # Wrap in chooser (OEM reliability fix)
+        chooser = Intent.createChooser(intent, "Select file")
+
         # Use a request code that is unlikely to collide.
         req_code = 13579
 
@@ -177,7 +202,7 @@ def android_open_gallery(
             except Exception:
                 pass
 
-        def _on_activity_result(requestCode, resultCode, data) -> None:  # noqa: N802 (android callback naming)
+        def _on_activity_result(requestCode, resultCode, data) -> None:  # noqa: N802
             if int(requestCode) != int(req_code):
                 return
             try:
@@ -218,14 +243,20 @@ def android_open_gallery(
 
             _deliver(out)
 
+        # -----------------------------
+        # Bind callback
+        # -----------------------------
         try:
             activity.bind(on_activity_result=_on_activity_result)
         except Exception:
             return False
 
+        # -----------------------------
+        # Launch picker
+        # -----------------------------
         try:
             act = PythonActivity.mActivity
-            act.startActivityForResult(intent, req_code)
+            act.startActivityForResult(chooser, req_code)
             return True
         except Exception:
             try:
@@ -233,6 +264,6 @@ def android_open_gallery(
             except Exception:
                 pass
             return False
+
     except Exception:
         return False
-
