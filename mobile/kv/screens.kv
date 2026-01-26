@@ -372,7 +372,7 @@
 <MobileTopBar@BoxLayout>:
     avatar_text: ""
     avatar_image: ""
-    on_avatar_press: lambda: None
+    avatar_cb: None     # <-- normal property (not on_)
 
     orientation: "horizontal"
     size_hint_y: None
@@ -390,7 +390,9 @@
     AvatarButton:
         image_source: root.avatar_image
         fallback_text: root.avatar_text
-        on_release: root.on_avatar_press()
+        on_release:
+            root.avatar_cb() if root.avatar_cb else None
+
 
 <AvatarButton@ButtonBehavior+FloatLayout>:
     image_source: ""
@@ -1567,7 +1569,7 @@
             MobileTopBar:
                 avatar_text: root.avatar_letter
                 avatar_image: root.profile_image_url
-                on_avatar_press: root.go_profile()
+                avatar_cb: root.go_profile
 
             # -------------------------------
             # MAIN PANEL
