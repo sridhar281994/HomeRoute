@@ -775,283 +775,332 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         ensure_permissions(required_location_permissions(), on_result=after)
 
-    def feed_card(self, raw: dict[str, Any]) -> BoxLayout:
-        """
-        Public wrapper to build a feed card.
+def feed_card(self, raw: dict[str, Any]) -> BoxLayout:
+    """
+    Public wrapper to build a feed card.
 
-        Other screens (e.g. My Posts) call this method to reuse the layout without
-        reaching into a protected member.
-        """
-        return self._feed_card(raw)
+    Other screens (e.g. My Posts) call this method to reuse the layout without
+    reaching into a protected member.
+    """
+    return self._feed_card(raw)
 
-    def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
-        """
-        Build a feed card roughly matching the web UI:
-        title/meta header, optional media preview, and an action button.
-        """
-        p = raw or {}
-        title = str(p.get("title") or "Property").strip()
-        adv_no = str(p.get("adv_number") or p.get("ad_number") or p.get("id") or "").strip()
+def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
+    """
+    Build a feed card roughly matching the web UI:
+    title/meta header, optional media preview, and an action button.
+    """
+    p = raw or {}
+    title = str(p.get("title") or "Property").strip()
+    adv_no = str(p.get("adv_number") or p.get("ad_number") or p.get("id") or "").strip()
+
+    # ----------------------------
+    # OWNER AVATAR DATA (NEW)
+    # ----------------------------
+    owner_name = str(
+        p.get("owner_name")
+        or p.get("posted_by")
+        or p.get("user_name")
+        or ""
+    ).strip()
+
+    owner_initial = owner_name[:1].upper() if owner_name else "U"
+
+    owner_image_url = to_api_url(
+        str(
+            p.get("owner_image")
+            or p.get("profile_image")
+            or p.get("user_avatar")
+            or ""
+        ).strip()
+    )
+
+    distance_txt = ""
+    try:
+        dist_raw = p.get("distance_km")
+        if dist_raw is not None:
+            dist = float(dist_raw)
+            if dist >= 0:
+                distance_txt = f"{dist:.1f}km from you" if dist < 10 else f"{round(dist)}km from you"
+    except Exception:
         distance_txt = ""
-        try:
-            dist_raw = p.get("distance_km")
-            if dist_raw is not None:
-                dist = float(dist_raw)
-                if dist >= 0:
-                    distance_txt = f"{dist:.1f}km from you" if dist < 10 else f"{round(dist)}km from you"
-        except Exception:
-            distance_txt = ""
+
+    created_txt = ""
+    try:
+        created_raw = str(p.get("created_at") or "").strip()
+        if created_raw:
+            if created_raw.endswith("Z"):
+                created_raw = created_raw[:-1] + "+00:00"
+            dt = datetime.fromisoformat(created_raw)
+            created_txt = dt.date().isoformat()
+    except Exception:
         created_txt = ""
+
+    meta = " • ".join(
+        [
+            x
+            for x in [
+                distance_txt,
+                f"Ad #{adv_no}" if adv_no else "",
+                str(p.get("rent_sale") or ""),
+                str(p.get("property_type") or ""),
+                str(p.get("price_display") or ""),
+                str(p.get("location_display") or ""),
+                created_txt,
+            ]
+            if x
+        ]
+    )
+
+    images = self._extract_media_items(p)
+    already_contacted = bool(p.get("contacted"))
+
+    card = BoxLayout(orientation="vertical", padding=(12, 10), spacing=8, size_hint_y=None)
+    card.bind(minimum_height=card.setter("height"))
+
+    # Card background
+    with card.canvas.before:
+        Color(0, 0, 0, 0.35)
+        rect = RoundedRectangle(pos=card.pos, size=card.size, radius=[16])
+        Color(1, 1, 1, 0.12)
+        border = Line(rounded_rectangle=[card.x, card.y, card.width, card.height, 16], width=1.0)
+
+    def _sync_bg(*_):
+        rect.pos = card.pos
+        rect.size = card.size
+        border.rounded_rectangle = [card.x, card.y, card.width, card.height, 16]
+
+    card.bind(pos=_sync_bg, size=_sync_bg)
+
+    # ----------------------------
+    # SHARE HANDLER (UNCHANGED)
+    # ----------------------------
+    def do_share(*_):
         try:
-            created_raw = str(p.get("created_at") or "").strip()
-            if created_raw:
-                if created_raw.endswith("Z"):
-                    created_raw = created_raw[:-1] + "+00:00"
-                dt = datetime.fromisoformat(created_raw)
-                created_txt = dt.date().isoformat()
+            pid_raw = p.get("id")
+            pid = int(str(pid_raw).strip()) if pid_raw is not None else 0
         except Exception:
-            created_txt = ""
-        meta = " • ".join(
+            pid = 0
+
+        title_s = str(p.get("title") or "Property").strip()
+        adv = str(p.get("adv_number") or p.get("ad_number") or pid or "").strip()
+
+        meta_lines = []
+        for x in [
+            str(p.get("rent_sale") or "").strip(),
+            str(p.get("property_type") or "").strip(),
+            str(p.get("price_display") or "").strip(),
+            str(p.get("location_display") or "").strip(),
+        ]:
+            if x:
+                meta_lines.append(x)
+
+        api_link = to_api_url(f"/property/{pid}") if pid else ""
+        img_link = ""
+        try:
+            imgs = self._extract_media_items(p)
+            if imgs:
+                img_link = to_api_url(str((imgs[0] or {}).get("url") or "").strip())
+        except Exception:
+            img_link = ""
+
+        subject = f"{title_s} (Ad #{adv})" if adv else title_s
+        body = "\n".join(
             [
                 x
                 for x in [
-                    distance_txt,
-                    f"Ad #{adv_no}" if adv_no else "",
-                    str(p.get("rent_sale") or ""),
-                    str(p.get("property_type") or ""),
-                    str(p.get("price_display") or ""),
-                    str(p.get("location_display") or ""),
-                    created_txt,
+                    title_s,
+                    (" • ".join(meta_lines) if meta_lines else ""),
+                    api_link,
+                    (f"Image: {img_link}" if img_link else ""),
                 ]
                 if x
             ]
         )
-        images = self._extract_media_items(p)
-        already_contacted = bool(p.get("contacted"))
 
-        card = BoxLayout(orientation="vertical", padding=(12, 10), spacing=8, size_hint_y=None)
-        card.bind(minimum_height=card.setter("height"))
+        launched = share_text(subject=subject, text=body)
+        if launched:
+            _popup("Share", "Choose an app to share this post.")
+            return
 
-        # Card background
-        with card.canvas.before:
-            Color(0, 0, 0, 0.35)
-            rect = RoundedRectangle(pos=card.pos, size=card.size, radius=[16])
-            Color(1, 1, 1, 0.12)
-            border = Line(rounded_rectangle=[card.x, card.y, card.width, card.height, 16], width=1.0)
+        try:
+            from kivy.core.clipboard import Clipboard
+            Clipboard.copy(body)
+            _popup("Share", "Copied share text to clipboard.")
+        except Exception:
+            _popup("Share", body)
 
-        def _sync_bg(*_):
-            rect.pos = card.pos
-            rect.size = card.size
-            border.rounded_rectangle = [card.x, card.y, card.width, card.height, 16]
+    # ----------------------------
+    # HEADER ROW
+    # ----------------------------
+    header = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=dp(52))
 
-        card.bind(pos=_sync_bg, size=_sync_bg)
+    # ✅ AvatarButton instead of Label (NEW)
+    avatar = Factory.AvatarButton(
+        size_hint=(None, None),
+        size=(dp(42), dp(42)),
+    )
+    avatar.image_source = owner_image_url
+    avatar.fallback_text = owner_initial
+    header.add_widget(avatar)
 
-        def do_share(*_):
-            try:
-                pid_raw = p.get("id")
-                pid = int(str(pid_raw).strip()) if pid_raw is not None else 0
-            except Exception:
-                pid = 0
-            title_s = str(p.get("title") or "Property").strip()
-            adv = str(p.get("adv_number") or p.get("ad_number") or pid or "").strip()
-            meta_lines = []
-            for x in [
-                str(p.get("rent_sale") or "").strip(),
-                str(p.get("property_type") or "").strip(),
-                str(p.get("price_display") or "").strip(),
-                str(p.get("location_display") or "").strip(),
-            ]:
-                if x:
-                    meta_lines.append(x)
-            # Prefer linking to the web UI route if hosted on the same domain.
-            api_link = to_api_url(f"/property/{pid}") if pid else ""
-            img_link = ""
-            try:
-                imgs = self._extract_media_items(p)
-                if imgs:
-                    img_link = to_api_url(str((imgs[0] or {}).get("url") or "").strip())
-            except Exception:
-                img_link = ""
-            subject = f"{title_s} (Ad #{adv})" if adv else title_s
-            body = "\n".join(
-                [x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link, (f"Image: {img_link}" if img_link else "")] if x]
+    hb = BoxLayout(orientation="vertical", spacing=dp(2))
+    hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=dp(24)))
+    hb.add_widget(Label(text=str(meta), size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
+    header.add_widget(hb)
+
+    header.add_widget(Widget())
+
+    btn_share = Factory.AppButton(
+        text="Share",
+        size_hint=(None, None),
+        width=dp(96),
+        height=dp(40),
+    )
+    btn_share.bind(on_release=do_share)
+    header.add_widget(btn_share)
+
+    card.add_widget(header)
+
+    # ----------------------------
+    # PHOTOS (UNCHANGED)
+    # ----------------------------
+    card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
+    thumb_h = dp(220)
+
+    if images:
+        media = list(images)[:6]
+        grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
+        rows = (len(media) + 1) // 2
+        grid.height = rows * thumb_h + max(0, rows - 1) * dp(8)
+
+        for it in media:
+            it = it or {}
+            ctype = str(it.get("content_type") or "").lower()
+            if ctype.startswith("video/"):
+                grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
+            else:
+                img = AsyncImage(source=to_api_url(it.get("url") or ""), allow_stretch=True, keep_ratio=False)
+                img.size_hint_y = None
+                img.height = thumb_h
+                grid.add_widget(img)
+
+        card.add_widget(grid)
+    else:
+        grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
+        grid.height = thumb_h
+
+        def _placeholder_tile() -> BoxLayout:
+            tile = BoxLayout(size_hint_y=None, height=thumb_h)
+            with tile.canvas.before:
+                Color(0, 0, 0, 0.22)
+                rect = RoundedRectangle(pos=tile.pos, size=tile.size, radius=[dp(12)])
+                Color(1, 1, 1, 0.12)
+                border = Line(
+                    rounded_rectangle=[tile.x, tile.y, tile.width, tile.height, dp(12)],
+                    width=1.0,
+                )
+
+            def _sync_tile(*_):
+                rect.pos = tile.pos
+                rect.size = tile.size
+                border.rounded_rectangle = [tile.x, tile.y, tile.width, tile.height, dp(12)]
+
+            tile.bind(pos=_sync_tile, size=_sync_tile)
+            return tile
+
+        grid.add_widget(_placeholder_tile())
+        grid.add_widget(_placeholder_tile())
+        card.add_widget(grid)
+        card.add_widget(Label(text="No Photos", size_hint_y=None, height=22, color=(1, 1, 1, 0.78)))
+
+    # ----------------------------
+    # AMENITIES (UNCHANGED)
+    # ----------------------------
+    amenities = [str(x).strip() for x in (p.get("amenities") or []) if str(x).strip()]
+    if amenities:
+        card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
+        card.add_widget(
+            Label(
+                text=", ".join(amenities),
+                size_hint_y=None,
+                height=36,
+                color=(1, 1, 1, 0.85),
             )
+        )
 
-            launched = share_text(subject=subject, text=body)
-            if launched:
-                _popup("Share", "Choose an app to share this post.")
-                return
+    # ----------------------------
+    # CONTACT BUTTON (UNCHANGED)
+    # ----------------------------
+    btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
+
+    btn_contact = Factory.AppButton(
+        text="Contacted" if already_contacted else "Contact owner",
+        size_hint_y=None,
+        height=44,
+    )
+    btn_contact.disabled = already_contacted
+
+    lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
+    if already_contacted:
+        lbl_status.text = "Contact details already sent."
+
+    def do_contact(*_):
+        sess = get_session() or {}
+        if not (sess.get("token") or ""):
+            lbl_status.text = "Login required to contact owner."
+            if self.manager:
+                self.manager.current = "login"
+            return
+
+        pid_raw = p.get("id")
+        try:
+            pid = int(str(pid_raw).strip())
+        except (TypeError, ValueError):
+            lbl_status.text = "Invalid ad id."
+            return
+
+        if pid <= 0:
+            lbl_status.text = "Invalid ad id."
+            return
+
+        btn_contact.disabled = True
+
+        from threading import Thread
+
+        def work():
             try:
-                from kivy.core.clipboard import Clipboard
+                contact = api_get_property_contact(pid)
+                owner_name_inner = str(contact.get("owner_name") or "").strip()
+                adv_no_inner = str(contact.get("adv_number") or contact.get("advNo") or pid).strip()
+                who = f" ({owner_name_inner})" if owner_name_inner else ""
 
-                Clipboard.copy(body)
-                _popup("Share", "Copied share text to clipboard.")
-            except Exception:
-                _popup("Share", body)
-
-        header = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=dp(52))
-
-        avatar = Label(
-            text=(title[:1].upper() if title else "A"),
-            size_hint=(None, None),
-            size=(dp(42), dp(42)),
-            halign="center",
-            valign="middle",
-            color=(1, 1, 1, 0.95),
-        )
-        avatar.text_size = avatar.size
-        with avatar.canvas.before:
-            Color(0.66, 0.33, 0.97, 0.95)
-            av_bg = RoundedRectangle(pos=avatar.pos, size=avatar.size, radius=[dp(21)])
-
-        def _sync_avatar(*_):
-            av_bg.pos = avatar.pos
-            av_bg.size = avatar.size
-
-        avatar.bind(pos=_sync_avatar, size=_sync_avatar)
-        header.add_widget(avatar)
-
-        hb = BoxLayout(orientation="vertical", spacing=dp(2))
-        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=dp(24)))
-        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
-        header.add_widget(hb)
-        header.add_widget(Widget())
-        btn_share = Factory.AppButton(
-            text="Share",
-            size_hint=(None, None),
-            width=dp(96),
-            height=dp(40),
-        )
-        btn_share.bind(on_release=do_share)
-        header.add_widget(btn_share)
-        card.add_widget(header)
-
-        card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
-        # Match web UI tile height (HomePage uses ~220px preview tiles).
-        thumb_h = dp(220)
-        if images:
-            # Show up to 6 items as a 2-column grid (roughly like the web HomePage).
-            media = list(images)[:6]
-            grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
-            rows = (len(media) + 1) // 2
-            grid.height = rows * thumb_h + max(0, rows - 1) * dp(8)
-
-            for it in media:
-                it = it or {}
-                ctype = str(it.get("content_type") or "").lower()
-                # Older rows may not have content_type set. Treat unknown/blank types as images.
-                if ctype.startswith("video/"):
-                    grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
-                else:
-                    img = AsyncImage(source=to_api_url(it.get("url") or ""), fit_mode="fill")
-                    img.size_hint_y = None
-                    img.height = thumb_h
-                    grid.add_widget(img)
-
-            card.add_widget(grid)
-        else:
-            grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
-            grid.height = thumb_h
-
-            def _placeholder_tile() -> BoxLayout:
-                tile = BoxLayout(size_hint_y=None, height=thumb_h)
-                with tile.canvas.before:
-                    Color(0, 0, 0, 0.22)
-                    rect = RoundedRectangle(pos=tile.pos, size=tile.size, radius=[dp(12)])
-                    Color(1, 1, 1, 0.12)
-                    border = Line(
-                        rounded_rectangle=[tile.x, tile.y, tile.width, tile.height, dp(12)],
-                        width=1.0,
+                def done(*_dt):
+                    p["contacted"] = True
+                    btn_contact.text = "Contacted"
+                    lbl_status.text = (
+                        f"Contact details sent to your registered email/SMS for Ad #{adv_no_inner}{who}."
                     )
 
-                def _sync_tile(*_):
-                    rect.pos = tile.pos
-                    rect.size = tile.size
-                    border.rounded_rectangle = [tile.x, tile.y, tile.width, tile.height, dp(12)]
+                Clock.schedule_once(done, 0)
+            except ApiError as e:
+                err_msg = str(e) or "Locked"
 
-                tile.bind(pos=_sync_tile, size=_sync_tile)
-                return tile
+                def fail(*_dt):
+                    btn_contact.disabled = False
+                    lbl_status.text = err_msg
 
-            grid.add_widget(_placeholder_tile())
-            grid.add_widget(_placeholder_tile())
-            card.add_widget(grid)
-            card.add_widget(Label(text="No Photos", size_hint_y=None, height=22, color=(1, 1, 1, 0.78)))
+                Clock.schedule_once(fail, 0)
 
-        amenities = [str(x).strip() for x in (p.get("amenities") or []) if str(x).strip()]
-        if amenities:
-            card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
-            card.add_widget(
-                Label(
-                    text=", ".join(amenities),
-                    size_hint_y=None,
-                    height=36,
-                    color=(1, 1, 1, 0.85),
-                )
-            )
+        Thread(target=work, daemon=True).start()
 
-        btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
-        btn_contact = Factory.AppButton(
-            text="Contacted" if already_contacted else "Contact owner",
-            size_hint_y=None,
-            height=44,
-        )
-        btn_contact.disabled = already_contacted
-        lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
-        if already_contacted:
-            lbl_status.text = "Contact details already sent."
+    btn_contact.bind(on_release=do_contact)
+    btn_row.add_widget(btn_contact)
 
-        def do_contact(*_):
-            sess = get_session() or {}
-            if not (sess.get("token") or ""):
-                lbl_status.text = "Login required to contact owner."
-                if self.manager:
-                    self.manager.current = "login"
-                return
-            pid_raw = p.get("id")
-            try:
-                pid = int(str(pid_raw).strip())
-            except (TypeError, ValueError):
-                lbl_status.text = "Invalid ad id."
-                return
-            if pid <= 0:
-                lbl_status.text = "Invalid ad id."
-                return
-            btn_contact.disabled = True
+    card.add_widget(btn_row)
+    card.add_widget(lbl_status)
 
-            from threading import Thread
+    return card
 
-            def work():
-                try:
-                    contact = api_get_property_contact(pid)
-                    owner_name = str(contact.get("owner_name") or "").strip()
-                    adv_no_inner = str(contact.get("adv_number") or contact.get("advNo") or pid).strip()
-                    who = f" ({owner_name})" if owner_name else ""
-
-                    def done(*_dt):
-                        p["contacted"] = True
-                        btn_contact.text = "Contacted"
-                        lbl_status.text = (
-                            f"Contact details sent to your registered email/SMS for Ad #{adv_no_inner}{who}."
-                        )
-
-                    Clock.schedule_once(done, 0)
-                except ApiError as e:
-                    err_msg = str(e) or "Locked"
-
-                    def fail(*_dt):
-                        btn_contact.disabled = False
-                        lbl_status.text = err_msg
-
-                    Clock.schedule_once(fail, 0)
-
-            Thread(target=work, daemon=True).start()
-
-        btn_contact.bind(on_release=do_contact)
-        btn_row.add_widget(btn_contact)
-        card.add_widget(btn_row)
-        card.add_widget(lbl_status)
-
-        return card
 
     def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
         """
@@ -1463,4 +1512,3 @@ class HomeScreen(GestureNavigationMixin, Screen):
     def go_admin():
         # Removed from home page UI; keep method for backward KV compatibility.
         _popup("Not available", "Admin entry is hidden in the app UI.")
-
