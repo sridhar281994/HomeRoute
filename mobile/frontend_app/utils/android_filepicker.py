@@ -176,7 +176,6 @@ def android_open_gallery(
 
         # Required URI permissions for Android 11+
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
 
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
