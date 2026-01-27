@@ -898,25 +898,90 @@ class HomeScreen(GestureNavigationMixin, Screen):
             except Exception:
                 _popup("Share", body)
 
-        header = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=dp(52))
-        try:
-            avatar = Factory.AvatarButton(size_hint=(None, None), size=(dp(42), dp(42)))
-            avatar.image_source = owner_image_url
-            avatar.fallback_text = owner_initial
-            header.add_widget(avatar)
-        except Exception:
-            header.add_widget(Label(text=owner_initial, size_hint=(None, None), size=(dp(42), dp(42))))
-
+        # -------------------------
+        # HEADER CONTAINER
+        # -------------------------
+        header_wrap = BoxLayout(
+            orientation="vertical",
+            spacing=dp(6),
+            size_hint_y=None,
+        )
+        header_wrap.bind(minimum_height=header_wrap.setter("height"))
+        
+        # -------- Row 1 : Avatar + Title/Meta --------
+        row_top = BoxLayout(
+            orientation="horizontal",
+            spacing=dp(10),
+            size_hint_y=None,
+            height=dp(52),
+        )
+        
+        avatar = Label(
+            text=(title[:1].upper() if title else "A"),
+            size_hint=(None, None),
+            size=(dp(42), dp(42)),
+            halign="center",
+            valign="middle",
+            color=(1, 1, 1, 0.95),
+        )
+        avatar.text_size = avatar.size
+        with avatar.canvas.before:
+            Color(0.66, 0.33, 0.97, 0.95)
+            av_bg = RoundedRectangle(pos=avatar.pos, size=avatar.size, radius=[dp(21)])
+        
+        def _sync_avatar(*_):
+            av_bg.pos = avatar.pos
+            av_bg.size = avatar.size
+        
+        avatar.bind(pos=_sync_avatar, size=_sync_avatar)
+        row_top.add_widget(avatar)
+        
         hb = BoxLayout(orientation="vertical", spacing=dp(2))
-        hb.add_widget(Label(text=f"[b]{title}[/b]", size_hint_y=None, height=dp(24)))
-        hb.add_widget(Label(text=str(meta), size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
-        header.add_widget(hb)
-        header.add_widget(Widget())
-
-        btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(40))
+        hb.add_widget(
+            Label(
+                text=f"[b]{title}[/b]",
+                size_hint_y=None,
+                height=dp(24),
+                shorten=True,
+                shorten_from="right",
+            )
+        )
+        hb.add_widget(
+            Label(
+                text=str(meta),
+                size_hint_y=None,
+                height=dp(22),
+                color=(1, 1, 1, 0.78),
+                shorten=True,
+                shorten_from="right",
+            )
+        )
+        row_top.add_widget(hb)
+        
+        header_wrap.add_widget(row_top)
+        
+        # -------- Row 2 : Share button (right aligned) --------
+        row_actions = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(40),
+        )
+        
+        row_actions.add_widget(Widget())  # spacer
+        
+        btn_share = Factory.AppButton(
+            text="Share",
+            size_hint=(None, None),
+            width=dp(96),
+            height=dp(36),
+        )
         btn_share.bind(on_release=do_share)
-        header.add_widget(btn_share)
-        card.add_widget(header)
+        row_actions.add_widget(btn_share)
+        
+        header_wrap.add_widget(row_actions)
+        
+        card.add_widget(header_wrap)
+
 
         card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
         thumb_h = dp(220)
