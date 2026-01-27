@@ -789,13 +789,17 @@ class HomeScreen(GestureNavigationMixin, Screen):
         Build a feed card roughly matching the web UI:
         title/meta header, optional media preview, and an action button.
         """
+        from kivy.uix.floatlayout import FloatLayout
+
         p = raw or {}
         title = str(p.get("title") or "Property").strip()
         adv_no = str(p.get("adv_number") or p.get("ad_number") or p.get("id") or "").strip()
 
         owner_name = str(p.get("owner_name") or p.get("posted_by") or p.get("user_name") or "").strip()
         owner_initial = owner_name[:1].upper() if owner_name else "U"
-        owner_image_url = to_api_url(str(p.get("owner_image") or p.get("profile_image") or p.get("user_avatar") or "").strip())
+        owner_image_url = to_api_url(
+            str(p.get("owner_image") or p.get("profile_image") or p.get("user_avatar") or "").strip()
+        )
 
         distance_txt = ""
         try:
@@ -883,7 +887,16 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
             subject = f"{title_s} (Ad #{adv})" if adv else title_s
             body = "\n".join(
-                [x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link, (f"Image: {img_link}" if img_link else "")] if x]
+                [
+                    x
+                    for x in [
+                        title_s,
+                        (" • ".join(meta_lines) if meta_lines else ""),
+                        api_link,
+                        (f"Image: {img_link}" if img_link else ""),
+                    ]
+                    if x
+                ]
             )
 
             launched = share_text(subject=subject, text=body)
@@ -907,7 +920,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
             size_hint_y=None,
         )
         header_wrap.bind(minimum_height=header_wrap.setter("height"))
-        
+
         # -------- Row 1 : Avatar + Title/Meta --------
         row_top = BoxLayout(
             orientation="horizontal",
@@ -915,27 +928,49 @@ class HomeScreen(GestureNavigationMixin, Screen):
             size_hint_y=None,
             height=dp(52),
         )
-        
-        avatar = Label(
-            text=(title[:1].upper() if title else "A"),
+
+        # ---- Avatar wrapper (image or first letter) ----
+        avatar_wrap = FloatLayout(
             size_hint=(None, None),
             size=(dp(42), dp(42)),
+        )
+
+        with avatar_wrap.canvas.before:
+            Color(0.66, 0.33, 0.97, 0.95)
+            av_bg = RoundedRectangle(
+                pos=avatar_wrap.pos,
+                size=avatar_wrap.size,
+                radius=[dp(21)],
+            )
+
+        def _sync_avatar_bg(*_):
+            av_bg.pos = avatar_wrap.pos
+            av_bg.size = avatar_wrap.size
+
+        avatar_wrap.bind(pos=_sync_avatar_bg, size=_sync_avatar_bg)
+
+        # Profile image (if available)
+        avatar_img = AsyncImage(
+            source=owner_image_url,
+            allow_stretch=True,
+            keep_ratio=False,
+            opacity=1 if owner_image_url else 0,
+        )
+        avatar_wrap.add_widget(avatar_img)
+
+        # Fallback first letter
+        avatar_lbl = Label(
+            text=owner_initial,
             halign="center",
             valign="middle",
             color=(1, 1, 1, 0.95),
+            opacity=0 if owner_image_url else 1,
         )
-        avatar.text_size = avatar.size
-        with avatar.canvas.before:
-            Color(0.66, 0.33, 0.97, 0.95)
-            av_bg = RoundedRectangle(pos=avatar.pos, size=avatar.size, radius=[dp(21)])
-        
-        def _sync_avatar(*_):
-            av_bg.pos = avatar.pos
-            av_bg.size = avatar.size
-        
-        avatar.bind(pos=_sync_avatar, size=_sync_avatar)
-        row_top.add_widget(avatar)
-        
+        avatar_lbl.bind(size=lambda *_: setattr(avatar_lbl, "text_size", avatar_lbl.size))
+        avatar_wrap.add_widget(avatar_lbl)
+
+        row_top.add_widget(avatar_wrap)
+
         hb = BoxLayout(orientation="vertical", spacing=dp(2))
         hb.add_widget(
             Label(
@@ -957,18 +992,18 @@ class HomeScreen(GestureNavigationMixin, Screen):
             )
         )
         row_top.add_widget(hb)
-        
+
         header_wrap.add_widget(row_top)
-        
+
         # -------- Row 2 : Share button (right aligned) --------
         row_actions = BoxLayout(
             orientation="horizontal",
             size_hint_y=None,
             height=dp(40),
         )
-        
+
         row_actions.add_widget(Widget())  # spacer
-        
+
         btn_share = Factory.AppButton(
             text="Share",
             size_hint=(None, None),
@@ -977,12 +1012,13 @@ class HomeScreen(GestureNavigationMixin, Screen):
         )
         btn_share.bind(on_release=do_share)
         row_actions.add_widget(btn_share)
-        
+
         header_wrap.add_widget(row_actions)
-        
         card.add_widget(header_wrap)
 
-
+        # -------------------------
+        # PHOTOS
+        # -------------------------
         card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
         thumb_h = dp(220)
         if images:
@@ -990,16 +1026,20 @@ class HomeScreen(GestureNavigationMixin, Screen):
             grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
             rows = (len(media) + 1) // 2
             grid.height = rows * thumb_h + max(0, rows - 1) * dp(8)
+
             for it in media:
                 it = it or {}
                 ctype = str(it.get("content_type") or "").lower()
                 if ctype.startswith("video/"):
-                    grid.add_widget(Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78)))
+                    grid.add_widget(
+                        Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78))
+                    )
                 else:
                     img = AsyncImage(source=to_api_url(it.get("url") or ""), fit_mode="fill")
                     img.size_hint_y = None
                     img.height = thumb_h
                     grid.add_widget(img)
+
             card.add_widget(grid)
         else:
             grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
@@ -1011,7 +1051,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     Color(0, 0, 0, 0.22)
                     r = RoundedRectangle(pos=tile.pos, size=tile.size, radius=[dp(12)])
                     Color(1, 1, 1, 0.12)
-                    b = Line(rounded_rectangle=[tile.x, tile.y, tile.width, tile.height, dp(12)], width=1.0)
+                    b = Line(
+                        rounded_rectangle=[tile.x, tile.y, tile.width, tile.height, dp(12)],
+                        width=1.0,
+                    )
 
                 def _sync_tile(*_):
                     r.pos = tile.pos
@@ -1026,14 +1069,27 @@ class HomeScreen(GestureNavigationMixin, Screen):
             card.add_widget(grid)
             card.add_widget(Label(text="No Photos", size_hint_y=None, height=22, color=(1, 1, 1, 0.78)))
 
+        # -------------------------
+        # AMENITIES
+        # -------------------------
         amenities = [str(x).strip() for x in (p.get("amenities") or []) if str(x).strip()]
         if amenities:
             card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
-            card.add_widget(Label(text=", ".join(amenities), size_hint_y=None, height=36, color=(1, 1, 1, 0.85)))
+            card.add_widget(
+                Label(text=", ".join(amenities), size_hint_y=None, height=36, color=(1, 1, 1, 0.85))
+            )
 
+        # -------------------------
+        # CONTACT BUTTON
+        # -------------------------
         btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
-        btn_contact = Factory.AppButton(text="Contacted" if already_contacted else "Contact owner", size_hint_y=None, height=44)
+        btn_contact = Factory.AppButton(
+            text="Contacted" if already_contacted else "Contact owner",
+            size_hint_y=None,
+            height=44,
+        )
         btn_contact.disabled = already_contacted
+
         lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
         if already_contacted:
             lbl_status.text = "Contact details already sent."
@@ -1045,15 +1101,18 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 if self.manager:
                     self.manager.current = "login"
                 return
+
             pid_raw = p.get("id")
             try:
                 pid = int(str(pid_raw).strip())
             except (TypeError, ValueError):
                 lbl_status.text = "Invalid ad id."
                 return
+
             if pid <= 0:
                 lbl_status.text = "Invalid ad id."
                 return
+
             btn_contact.disabled = True
 
             from threading import Thread
@@ -1068,7 +1127,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     def done(*_dt):
                         p["contacted"] = True
                         btn_contact.text = "Contacted"
-                        lbl_status.text = f"Contact details sent to your registered email/SMS for Ad #{adv_no_inner}{who}."
+                        lbl_status.text = (
+                            f"Contact details sent to your registered email/SMS for "
+                            f"Ad #{adv_no_inner}{who}."
+                        )
 
                     Clock.schedule_once(done, 0)
                 except ApiError as e:
@@ -1086,7 +1148,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
         btn_row.add_widget(btn_contact)
         card.add_widget(btn_row)
         card.add_widget(lbl_status)
+
         return card
+    
 
     def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
         src = None
