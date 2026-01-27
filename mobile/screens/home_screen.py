@@ -789,17 +789,14 @@ class HomeScreen(GestureNavigationMixin, Screen):
         Build a feed card roughly matching the web UI:
         title/meta header, optional media preview, and an action button.
         """
-        from kivy.uix.floatlayout import FloatLayout
-
         p = raw or {}
         title = str(p.get("title") or "Property").strip()
         adv_no = str(p.get("adv_number") or p.get("ad_number") or p.get("id") or "").strip()
 
         owner_name = str(p.get("owner_name") or p.get("posted_by") or p.get("user_name") or "").strip()
         owner_initial = owner_name[:1].upper() if owner_name else "U"
-        owner_image_url = to_api_url(
-            str(p.get("owner_image") or p.get("profile_image") or p.get("user_avatar") or "").strip()
-        )
+        owner_image_raw = str(p.get("owner_image") or p.get("profile_image") or p.get("user_avatar") or "").strip()
+        owner_image_url = to_api_url(owner_image_raw) if owner_image_raw else ""
 
         distance_txt = ""
         try:
@@ -912,109 +909,52 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 _popup("Share", body)
 
         # -------------------------
-        # HEADER CONTAINER
+        # HEADER (Avatar + Title/Meta + Share)
         # -------------------------
-        header_wrap = BoxLayout(
-            orientation="vertical",
-            spacing=dp(6),
-            size_hint_y=None,
-        )
-        header_wrap.bind(minimum_height=header_wrap.setter("height"))
+        header = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None, height=dp(60))
 
-        # -------- Row 1 : Avatar + Title/Meta --------
-        row_top = BoxLayout(
-            orientation="horizontal",
-            spacing=dp(10),
-            size_hint_y=None,
-            height=dp(52),
-        )
-
-        # ---- Avatar wrapper (image or first letter) ----
-        avatar_wrap = FloatLayout(
-            size_hint=(None, None),
-            size=(dp(42), dp(42)),
-        )
-
-        with avatar_wrap.canvas.before:
-            Color(0.66, 0.33, 0.97, 0.95)
-            av_bg = RoundedRectangle(
-                pos=avatar_wrap.pos,
-                size=avatar_wrap.size,
-                radius=[dp(21)],
-            )
-
-        def _sync_avatar_bg(*_):
-            av_bg.pos = avatar_wrap.pos
-            av_bg.size = avatar_wrap.size
-
-        avatar_wrap.bind(pos=_sync_avatar_bg, size=_sync_avatar_bg)
-
-        # Profile image (if available)
-        avatar_img = AsyncImage(
-            source=owner_image_url,
-            allow_stretch=True,
-            keep_ratio=False,
-            opacity=1 if owner_image_url else 0,
-        )
-        avatar_wrap.add_widget(avatar_img)
-
-        # Fallback first letter
-        avatar_lbl = Label(
-            text=owner_initial,
-            halign="center",
-            valign="middle",
-            color=(1, 1, 1, 0.95),
-            opacity=0 if owner_image_url else 1,
-        )
-        avatar_lbl.bind(size=lambda *_: setattr(avatar_lbl, "text_size", avatar_lbl.size))
-        avatar_wrap.add_widget(avatar_lbl)
-
-        row_top.add_widget(avatar_wrap)
+        # AvatarButton from KV (shows image or fallback text like "ME")
+        try:
+            avatar = Factory.AvatarButton(size_hint=(None, None), size=(dp(44), dp(44)))
+            avatar.image_source = owner_image_url
+            avatar.fallback_text = owner_initial or "ME"
+            header.add_widget(avatar)
+        except Exception:
+            header.add_widget(Label(text=owner_initial or "ME", size_hint=(None, None), size=(dp(44), dp(44))))
 
         hb = BoxLayout(orientation="vertical", spacing=dp(2))
-        hb.add_widget(
-            Label(
-                text=f"[b]{title}[/b]",
-                size_hint_y=None,
-                height=dp(24),
-                shorten=True,
-                shorten_from="right",
-            )
-        )
-        hb.add_widget(
-            Label(
-                text=str(meta),
-                size_hint_y=None,
-                height=dp(22),
-                color=(1, 1, 1, 0.78),
-                shorten=True,
-                shorten_from="right",
-            )
-        )
-        row_top.add_widget(hb)
+        hb.size_hint_x = 1
 
-        header_wrap.add_widget(row_top)
-
-        # -------- Row 2 : Share button (right aligned) --------
-        row_actions = BoxLayout(
-            orientation="horizontal",
+        title_lbl = Label(
+            text=f"[b]{title}[/b]",
             size_hint_y=None,
-            height=dp(40),
+            height=dp(26),
+            halign="left",
+            valign="middle",
+            shorten=True,
+            shorten_from="right",
         )
-
-        row_actions.add_widget(Widget())  # spacer
-
-        btn_share = Factory.AppButton(
-            text="Share",
-            size_hint=(None, None),
-            width=dp(96),
-            height=dp(36),
+        title_lbl.bind(size=lambda *_: setattr(title_lbl, "text_size", (title_lbl.width, None)))
+        meta_lbl = Label(
+            text=str(meta),
+            size_hint_y=None,
+            height=dp(22),
+            color=(1, 1, 1, 0.78),
+            halign="left",
+            valign="middle",
+            shorten=True,
+            shorten_from="right",
         )
+        meta_lbl.bind(size=lambda *_: setattr(meta_lbl, "text_size", (meta_lbl.width, None)))
+        hb.add_widget(title_lbl)
+        hb.add_widget(meta_lbl)
+        header.add_widget(hb)
+
+        btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(40))
         btn_share.bind(on_release=do_share)
-        row_actions.add_widget(btn_share)
+        header.add_widget(btn_share)
 
-        header_wrap.add_widget(row_actions)
-        card.add_widget(header_wrap)
+        card.add_widget(header)
 
         # -------------------------
         # PHOTOS

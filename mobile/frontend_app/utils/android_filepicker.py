@@ -43,6 +43,30 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     resolver = ctx.getContentResolver()
     uri_obj = Uri.parse(str(uri))
 
+    def _guess_ext_from_mime(mime: str) -> str:
+        m = str(mime or "").strip().lower()
+        if not m:
+            return ""
+        # Common image types
+        if m in {"image/jpeg", "image/jpg"}:
+            return ".jpg"
+        if m == "image/png":
+            return ".png"
+        if m == "image/webp":
+            return ".webp"
+        if m == "image/gif":
+            return ".gif"
+        # Common video types
+        if m == "video/mp4":
+            return ".mp4"
+        if m == "video/quicktime":
+            return ".mov"
+        if m.startswith("image/"):
+            return ".jpg"
+        if m.startswith("video/"):
+            return ".mp4"
+        return ""
+
     display_name = ""
     cursor = None
     try:
@@ -62,6 +86,19 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
 
     if not display_name:
         display_name = f"picked_{int(time.time())}"
+
+    # Sanitize name + ensure extension so is_image_path()/is_video_path() works after copy.
+    display_name = display_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    base, ext = os.path.splitext(display_name)
+    if not ext:
+        mime = ""
+        try:
+            mime = str(resolver.getType(uri_obj) or "")
+        except Exception:
+            mime = ""
+        ext = _guess_ext_from_mime(mime)
+        if ext:
+            display_name = f"{display_name}{ext}"
 
     cache_dir = ctx.getCacheDir()
     out_file = File(cache_dir, display_name)
@@ -182,6 +219,11 @@ def android_open_gallery(
         intent.addCategory(Intent.CATEGORY_OPENABLE)
         intent.addCategory(Intent.CATEGORY_DEFAULT)
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        # Persist access long enough for ensure_local_paths() to copy into cache.
+        try:
+            intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        except Exception:
+            pass
 
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
@@ -212,6 +254,12 @@ def android_open_gallery(
                 _log("Ignoring unrelated activity result")
                 return
 
+            # Best-effort: unbind after handling our request
+            try:
+                activity.unbind(on_activity_result=_on_activity_result)
+            except Exception:
+                pass
+
             if int(resultCode) != int(Activity.RESULT_OK) or data is None:
                 _log("Picker canceled or empty result")
                 _deliver([])
@@ -234,6 +282,14 @@ def android_open_gallery(
                         item = clip.getItemAt(i)
                         uri = item.getUri()
                         if uri is not None:
+                            # Persistable permission (best-effort)
+                            try:
+                                take_flags = int(data.getFlags()) & int(
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                                resolver.takePersistableUriPermission(uri, take_flags)
+                            except Exception:
+                                pass
                             out.append(str(uri.toString()))
                     except Exception as e:
                         _log(f"Clip read error: {e}")
@@ -241,6 +297,11 @@ def android_open_gallery(
                 try:
                     uri = data.getData()
                     if uri is not None:
+                        try:
+                            take_flags = int(data.getFlags()) & int(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            resolver.takePersistableUriPermission(uri, take_flags)
+                        except Exception:
+                            pass
                         out.append(str(uri.toString()))
                 except Exception as e:
                     _log(f"Data URI read error: {e}")
@@ -250,9 +311,16 @@ def android_open_gallery(
         # -----------------------------
         # Register callback safely
         # -----------------------------
+        # -----------------------------
+        # Register callback safely
+        # -----------------------------
         try:
             _log("Registering activity result callback")
-            activity.result_callback = _on_activity_result
+            try:
+                activity.bind(on_activity_result=_on_activity_result)
+            except Exception:
+                # Legacy fallback
+                activity.result_callback = _on_activity_result
         except Exception as e:
             _log(f"Callback registration failed: {e}")
             return False
