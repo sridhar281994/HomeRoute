@@ -53,7 +53,6 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
                 display_name = str(cursor.getString(idx) or "")
     except Exception as e:
         _log(f"Failed reading display name: {e}")
-        display_name = ""
     finally:
         try:
             if cursor is not None:
@@ -120,7 +119,6 @@ def ensure_local_paths(paths: Iterable[str]) -> list[str]:
                 out.append(lp)
         except Exception as e:
             _log(f"Path normalize failed: {p} → {e}")
-            continue
     return out
 
 
@@ -207,7 +205,7 @@ def android_open_gallery(
             except Exception as e:
                 _log(f"Deliver callback failed: {e}")
 
-        def _on_activity_result(requestCode, resultCode, data) -> None:  # noqa: N802
+        def _on_activity_result(requestCode, resultCode, data) -> None:
             _log(f"Activity result → request={requestCode}, result={resultCode}, data={data}")
 
             if int(requestCode) != int(req_code):
