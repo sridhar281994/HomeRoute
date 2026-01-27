@@ -634,7 +634,11 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 _platform = ""
 
             if _platform == "android":
-
+                try:
+                    from plyer import filechooser  # type: ignore
+                except Exception:
+                    filechooser = None
+            
                 def _on_sel(selection):
                     try:
                         paths = ensure_local_paths(selection or [])
@@ -644,6 +648,15 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                     except Exception:
                         return
             
+                # ✅ Try plyer first (most stable)
+                if filechooser is not None:
+                    try:
+                        filechooser.open_file(on_selection=_on_sel, multiple=False)
+                        return
+                    except Exception:
+                        pass
+            
+                # ✅ Fallback to native intent
                 launched = android_open_gallery(
                     on_selection=_on_sel,
                     multiple=False,
@@ -652,6 +665,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 if not launched:
                     _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
                 return
+
 
 
             from kivy.uix.behaviors import ButtonBehavior
