@@ -2067,23 +2067,23 @@
                             BoxLayout:
                                 orientation: "horizontal"
                                 size_hint_y: None
-                                height: self.minimum_height
+                                height: dp(92)
                                 spacing: dp(12)
                                 padding: dp(4), dp(2)
-                            
+
                                 AvatarButton:
                                     size_hint: None, None
                                     size: dp(42), dp(42)
                                     pos_hint: {"center_y": 0.5}
                                     image_source: root.image_source
                                     fallback_text: (root.fallback_text if root.fallback_text else "ME")
-                            
-                                # ✅ TEXT COLUMN — allow full width + wrapping
+
+                                # TEXT COLUMN — wraps fully
                                 BoxLayout:
                                     orientation: "vertical"
                                     size_hint_x: 1
                                     spacing: dp(4)
-                            
+
                                     Label:
                                         text: root.property_data.get("title","(loading...)")
                                         bold: True
@@ -2093,25 +2093,29 @@
                                         text_size: self.width, None
                                         size_hint_y: None
                                         height: self.texture_size[1] + dp(4)
-                            
+
                                     Label:
-                                        text: "Ad #" + (str(root.property_data.get("adv_number") or root.property_data.get("ad_number") or root.property_id) if root.property_id else "") + " • " + (root.property_data.get("rent_sale") or "") + " • " + (root.property_data.get("property_type") or "")
+                                        text: "Ad #" + (str(root.property_data.get("adv_number") or root.property_data.get("ad_number") or root.property_id) if root.property_id else "") \
+                                              + " • " + (root.property_data.get("rent_sale") or "") \
+                                              + " • " + (root.property_data.get("property_type") or "") \
+                                              + " • " + (root.property_data.get("price_display") or "") \
+                                              + " • " + (root.property_data.get("location_display") or "")
+
                                         font_size: sp(12)
                                         color: TEXT_MUTED
                                         halign: "left"
                                         valign: "top"
                                         text_size: self.width, None
                                         size_hint_y: None
-                                        height: self.texture_size[1] + dp(4)
-                            
-                                # ✅ Back button fixed width – does NOT shrink text
+                                        height: max(self.texture_size[1], dp(28))
+
+                                # Back button (fixed width)
                                 AppButton:
                                     text: "Back"
                                     size_hint: None, None
                                     size: dp(72), dp(36)
                                     pos_hint: {"center_y": 0.5}
                                     on_release: root.back()
-
 
                             # -----------------------------
                             # PRICE + LOCATION (CAPTION)
@@ -2148,7 +2152,7 @@
                                 halign: "left"
 
                             # -----------------------------
-                            # ACTION BUTTONS (LIKE BAR STYLE)
+                            # ACTION BUTTONS
                             # -----------------------------
                             BoxLayout:
                                 size_hint_y: None
@@ -2164,7 +2168,6 @@
                                     text: "🔗📤"
                                     size_hint_x: 1
                                     on_release: root.share_current()
-
 
 <OwnerAddPropertyScreen>:
     name: "owner_add_property"
