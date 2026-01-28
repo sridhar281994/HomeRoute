@@ -2062,14 +2062,14 @@
                             spacing: dp(12)
 
                             # -----------------------------
-                            # HEADER ROW (Avatar + Title + Share + Back)
+                            # HEADER ROW (Avatar + Title + Back)
                             # -----------------------------
                             BoxLayout:
                                 orientation: "horizontal"
                                 size_hint_y: None
                                 height: self.minimum_height
                                 spacing: dp(12)
-                                padding: dp(4), dp(2)
+                                padding: dp(4), dp(6)
 
                                 AvatarButton:
                                     size_hint: None, None
@@ -2078,7 +2078,7 @@
                                     image_source: root.image_source
                                     fallback_text: root.fallback_text if root.fallback_text else "ME"
 
-                                # TEXT COLUMN — full width, wraps correctly
+                                # TEXT COLUMN — wraps correctly
                                 BoxLayout:
                                     orientation: "vertical"
                                     size_hint_x: 1
@@ -2108,19 +2108,6 @@
                                         text_size: self.width, None
                                         size_hint_y: None
                                         height: max(self.texture_size[1], dp(28))
-
-                                # SHARE ICON (inline)
-                                Label:
-                                    text: "🔗📤"
-                                    font_size: sp(20)
-                                    size_hint: None, None
-                                    size: dp(40), dp(40)
-                                    halign: "center"
-                                    valign: "middle"
-                                    text_size: self.size
-                                    pos_hint: {"center_y": 0.5}
-                                    on_touch_down:
-                                        root.share_current() if self.collide_point(*args[1].pos) else None
 
                                 # BACK BUTTON
                                 AppButton:
@@ -2176,6 +2163,7 @@
                                     text: "Contact"
                                     size_hint_x: 1
                                     on_release: root.unlock_contact()
+
 
 <OwnerAddPropertyScreen>:
     name: "owner_add_property"
