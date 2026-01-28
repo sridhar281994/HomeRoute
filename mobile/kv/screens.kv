@@ -2062,12 +2062,12 @@
                             spacing: dp(12)
 
                             # -----------------------------
-                            # HEADER ROW (Avatar + Title)
+                            # HEADER ROW (Avatar + Title + Share + Back)
                             # -----------------------------
                             BoxLayout:
                                 orientation: "horizontal"
                                 size_hint_y: None
-                                height: dp(92)
+                                height: self.minimum_height
                                 spacing: dp(12)
                                 padding: dp(4), dp(2)
 
@@ -2076,16 +2076,16 @@
                                     size: dp(42), dp(42)
                                     pos_hint: {"center_y": 0.5}
                                     image_source: root.image_source
-                                    fallback_text: (root.fallback_text if root.fallback_text else "ME")
+                                    fallback_text: root.fallback_text if root.fallback_text else "ME"
 
-                                # TEXT COLUMN — wraps fully
+                                # TEXT COLUMN — full width, wraps correctly
                                 BoxLayout:
                                     orientation: "vertical"
                                     size_hint_x: 1
                                     spacing: dp(4)
 
                                     Label:
-                                        text: root.property_data.get("title","(loading...)")
+                                        text: root.property_data.get("title", "(loading...)")
                                         bold: True
                                         font_size: sp(17)
                                         halign: "left"
@@ -2095,7 +2095,12 @@
                                         height: self.texture_size[1] + dp(4)
 
                                     Label:
-                                        text: "Ad #" + (str(root.property_data.get("adv_number") or root.property_data.get("ad_number") or root.property_id) if root.property_id else "") + " • " + (root.property_data.get("rent_sale") or "") + " • " + (root.property_data.get("property_type") or "") + " • " + (root.property_data.get("price_display") or "") + " • " + (root.property_data.get("location_display") or "")
+                                        text:
+                                            "Ad #" + (str(root.property_data.get("adv_number") or root.property_data.get("ad_number") or root.property_id) if root.property_id else "") + \
+                                            " • " + (root.property_data.get("rent_sale") or "") + \
+                                            " • " + (root.property_data.get("property_type") or "") + \
+                                            " • " + (root.property_data.get("price_display") or "") + \
+                                            " • " + (root.property_data.get("location_display") or "")
                                         font_size: sp(12)
                                         color: TEXT_MUTED
                                         halign: "left"
@@ -2104,8 +2109,20 @@
                                         size_hint_y: None
                                         height: max(self.texture_size[1], dp(28))
 
+                                # SHARE ICON (inline)
+                                Label:
+                                    text: "🔗📤"
+                                    font_size: sp(20)
+                                    size_hint: None, None
+                                    size: dp(40), dp(40)
+                                    halign: "center"
+                                    valign: "middle"
+                                    text_size: self.size
+                                    pos_hint: {"center_y": 0.5}
+                                    on_touch_down:
+                                        root.share_current() if self.collide_point(*args[1].pos) else None
 
-                                # Back button (fixed width)
+                                # BACK BUTTON
                                 AppButton:
                                     text: "Back"
                                     size_hint: None, None
@@ -2159,11 +2176,6 @@
                                     text: "Contact"
                                     size_hint_x: 1
                                     on_release: root.unlock_contact()
-
-                                AppButton:
-                                    text: "🔗📤"
-                                    size_hint_x: 1
-                                    on_release: root.share_current()
 
 <OwnerAddPropertyScreen>:
     name: "owner_add_property"
