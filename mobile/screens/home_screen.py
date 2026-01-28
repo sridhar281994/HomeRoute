@@ -911,7 +911,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
         # -------------------------
         # HEADER (Avatar + Title/Meta + Share)
         # -------------------------
-        header = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None, height=dp(60))
+        header = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None, height=self.minimum_height)header.bind(minimum_height=header.setter("height"))
 
         # AvatarButton from KV (shows image or fallback text like "ME")
         try:
@@ -927,34 +927,23 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         title_lbl = Label(
             text=f"[b]{title}[/b]",
+            markup=True,
             size_hint_y=None,
-            height=dp(26),
             halign="left",
-            valign="middle",
-            shorten=True,
-            shorten_from="right",
+            valign="top",
         )
-        title_lbl.bind(size=lambda *_: setattr(title_lbl, "text_size", (title_lbl.width, None)))
-        meta_lbl = Label(
-            text=str(meta),
-            size_hint_y=None,
-            height=dp(22),
-            color=(1, 1, 1, 0.78),
-            halign="left",
-            valign="middle",
-            shorten=True,
-            shorten_from="right",
+        title_lbl.bind(
+            width=lambda *_: setattr(title_lbl, "text_size", (title_lbl.width, None)),
+            texture_size=lambda *_: setattr(title_lbl, "height", title_lbl.texture_size[1] + dp(2)),
         )
+
         meta_lbl.bind(size=lambda *_: setattr(meta_lbl, "text_size", (meta_lbl.width, None)))
         hb.add_widget(title_lbl)
         hb.add_widget(meta_lbl)
         header.add_widget(hb)
 
-        btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(40))
-        btn_share.bind(on_release=do_share)
-        header.add_widget(btn_share)
-
         card.add_widget(header)
+
 
         # -------------------------
         # PHOTOS
@@ -1020,20 +1009,43 @@ class HomeScreen(GestureNavigationMixin, Screen):
             )
 
         # -------------------------
-        # CONTACT BUTTON
+        # CONTACT + SHARE BUTTONS
         # -------------------------
-        btn_row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=44)
+        btn_row = BoxLayout(
+            orientation="horizontal",
+            spacing=dp(10),
+            size_hint_y=None,
+            height=dp(44),
+        )
+        
+        # ---- Contact Button ----
         btn_contact = Factory.AppButton(
             text="Contacted" if already_contacted else "Contact owner",
-            size_hint_y=None,
-            height=44,
+            size_hint=(1, None),
+            height=dp(44),
         )
         btn_contact.disabled = already_contacted
-
-        lbl_status = Label(text="", size_hint_y=None, height=40, color=(1, 1, 1, 0.85))
+        
+        # ---- Share Button ----
+        btn_share = Factory.AppButton(
+            text="Share",
+            size_hint=(None, None),
+            width=dp(96),
+            height=dp(44),
+        )
+        btn_share.bind(on_release=do_share)
+        
+        # ---- Status Label ----
+        lbl_status = Label(
+            text="",
+            size_hint_y=None,
+            height=dp(36),
+            color=(1, 1, 1, 0.85),
+        )
+        
         if already_contacted:
             lbl_status.text = "Contact details already sent."
-
+        
         def do_contact(*_):
             sess = get_session() or {}
             if not (sess.get("token") or ""):
@@ -1041,29 +1053,29 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 if self.manager:
                     self.manager.current = "login"
                 return
-
+        
             pid_raw = p.get("id")
             try:
                 pid = int(str(pid_raw).strip())
             except (TypeError, ValueError):
                 lbl_status.text = "Invalid ad id."
                 return
-
+        
             if pid <= 0:
                 lbl_status.text = "Invalid ad id."
                 return
-
+        
             btn_contact.disabled = True
-
+        
             from threading import Thread
-
+        
             def work():
                 try:
                     contact = api_get_property_contact(pid)
                     owner_name_inner = str(contact.get("owner_name") or "").strip()
                     adv_no_inner = str(contact.get("adv_number") or contact.get("advNo") or pid).strip()
                     who = f" ({owner_name_inner})" if owner_name_inner else ""
-
+        
                     def done(*_dt):
                         p["contacted"] = True
                         btn_contact.text = "Contacted"
@@ -1071,24 +1083,27 @@ class HomeScreen(GestureNavigationMixin, Screen):
                             f"Contact details sent to your registered email/SMS for "
                             f"Ad #{adv_no_inner}{who}."
                         )
-
+        
                     Clock.schedule_once(done, 0)
                 except ApiError as e:
                     err_msg = str(e) or "Locked"
-
+        
                     def fail(*_dt):
                         btn_contact.disabled = False
                         lbl_status.text = err_msg
-
+        
                     Clock.schedule_once(fail, 0)
-
+        
             Thread(target=work, daemon=True).start()
-
+        
         btn_contact.bind(on_release=do_contact)
+        
         btn_row.add_widget(btn_contact)
+        btn_row.add_widget(btn_share)
+        
         card.add_widget(btn_row)
         card.add_widget(lbl_status)
-
+        
         return card
     
 
