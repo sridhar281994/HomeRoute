@@ -40,7 +40,7 @@ class QuickRentApp(App):
         kv_path = resource_find("kv/screens.kv") or os.path.join(base_dir, "kv", "screens.kv")
         Builder.load_file(kv_path)
 
-        sm = ScreenManager(transition=FadeTransition())
+        sm = ScreenManager()
         sm.add_widget(SplashScreen(name="splash"))
         sm.add_widget(WelcomeScreen(name="welcome"))
         sm.add_widget(LoginScreen(name="login"))
