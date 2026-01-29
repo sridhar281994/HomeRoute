@@ -456,34 +456,13 @@
             Rectangle:
                 pos: self.pos
                 size: self.size
-            Color:
-                rgba: SHINE_PURPLE
-            Ellipse:
-                size: self.width * 1.25, self.height * 0.9
-                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
-            Color:
-                rgba: (1.0, 0.72, 0.25, 0.16)
-            Ellipse:
-                size: self.width * 0.9, self.height * 0.6
-                pos: self.center_x - self.width * 0.45, self.center_y - self.height * 0.25
-            Color:
-                rgba: SHINE_WHITE
-            Ellipse:
-                size: self.width * 0.75, self.height * 0.5
-                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
-
-        Image:
-            source: "assets/flatnow_all.png"
-            fit_mode: "contain"
-            size_hint: None, None
-            size: min(root.width * 0.7, dp(320)), min(root.width * 0.7, dp(320))
-            pos_hint: {"center_x": 0.5, "center_y": 0.55}
 
         Label:
             text: "Loading..."
             font_size: sp(16)
             color: 1, 1, 1, 0.7
-            pos_hint: {"center_x": 0.5, "center_y": 0.38}
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+
 
 <WelcomeScreen>:
     name: 'welcome'
@@ -597,13 +576,16 @@
             ScrollView:
                 id: login_scroll
                 do_scroll_x: False
+                do_scroll_y: True
                 bar_width: dp(6)
                 scroll_type: ["content"]
                 scroll_timeout: 150
 
                 WebPanel:
                     size_hint_x: None
+                    size_hint_y: None
                     width: min(root.width * 0.95, dp(980))
+                    height: self.minimum_height
                     x: (root.width - self.width) / 2
                     spacing: dp(15)
 
@@ -618,7 +600,9 @@
                         text_size: (self.width, None)
                         height: self.texture_size[1] + dp(10)
 
+                    # ------------------------
                     # Account Details Box
+                    # ------------------------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
@@ -660,6 +644,7 @@
                         RelativeLayout:
                             size_hint_y: None
                             height: dp(48)
+
                             TextInput:
                                 id: password_input
                                 hint_text: "Password"
@@ -672,6 +657,7 @@
                                 padding: [dp(10), dp(10), dp(40), dp(10)]
                                 on_focus:
                                     if self.focus: root.scroll_to_field(self)
+
                             ToggleButton:
                                 id: login_password_toggle
                                 size_hint: None, None
@@ -703,12 +689,14 @@
                             size_hint_y: None
                             height: dp(32)
                             spacing: dp(10)
+
                             CheckBox:
                                 id: remember_me
                                 size_hint: None, None
                                 size: dp(32), dp(32)
                                 active: root.remember_me
                                 on_active: root.remember_me = self.active
+
                             Label:
                                 text: "Keep me logged in"
                                 color: 1, 1, 1, 0.9
@@ -720,6 +708,7 @@
                             size_hint_y: None
                             height: dp(32)
                             spacing: dp(10)
+
                             Label:
                                 text: ""
                                 size_hint_y: None
@@ -733,7 +722,9 @@
                             height: dp(44)
                             on_press: root.send_otp_to_user()
 
+                    # ------------------------
                     # OTP Box
+                    # ------------------------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
