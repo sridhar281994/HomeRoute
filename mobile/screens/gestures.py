@@ -119,7 +119,7 @@ class GestureNavigationMixin:
                 return
 
             lbl = Label(
-                text="↓ Release to refresh",
+                text="Release to refresh",
                 size_hint=(None, None),
                 size=(dp(260), dp(44)),
                 pos_hint={"center_x": 0.5, "top": 0.98},
