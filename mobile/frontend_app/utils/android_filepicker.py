@@ -169,24 +169,14 @@ def is_video_path(p: str) -> bool:
     return ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 
 
-def android_open_gallery(
-    *,
-    on_selection,
-    multiple: bool = False,
-    mime_types: list[str] | None = None,
-) -> bool:
-    """
-    Android native gallery/document picker fallback using Intent.
-    """
+def android_open_gallery(*, on_selection, multiple=False, mime_types=None) -> bool:
     _log("android_open_gallery() called")
 
     if platform != "android":
-        _log("Not running on Android → abort")
         return False
 
     try:
         from android import activity  # type: ignore
-        from android.permissions import Permission, request_permissions  # type: ignore
         from kivy.clock import Clock
         from jnius import autoclass, jarray  # type: ignore
 
@@ -195,43 +185,17 @@ def android_open_gallery(
         String = autoclass("java.lang.String")
         Activity = autoclass("android.app.Activity")
 
-        # -----------------------------
-        # Ensure runtime permissions
-        # -----------------------------
-        try:
-            perms = []
-            if hasattr(Permission, "READ_MEDIA_IMAGES"):
-                perms.append(Permission.READ_MEDIA_IMAGES)
-            if hasattr(Permission, "READ_EXTERNAL_STORAGE"):
-                perms.append(Permission.READ_EXTERNAL_STORAGE)
-            if perms:
-                _log(f"Requesting permissions: {perms}")
-                request_permissions(perms)
-        except Exception as e:
-            _log(f"Permission request failed: {e}")
-
-        # -----------------------------
-        # Build intent safely
-        # -----------------------------
-        _log("Building picker intent")
+        act = PythonActivity.mActivity
+        ctx = act.getApplicationContext()
+        resolver = ctx.getContentResolver()
 
         intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         intent.addCategory(Intent.CATEGORY_OPENABLE)
-        intent.addCategory(Intent.CATEGORY_DEFAULT)
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        # Persist access long enough for ensure_local_paths() to copy into cache.
-        try:
-            intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        except Exception:
-            pass
 
-        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
-        if not mimes:
-            mimes = ["image/*"]
+        mimes = mime_types or ["image/*"]
+        intent.setType(mimes[0])
 
-        _log(f"MIME types: {mimes}")
-
-        intent.setType(str(mimes[0]))
         if len(mimes) > 1:
             arr = jarray("java.lang.String")([String(m) for m in mimes])
             intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
@@ -240,104 +204,41 @@ def android_open_gallery(
         chooser = Intent.createChooser(intent, "Select file")
         req_code = 13579
 
-        def _deliver(sel: list[str]) -> None:
-            _log(f"Delivering selection: {sel}")
-            try:
-                Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
-            except Exception as e:
-                _log(f"Deliver callback failed: {e}")
+        def _deliver(sel):
+            Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
 
-        def _on_activity_result(requestCode, resultCode, data) -> None:
-            _log(f"Activity result → request={requestCode}, result={resultCode}, data={data}")
-
-            if int(requestCode) != int(req_code):
-                _log("Ignoring unrelated activity result")
+        def _on_activity_result(requestCode, resultCode, data):
+            if requestCode != req_code:
                 return
 
-            # Best-effort: unbind after handling our request
             try:
                 activity.unbind(on_activity_result=_on_activity_result)
             except Exception:
                 pass
 
-            if int(resultCode) != int(Activity.RESULT_OK) or data is None:
-                _log("Picker canceled or empty result")
+            if resultCode != Activity.RESULT_OK or data is None:
                 _deliver([])
                 return
 
-            out: list[str] = []
-            try:
-                clip = data.getClipData()
-            except Exception:
-                clip = None
+            out = []
 
-            if clip is not None:
-                try:
-                    n = int(clip.getItemCount())
-                except Exception:
-                    n = 0
-                _log(f"ClipData count: {n}")
-                for i in range(max(0, n)):
-                    try:
-                        item = clip.getItemAt(i)
-                        uri = item.getUri()
-                        if uri is not None:
-                            # Persistable permission (best-effort)
-                            try:
-                                take_flags = int(data.getFlags()) & int(
-                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                )
-                                resolver.takePersistableUriPermission(uri, take_flags)
-                            except Exception:
-                                pass
-                            out.append(str(uri.toString()))
-                    except Exception as e:
-                        _log(f"Clip read error: {e}")
-            else:
-                try:
-                    uri = data.getData()
-                    if uri is not None:
-                        try:
-                            take_flags = int(data.getFlags()) & int(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            resolver.takePersistableUriPermission(uri, take_flags)
-                        except Exception:
-                            pass
+            clip = data.getClipData()
+            if clip:
+                for i in range(clip.getItemCount()):
+                    uri = clip.getItemAt(i).getUri()
+                    if uri:
                         out.append(str(uri.toString()))
-                except Exception as e:
-                    _log(f"Data URI read error: {e}")
+            else:
+                uri = data.getData()
+                if uri:
+                    out.append(str(uri.toString()))
 
             _deliver(out)
 
-        # -----------------------------
-        # Register callback safely
-        # -----------------------------
-        # -----------------------------
-        # Register callback safely
-        # -----------------------------
-        try:
-            _log("Registering activity result callback")
-            try:
-                activity.bind(on_activity_result=_on_activity_result)
-            except Exception:
-                # Legacy fallback
-                activity.result_callback = _on_activity_result
-        except Exception as e:
-            _log(f"Callback registration failed: {e}")
-            return False
-
-        # -----------------------------
-        # Launch picker
-        # -----------------------------
-        try:
-            _log("Launching chooser intent")
-            act = PythonActivity.mActivity
-            act.startActivityForResult(chooser, req_code)
-            _log("Picker launched successfully")
-            return True
-        except Exception as e:
-            _log(f"startActivityForResult failed: {e}")
-            return False
+        activity.bind(on_activity_result=_on_activity_result)
+        act.startActivityForResult(chooser, req_code)
+        return True
 
     except Exception as e:
-        _log(f"android_open_gallery fatal error: {e}")
+        _log(f"Picker failed: {e}")
         return False
