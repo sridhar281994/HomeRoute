@@ -121,7 +121,7 @@ class SplashScreen(GestureNavigationMixin, Screen):
         except Exception:
             pass
         # Small delay then continue to Welcome or Home (if already logged in).
-        Clock.schedule_once(lambda _dt: self._go_next(), 0.9)
+        Clock.schedule_once(lambda _dt: self._go_next(), 0.5)
 
     def on_leave(self, *args):
         try:
@@ -626,148 +626,29 @@ class SettingsScreen(GestureNavigationMixin, Screen):
         Thread(target=work, daemon=True).start()
 
     def open_image_picker(self):
-        def _open_picker() -> None:
-            # Android: prefer native SAF picker (no folder scanning).
+        def _on_sel(selection):
             try:
-                from kivy.utils import platform as _platform
-            except Exception:
-                _platform = ""
+                paths = ensure_local_paths(selection or [])
+                img = next((p for p in paths if is_image_path(p)), "")
+                if img:
+                    self.upload_profile_image(img)
+            except Exception as e:
+                _popup("Error", f"Pick failed: {e}")
 
-            if _platform == "android":
-                try:
-                    from plyer import filechooser  # type: ignore
-                except Exception:
-                    filechooser = None
-            
-                def _on_sel(selection):
-                    try:
-                        paths = ensure_local_paths(selection or [])
-                        img = next((p for p in paths if is_image_path(p)), "")
-                        if img:
-                            self.upload_profile_image(img)
-                    except Exception:
-                        return
-            
-                # ✅ Try plyer first (most stable)
-                if filechooser is not None:
-                    try:
-                        filechooser.open_file(on_selection=_on_sel, multiple=False)
-                        return
-                    except Exception:
-                        pass
-            
-                # ✅ Fallback to native intent
-                launched = android_open_gallery(
-                    on_selection=_on_sel,
-                    multiple=False,
-                    mime_types=["image/*"],
-                )
-                if not launched:
-                    _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
-                return
+        def _open():
+            launched = android_open_gallery(
+                on_selection=_on_sel,
+                multiple=False,
+                mime_types=["image/*"],
+            )
+            if not launched:
+                _popup("Picker Error", "Unable to open system picker.")
 
-
-
-            from kivy.uix.behaviors import ButtonBehavior
-            from kivy.uix.floatlayout import FloatLayout
-            from kivy.uix.gridlayout import GridLayout
-            from kivy.uix.image import AsyncImage
-            from kivy.uix.scrollview import ScrollView
-
-            def _collect_roots() -> list[str]:
-                roots: list[str] = []
-                primary = _default_media_dir()
-                if primary:
-                    roots.append(primary)
-                for extra in [
-                    "/storage/emulated/0/DCIM",
-                    "/storage/emulated/0/Pictures",
-                    "/sdcard/DCIM",
-                    "/sdcard/Pictures",
-                ]:
-                    if extra not in roots and os.path.isdir(extra):
-                        roots.append(extra)
-                return roots
-
-            def _list_images() -> list[str]:
-                exts = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-                seen: set[str] = set()
-                out: list[str] = []
-                for root in _collect_roots():
-                    for dirpath, _dirs, files in os.walk(root):
-                        for name in files:
-                            ext = os.path.splitext(name.lower())[1]
-                            if ext not in exts:
-                                continue
-                            fp = os.path.join(dirpath, name)
-                            if fp in seen:
-                                continue
-                            seen.add(fp)
-                            out.append(fp)
-                            if len(out) >= 400:
-                                break
-                        if len(out) >= 400:
-                            break
-                    if len(out) >= 400:
-                        break
-
-                def _mtime(path: str) -> float:
-                    try:
-                        return os.path.getmtime(path)
-                    except Exception:
-                        return 0.0
-
-                out.sort(key=_mtime, reverse=True)
-                return out
-
-            class _ImageTile(ButtonBehavior, FloatLayout):
-                def __init__(self, file_path: str, **kwargs):
-                    super().__init__(**kwargs)
-                    self.file_path = file_path
-                    img = AsyncImage(source=file_path, fit_mode="fill")
-                    self.add_widget(img)
-
-            popup = Popup(title="Choose Profile Image", size_hint=(0.94, 0.94), auto_dismiss=False)
-
-            grid = GridLayout(cols=3, spacing=dp(8), size_hint_y=None)
-            grid.bind(minimum_height=grid.setter("height"))
-            scroll = ScrollView(do_scroll_x=False, bar_width=dp(6))
-            scroll.add_widget(grid)
-
-            def select_image(fp: str) -> None:
-                try:
-                    popup.dismiss()
-                    self.upload_profile_image(fp)
-                except Exception:
-                    popup.dismiss()
-
-            images = _list_images()
-            for fp in images:
-                tile = _ImageTile(fp, size_hint_y=None, height=dp(110))
-                tile.bind(on_release=lambda _btn, p=fp: select_image(p))
-                grid.add_widget(tile)
-
-            if not images:
-                grid.add_widget(Label(text="No photos found.", size_hint_y=None, height=dp(32), color=(1, 1, 1, 0.75)))
-
-            buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10), padding=[dp(10), dp(10)])
-            btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
-            buttons.add_widget(btn_cancel)
-
-            root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
-            root.add_widget(Label(text="Tap an image to upload immediately."))
-            root.add_widget(scroll)
-            root.add_widget(buttons)
-
-            popup.content = root
-            btn_cancel.bind(on_release=lambda *_: popup.dismiss())
-            popup.open()
-
-        def _after(ok: bool) -> None:
+        def _after(ok: bool):
             if not ok:
-                _popup("Permission required", "Please allow Photos/Media permission to upload images.")
+                _popup("Permission", "Media permission required.")
                 return
-            _open_picker()
+            _open()
 
         ensure_permissions(required_media_permissions(), on_result=_after)
 
