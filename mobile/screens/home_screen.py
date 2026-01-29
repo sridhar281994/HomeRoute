@@ -6,7 +6,7 @@ from typing import Any
 
 from kivy.clock import Clock
 from kivy.factory import Factory
-from kivy.metrics import dp
+from kivy.metrics import dp, sp
 from kivy.properties import (
     BooleanProperty,
     ListProperty,
@@ -43,6 +43,7 @@ from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 
 from screens.gestures import GestureNavigationMixin
+
 
 def _popup(title: str, message: str) -> None:
     def _open(*_):
@@ -163,7 +164,8 @@ class AreaSelectPopup(Popup):
                 grid.add_widget(row)
 
             if not self._areas_all():
-                grid.add_widget(Label(text="No areas available.", size_hint_y=None, height=dp(32), color=(1, 1, 1, 0.75)))
+                grid.add_widget(
+                    Label(text="No areas available.", size_hint_y=None, height=dp(32), color=(1, 1, 1, 0.75)))
 
         def on_search(*_):
             self._query = (search.text or "").strip()
@@ -284,6 +286,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
         Clock.schedule_once(lambda _dt: self.refresh(), 0)
         # Enable gesture capture even when ScrollView consumes touches.
         self.gesture_bind_window()
+
+        Clock.schedule_once(lambda *_: self._show_refresh_indicator(), 1)
+        Clock.schedule_once(lambda *_: self._hide_refresh_indicator(), 3)
 
     def on_leave(self, *args):
         # Avoid leaking Window bindings when screen is not visible.
@@ -496,7 +501,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
             )
             return
 
-        options = [str(x).strip() for x in (self.area_options or []) if str(x).strip() and str(x).strip().lower() != "any"]
+        options = [str(x).strip() for x in (self.area_options or []) if
+                   str(x).strip() and str(x).strip().lower() != "any"]
         q = str(self.area_search or "").strip().lower()
         if q:
             options = [x for x in options if q in x.lower()]
@@ -560,7 +566,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 height=dp(32),
                 color=(1, 1, 1, 0.75),
             )
-            lbl_more.bind(texture_size=lambda _lbl, _ts: setattr(_lbl, "width", max(dp(70), _lbl.texture_size[0] + dp(12))))
+            lbl_more.bind(
+                texture_size=lambda _lbl, _ts: setattr(_lbl, "width", max(dp(70), _lbl.texture_size[0] + dp(12))))
             lbl_more.width = max(dp(70), lbl_more.texture_size[0] + dp(12))
             container.add_widget(lbl_more)
 
@@ -596,9 +603,23 @@ class HomeScreen(GestureNavigationMixin, Screen):
         Thread(target=work, daemon=True).start()
 
     def _apply_avatar(self, u: dict[str, Any]) -> None:
-        # Always show "ME" when no profile image is available
-        self.avatar_letter = "ME"
-        self.profile_image_url = to_api_url(str(u.get("profile_image_url") or ""))
+        # Profile image
+        img = str(u.get("profile_image_url") or "").strip()
+        self.profile_image_url = to_api_url(img) if img else ""
+
+        # Fallback initial from user name
+        name = str(
+            u.get("name")
+            or u.get("full_name")
+            or u.get("username")
+            or u.get("email")
+            or ""
+        ).strip()
+
+        if name:
+            self.avatar_letter = name[0].upper()
+        else:
+            self.avatar_letter = "ME"
 
 
     def _apply_preferred_state(self) -> bool:
@@ -740,6 +761,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
         """
         Manual action from Home screen button.
         """
+
         def after(ok: bool) -> None:
             # Always log so we can debug issues via `adb logcat` / console output.
             try:
@@ -775,19 +797,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         ensure_permissions(required_location_permissions(), on_result=after)
 
-    def feed_card(self, raw: dict[str, Any]) -> BoxLayout:
-        """
-        Public wrapper to build a feed card.
-
-        Other screens (e.g. My Posts) call this method to reuse the layout without
-        reaching into a protected member.
-        """
-        return self._feed_card(raw)
-
     def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
         """
         Build a feed card roughly matching the web UI:
-        title/meta header, optional media preview, and an action button.
+        title/meta header, optional media preview, and action buttons.
         """
         p = raw or {}
         title = str(p.get("title") or "Property").strip()
@@ -795,7 +808,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         owner_name = str(p.get("owner_name") or p.get("posted_by") or p.get("user_name") or "").strip()
         owner_initial = owner_name[:1].upper() if owner_name else "U"
-        owner_image_raw = str(p.get("owner_image") or p.get("profile_image") or p.get("user_avatar") or "").strip()
+        owner_image_raw = str(
+            p.get("owner_image") or p.get("profile_image") or p.get("user_avatar") or ""
+        ).strip()
         owner_image_url = to_api_url(owner_image_raw) if owner_image_raw else ""
 
         distance_txt = ""
@@ -823,14 +838,14 @@ class HomeScreen(GestureNavigationMixin, Screen):
             [
                 x
                 for x in [
-                    distance_txt,
-                    f"Ad #{adv_no}" if adv_no else "",
-                    str(p.get("rent_sale") or ""),
-                    str(p.get("property_type") or ""),
-                    str(p.get("price_display") or ""),
-                    str(p.get("location_display") or ""),
-                    created_txt,
-                ]
+                distance_txt,
+                f"Ad #{adv_no}" if adv_no else "",
+                str(p.get("rent_sale") or ""),
+                str(p.get("property_type") or ""),
+                str(p.get("price_display") or ""),
+                str(p.get("location_display") or ""),
+                created_txt,
+            ]
                 if x
             ]
         )
@@ -838,14 +853,27 @@ class HomeScreen(GestureNavigationMixin, Screen):
         images = self._extract_media_items(p)
         already_contacted = bool(p.get("contacted"))
 
-        card = BoxLayout(orientation="vertical", padding=(12, 10), spacing=8, size_hint_y=None)
-        card.bind(minimum_height=card.setter("height"))
+        # =========================================================
+        # CARD ROOT
+        # =========================================================
+        card = BoxLayout(
+            orientation="vertical",
+            padding=(12, 12),
+            spacing=10,
+            size_hint_y=None,
+        )
+
+        # Card height strictly follows content
+        card.bind(minimum_height=lambda *_: setattr(card, "height", card.minimum_height))
 
         with card.canvas.before:
             Color(0, 0, 0, 0.35)
             rect = RoundedRectangle(pos=card.pos, size=card.size, radius=[16])
             Color(1, 1, 1, 0.12)
-            border = Line(rounded_rectangle=[card.x, card.y, card.width, card.height, 16], width=1.0)
+            border = Line(
+                rounded_rectangle=[card.x, card.y, card.width, card.height, 16],
+                width=1.0,
+            )
 
         def _sync_bg(*_):
             rect.pos = card.pos
@@ -854,153 +882,122 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         card.bind(pos=_sync_bg, size=_sync_bg)
 
-        def do_share(*_):
-            try:
-                pid_raw = p.get("id")
-                pid = int(str(pid_raw).strip()) if pid_raw is not None else 0
-            except Exception:
-                pid = 0
+        # =========================================================
+        # HEADER (Avatar + Title + Meta)
+        # =========================================================
+        header = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None)
+        header.bind(minimum_height=header.setter("height"))
 
-            title_s = str(p.get("title") or "Property").strip()
-            adv = str(p.get("adv_number") or p.get("ad_number") or pid or "").strip()
-            meta_lines = []
-            for x in [
-                str(p.get("rent_sale") or "").strip(),
-                str(p.get("property_type") or "").strip(),
-                str(p.get("price_display") or "").strip(),
-                str(p.get("location_display") or "").strip(),
-            ]:
-                if x:
-                    meta_lines.append(x)
-
-            api_link = to_api_url(f"/property/{pid}") if pid else ""
-            img_link = ""
-            try:
-                imgs = self._extract_media_items(p)
-                if imgs:
-                    img_link = to_api_url(str((imgs[0] or {}).get("url") or "").strip())
-            except Exception:
-                img_link = ""
-
-            subject = f"{title_s} (Ad #{adv})" if adv else title_s
-            body = "\n".join(
-                [
-                    x
-                    for x in [
-                        title_s,
-                        (" • ".join(meta_lines) if meta_lines else ""),
-                        api_link,
-                        (f"Image: {img_link}" if img_link else ""),
-                    ]
-                    if x
-                ]
-            )
-
-            launched = share_text(subject=subject, text=body)
-            if launched:
-                _popup("Share", "Choose an app to share this post.")
-                return
-            try:
-                from kivy.core.clipboard import Clipboard
-
-                Clipboard.copy(body)
-                _popup("Share", "Copied share text to clipboard.")
-            except Exception:
-                _popup("Share", body)
-
-        # -------------------------
-        # HEADER (Avatar + Title/Meta + Share)
-        # -------------------------
-        header = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None, height=self.minimum_height)header.bind(minimum_height=header.setter("height"))
-
-        # AvatarButton from KV (shows image or fallback text like "ME")
         try:
             avatar = Factory.AvatarButton(size_hint=(None, None), size=(dp(44), dp(44)))
             avatar.image_source = owner_image_url
             avatar.fallback_text = owner_initial or "ME"
             header.add_widget(avatar)
         except Exception:
-            header.add_widget(Label(text=owner_initial or "ME", size_hint=(None, None), size=(dp(44), dp(44))))
+            header.add_widget(
+                Label(text=owner_initial or "ME", size_hint=(None, None), size=(dp(44), dp(44)))
+            )
 
         hb = BoxLayout(orientation="vertical", spacing=dp(2))
         hb.size_hint_x = 1
 
+        # Title
         title_lbl = Label(
             text=f"[b]{title}[/b]",
             markup=True,
             size_hint_y=None,
             halign="left",
-            valign="top",
-        )
-        title_lbl.bind(
-            width=lambda *_: setattr(title_lbl, "text_size", (title_lbl.width, None)),
-            texture_size=lambda *_: setattr(title_lbl, "height", title_lbl.texture_size[1] + dp(2)),
+            valign="middle",
         )
 
-        meta_lbl.bind(size=lambda *_: setattr(meta_lbl, "text_size", (meta_lbl.width, None)))
+        def _resize_title(*_):
+            w = max(1, title_lbl.width)
+            fs = max(sp(12), min(sp(18), w * 0.052))
+            title_lbl.font_size = fs
+            title_lbl.text_size = (w, None)
+            title_lbl.height = title_lbl.texture_size[1] + dp(4)
+
+        title_lbl.bind(width=_resize_title, texture_size=_resize_title)
+
+        # Meta
+        meta_lbl = Label(
+            text=str(meta),
+            size_hint_y=None,
+            color=(1, 1, 1, 0.78),
+            halign="left",
+            valign="middle",
+        )
+
+        def _resize_meta(*_):
+            w = max(1, meta_lbl.width)
+            fs = max(sp(10), min(sp(14), w * 0.040))
+            meta_lbl.font_size = fs
+            meta_lbl.text_size = (w, None)
+            meta_lbl.height = max(meta_lbl.texture_size[1], dp(22))
+
+        meta_lbl.bind(width=_resize_meta, texture_size=_resize_meta)
+
         hb.add_widget(title_lbl)
         hb.add_widget(meta_lbl)
         header.add_widget(hb)
-
         card.add_widget(header)
 
-
-        # -------------------------
-        # PHOTOS
-        # -------------------------
-        card.add_widget(Label(text="[b]Photos[/b]", size_hint_y=None, height=22))
-        thumb_h = dp(220)
+        # =========================================================
+        # PHOTOS — guaranteed vertical stretch
+        # =========================================================
         if images:
-            media = list(images)[:6]
-            grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
-            rows = (len(media) + 1) // 2
-            grid.height = rows * thumb_h + max(0, rows - 1) * dp(8)
+            media = list(images)[:4]  # 2x2 grid
+            grid = GridLayout(cols=2, spacing=dp(6), size_hint_y=None)
+
+            CELL_RATIO = 1.20  # taller than wide
+
+            def _resize_grid(*_):
+                if grid.width <= 0:
+                    return
+
+                cell_w = (grid.width - dp(6)) / 2
+                cell_h = cell_w * CELL_RATIO
+                rows = (len(media) + 1) // 2
+
+                grid.height = rows * cell_h + max(0, rows - 1) * dp(6)
+
+                for child in grid.children:
+                    child.size_hint = (1, None)
+                    child.height = cell_h
+
+            grid.bind(width=_resize_grid)
 
             for it in media:
                 it = it or {}
-                ctype = str(it.get("content_type") or "").lower()
-                if ctype.startswith("video/"):
-                    grid.add_widget(
-                        Label(text="(Video)", size_hint_y=None, height=thumb_h, color=(1, 1, 1, 0.78))
-                    )
-                else:
-                    img = AsyncImage(source=to_api_url(it.get("url") or ""), fit_mode="fill")
-                    img.size_hint_y = None
-                    img.height = thumb_h
-                    grid.add_widget(img)
 
+                img = AsyncImage(
+                    source=to_api_url(it.get("url") or ""),
+                    allow_stretch=True,
+                    keep_ratio=False,
+                )
+                img.size_hint = (1, None)
+
+                # Recalculate when texture loads
+                img.bind(texture=lambda *_: _resize_grid())
+
+                grid.add_widget(img)
+
+            Clock.schedule_once(lambda *_: _resize_grid(), 0)
             card.add_widget(grid)
+
         else:
-            grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
-            grid.height = thumb_h
+            card.add_widget(
+                Label(
+                    text="No Photos",
+                    size_hint_y=None,
+                    height=dp(32),
+                    color=(1, 1, 1, 0.78),
+                )
+            )
 
-            def _placeholder_tile() -> BoxLayout:
-                tile = BoxLayout(size_hint_y=None, height=thumb_h)
-                with tile.canvas.before:
-                    Color(0, 0, 0, 0.22)
-                    r = RoundedRectangle(pos=tile.pos, size=tile.size, radius=[dp(12)])
-                    Color(1, 1, 1, 0.12)
-                    b = Line(
-                        rounded_rectangle=[tile.x, tile.y, tile.width, tile.height, dp(12)],
-                        width=1.0,
-                    )
-
-                def _sync_tile(*_):
-                    r.pos = tile.pos
-                    r.size = tile.size
-                    b.rounded_rectangle = [tile.x, tile.y, tile.width, tile.height, dp(12)]
-
-                tile.bind(pos=_sync_tile, size=_sync_tile)
-                return tile
-
-            grid.add_widget(_placeholder_tile())
-            grid.add_widget(_placeholder_tile())
-            card.add_widget(grid)
-            card.add_widget(Label(text="No Photos", size_hint_y=None, height=22, color=(1, 1, 1, 0.78)))
-
-        # -------------------------
+        # =========================================================
         # AMENITIES
-        # -------------------------
+        # =========================================================
         amenities = [str(x).strip() for x in (p.get("amenities") or []) if str(x).strip()]
         if amenities:
             card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
@@ -1008,104 +1005,36 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 Label(text=", ".join(amenities), size_hint_y=None, height=36, color=(1, 1, 1, 0.85))
             )
 
-        # -------------------------
-        # CONTACT + SHARE BUTTONS
-        # -------------------------
+        # =========================================================
+        # CONTACT + SHARE BUTTONS  (NO EXTRA SPACE)
+        # =========================================================
         btn_row = BoxLayout(
             orientation="horizontal",
             spacing=dp(10),
             size_hint_y=None,
             height=dp(44),
         )
-        
-        # ---- Contact Button ----
+
         btn_contact = Factory.AppButton(
             text="Contacted" if already_contacted else "Contact owner",
             size_hint=(1, None),
             height=dp(44),
         )
         btn_contact.disabled = already_contacted
-        
-        # ---- Share Button ----
+
         btn_share = Factory.AppButton(
             text="Share",
             size_hint=(None, None),
             width=dp(96),
             height=dp(44),
         )
-        btn_share.bind(on_release=do_share)
-        
-        # ---- Status Label ----
-        lbl_status = Label(
-            text="",
-            size_hint_y=None,
-            height=dp(36),
-            color=(1, 1, 1, 0.85),
-        )
-        
-        if already_contacted:
-            lbl_status.text = "Contact details already sent."
-        
-        def do_contact(*_):
-            sess = get_session() or {}
-            if not (sess.get("token") or ""):
-                lbl_status.text = "Login required to contact owner."
-                if self.manager:
-                    self.manager.current = "login"
-                return
-        
-            pid_raw = p.get("id")
-            try:
-                pid = int(str(pid_raw).strip())
-            except (TypeError, ValueError):
-                lbl_status.text = "Invalid ad id."
-                return
-        
-            if pid <= 0:
-                lbl_status.text = "Invalid ad id."
-                return
-        
-            btn_contact.disabled = True
-        
-            from threading import Thread
-        
-            def work():
-                try:
-                    contact = api_get_property_contact(pid)
-                    owner_name_inner = str(contact.get("owner_name") or "").strip()
-                    adv_no_inner = str(contact.get("adv_number") or contact.get("advNo") or pid).strip()
-                    who = f" ({owner_name_inner})" if owner_name_inner else ""
-        
-                    def done(*_dt):
-                        p["contacted"] = True
-                        btn_contact.text = "Contacted"
-                        lbl_status.text = (
-                            f"Contact details sent to your registered email/SMS for "
-                            f"Ad #{adv_no_inner}{who}."
-                        )
-        
-                    Clock.schedule_once(done, 0)
-                except ApiError as e:
-                    err_msg = str(e) or "Locked"
-        
-                    def fail(*_dt):
-                        btn_contact.disabled = False
-                        lbl_status.text = err_msg
-        
-                    Clock.schedule_once(fail, 0)
-        
-            Thread(target=work, daemon=True).start()
-        
-        btn_contact.bind(on_release=do_contact)
-        
+
         btn_row.add_widget(btn_contact)
         btn_row.add_widget(btn_share)
-        
+
         card.add_widget(btn_row)
-        card.add_widget(lbl_status)
-        
+
         return card
-    
 
     def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
         src = None
