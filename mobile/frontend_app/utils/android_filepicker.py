@@ -176,12 +176,8 @@ def android_open_gallery(
     mime_types: list[str] | None = None,
 ) -> bool:
     """
-    Android system picker (SAF) for images/videos/files.
-
-    - UI-thread safe
-    - Android 10–14 compatible
-    - No storage permission required
-    - Returns content:// URIs
+    Android system picker (SAF).
+    Android 10–14 safe, PyJNIus-safe (no jarray).
     """
 
     if platform != "android":
@@ -190,12 +186,15 @@ def android_open_gallery(
     try:
         from android import activity  # type: ignore
         from kivy.clock import Clock
-        from jnius import autoclass, jarray  # type: ignore
+        from jnius import autoclass  # type: ignore
 
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
         Activity = autoclass("android.app.Activity")
-        String = autoclass("java.lang.String")
+        JavaString = autoclass("java.lang.String")
+
+        # Java String[] class
+        StringArray = autoclass("[Ljava.lang.String;")
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
@@ -211,7 +210,9 @@ def android_open_gallery(
             intent.setType(mimes[0])
         else:
             intent.setType("*/*")
-            arr = jarray("java.lang.String")([String(m) for m in mimes])
+            arr = StringArray(len(mimes))
+            for i, m in enumerate(mimes):
+                arr[i] = JavaString(m)
             intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
@@ -223,15 +224,15 @@ def android_open_gallery(
         except Exception:
             pass
 
-        # 🔐 Check picker availability (OEM safety)
+        # OEM safety
         if intent.resolveActivity(pm) is None:
-            _log("No system picker available on this device")
+            _log("No system picker available")
             return False
 
         chooser = Intent.createChooser(intent, "Select file")
         req_code = 13579
 
-        def _deliver(sel: list[str]) -> None:
+        def _deliver(sel):
             Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
 
         def _on_activity_result(requestCode, resultCode, data):
@@ -247,7 +248,7 @@ def android_open_gallery(
                 _deliver([])
                 return
 
-            out: list[str] = []
+            out = []
 
             clip = data.getClipData()
             if clip:
@@ -264,8 +265,11 @@ def android_open_gallery(
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        # 🔴 CRITICAL FIX: always launch on UI thread with delay
-        Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, req_code), 0.15)
+        # 🔴 MUST run on UI thread
+        Clock.schedule_once(
+            lambda *_: act.startActivityForResult(chooser, req_code),
+            0.15,
+        )
 
         return True
 
