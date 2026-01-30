@@ -176,12 +176,11 @@ def android_open_gallery(
     mime_types: list[str] | None = None,
 ) -> bool:
     """
-    WhatsApp / Slack style picker behavior:
+    System picker (SAF) for images/videos/files.
 
-    - Images/Videos  -> ACTION_PICK (MediaStore gallery UI)
-    - Other files    -> ACTION_OPEN_DOCUMENT
-    - No storage permissions required
-    - Returns content:// URIs which are later copied to cache
+    - Uses ACTION_OPEN_DOCUMENT (supports images + videos reliably)
+    - No storage permissions required (works on Android 10+ scoped storage)
+    - Returns content:// URIs which are later copied to cache via ensure_local_paths()
     """
     if platform != "android":
         return False
@@ -195,7 +194,6 @@ def android_open_gallery(
         Intent = autoclass("android.content.Intent")
         Activity = autoclass("android.app.Activity")
         String = autoclass("java.lang.String")
-        MediaStore = autoclass("android.provider.MediaStore")
 
         act = PythonActivity.mActivity
         ctx = act.getApplicationContext()
@@ -204,33 +202,28 @@ def android_open_gallery(
         if not mimes:
             mimes = ["image/*"]
 
-        is_media = any(
-            m.startswith("image/") or m.startswith("video/")
-            for m in mimes
-        )
-
-        # -------------------------
-        # Choose intent type
-        # -------------------------
-        if is_media:
-            # WhatsApp / Slack gallery-style picker
-            intent = Intent(Intent.ACTION_PICK)
-            intent.setDataAndType(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                mimes[0],
-            )
-        else:
-            # File picker (Drive, Downloads, Files)
-            intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            intent.addCategory(Intent.CATEGORY_OPENABLE)
+        # Always use the SAF document picker (reliable across Android versions).
+        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        if len(mimes) == 1:
             intent.setType(mimes[0])
-
-            if len(mimes) > 1:
-                arr = jarray("java.lang.String")([String(m) for m in mimes])
-                intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+        else:
+            # Multiple mime types: SAF expects type "*/*" + EXTRA_MIME_TYPES.
+            intent.setType("*/*")
+            arr = jarray("java.lang.String")([String(m) for m in mimes])
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        # Best-effort: allow access even if the app process restarts before copy.
+        try:
+            intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        except Exception:
+            pass
+        try:
+            intent.addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+        except Exception:
+            pass
 
         chooser = Intent.createChooser(intent, "Select file")
         req_code = 13579

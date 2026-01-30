@@ -683,9 +683,9 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 _popup("Picker Error", "Unable to open system picker.")
 
         def _after(ok: bool):
+            # SAF picker works even without media permissions on modern Android.
             if not ok:
-                _popup("Permission", "Media permission required.")
-                return
+                _popup("Permission", "Media permission denied. Opening system picker anyway.")
             _open()
 
         ensure_permissions(required_media_permissions(), on_result=_after)
@@ -1252,6 +1252,21 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     if not launched:
                         _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
                     return
+
+        # On modern Android, SAF works even without storage permissions.
+        # Still request media permissions best-effort (older devices / OEM pickers).
+        try:
+            from kivy.utils import platform as _platform
+        except Exception:
+            _platform = ""
+        if _platform == "android":
+            def _after(_ok: bool) -> None:
+                _open_picker()
+
+            ensure_permissions(required_media_permissions(), on_result=_after)
+            return
+
+        _open_picker()
 
             """
             Custom media picker:
