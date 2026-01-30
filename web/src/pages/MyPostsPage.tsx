@@ -101,10 +101,7 @@ export default function MyPostsPage() {
                               const pid = Number(p.id);
                               const url = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
                               const title = String(p.title || "Property").trim() || "Property";
-                              const adv = String(p.adv_number || p.ad_number || p.id || "").trim();
                               const meta = [
-                                adv ? `Ad #${adv}` : "",
-                                `status: ${String(p.status || "").trim() || "unknown"}`,
                                 String(p.rent_sale || "").trim(),
                                 String(p.property_type || "").trim(),
                                 String(p.price_display || "").trim(),
@@ -112,8 +109,7 @@ export default function MyPostsPage() {
                               ]
                                 .filter(Boolean)
                                 .join(" • ");
-                              const img = p.images?.length ? toApiUrl(p.images[0].url) : "";
-                              const text = [title, meta, img ? `Image: ${img}` : ""].filter(Boolean).join("\n");
+                              const text = [title, meta].filter(Boolean).join("\n");
                               const res = await sharePost({ title, text, url });
                               if (res === "copied") setMsg("Copied share text to clipboard.");
                             }}

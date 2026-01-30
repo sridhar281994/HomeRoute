@@ -426,17 +426,22 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
                 meta_lines.append(x)
         # Prefer linking to the web UI route if hosted on the same domain.
         api_link = to_api_url(f"/property/{pid}") if pid else ""
-        img_link = ""
-        try:
-            imgs = self._extract_media_items(p)
-            if imgs:
-                img_link = to_api_url(str((imgs[0] or {}).get("url") or "").strip())
-        except Exception:
-            img_link = ""
-        subject = f"{title_s} (Ad #{adv})" if adv else title_s
-        body = "\n".join(
-            [x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link, (f"Image: {img_link}" if img_link else "")] if x]
+        # Share format (3 lines):
+        # Title
+        # rent • type • price • location
+        # URL
+        share_meta = " • ".join(
+            x
+            for x in [
+                str(p.get("rent_sale") or "").strip(),
+                str(p.get("property_type") or "").strip(),
+                str(p.get("price_display") or "").strip(),
+                str(p.get("location_display") or "").strip(),
+            ]
+            if x
         )
+        subject = title_s
+        body = "\n".join([x for x in [title_s, share_meta, api_link] if x])
 
         launched = share_text(subject=subject, text=body)
         if launched:

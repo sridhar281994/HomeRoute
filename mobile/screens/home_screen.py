@@ -1034,7 +1034,19 @@ class HomeScreen(GestureNavigationMixin, Screen):
         def on_share(_btn):
             print("SHARE PRESSED")
             subject = "Share Property"
-            body = f"{title}\n{p.get('price_display', '')}"
+            pid = p.get("id")
+            share_url = to_api_url(f"/property/{pid}") if pid else ""
+            meta = " • ".join(
+                x
+                for x in [
+                    str(p.get("rent_sale") or "").strip(),
+                    str(p.get("property_type") or "").strip(),
+                    str(p.get("price_display") or "").strip(),
+                    str(p.get("location_display") or "").strip(),
+                ]
+                if x
+            )
+            body = "\n".join([x for x in [str(title or "").strip(), meta, share_url] if x])
 
             launched = share_text(subject=subject, text=body)
 

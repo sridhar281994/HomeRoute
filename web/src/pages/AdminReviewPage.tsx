@@ -417,19 +417,15 @@ export default function AdminReviewPage() {
                       aria-label="Share"
                       onClick={async () => {
                         const title = String(p.title || "Property").trim() || "Property";
-                        const adv = String(p.adv_number || p.ad_number || p.id || "").trim();
                         const meta = [
-                          adv ? `Ad #${adv}` : "",
                           String(p.rent_sale || "").trim(),
                           String(p.property_type || "").trim(),
                           String(p.price_display || "").trim(),
                           String(p.location_display || "").trim(),
-                          `status: ${String(p.status || "").trim() || "unknown"}`,
                         ]
                           .filter(Boolean)
                           .join(" • ");
-                        const img = p.images?.length ? toApiUrl(p.images[0].url) : "";
-                        const text = [title, meta, img ? `Image: ${img}` : ""].filter(Boolean).join("\n");
+                        const text = [title, meta].filter(Boolean).join("\n");
                         await sharePost({ title, text, url: shareUrl });
                       }}
                       style={{ padding: "8px 10px", minWidth: 44 }}
@@ -867,19 +863,15 @@ export default function AdminReviewPage() {
                     const pid = Number(p.id);
                     const url = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
                     const title = String(p.title || "Property").trim() || "Property";
-                    const adv = String(p.adv_number || p.ad_number || p.id || "").trim();
                     const meta = [
-                      adv ? `Ad #${adv}` : "",
                       String(p.rent_sale || "").trim(),
                       String(p.property_type || "").trim(),
                       String(p.price_display || "").trim(),
                       String(p.location_display || "").trim(),
-                      `status: ${String(p.status || "").trim() || "unknown"}`,
                     ]
                       .filter(Boolean)
                       .join(" • ");
-                  const img = p.images?.length ? toApiUrl(p.images[0].url) : "";
-                  const text = [title, meta, img ? `Image: ${img}` : ""].filter(Boolean).join("\n");
+                  const text = [title, meta].filter(Boolean).join("\n");
                   await sharePost({ title, text, url });
                   }}
                   style={{ padding: "8px 10px", minWidth: 44 }}

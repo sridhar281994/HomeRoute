@@ -71,9 +71,7 @@ export default function PropertyPage() {
           aria-label="Share"
           onClick={async () => {
             const title = String(p.title || "Property").trim() || "Property";
-            const adv = String(p.adv_number || p.advNo || p.id || "").trim();
             const meta = [
-              adv ? `Ad #${adv}` : "",
               String(p.rent_sale || "").trim(),
               String(p.property_type || "").trim(),
               String(p.price_display || "").trim(),
@@ -82,8 +80,7 @@ export default function PropertyPage() {
               .filter(Boolean)
               .join(" • ");
             const url = pidOk ? `${window.location.origin}/property/${pid}` : window.location.href;
-            const img = p.images?.length ? toApiUrl(p.images[0].url) : "";
-            const text = [title, meta, img ? `Image: ${img}` : ""].filter(Boolean).join("\n");
+            const text = [title, meta].filter(Boolean).join("\n");
             const res = await sharePost({ title, text, url });
             if (res === "copied") setMsg("Copied share text to clipboard.");
           }}
