@@ -169,9 +169,20 @@ def is_video_path(p: str) -> bool:
     return ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 
 
-def android_open_gallery(*, on_selection, multiple=False, mime_types=None) -> bool:
-    _log("android_open_gallery() called")
+def android_open_gallery(
+    *,
+    on_selection,
+    multiple: bool = False,
+    mime_types: list[str] | None = None,
+) -> bool:
+    """
+    WhatsApp / Slack style picker behavior:
 
+    - Images/Videos  -> ACTION_PICK (MediaStore gallery UI)
+    - Other files    -> ACTION_OPEN_DOCUMENT
+    - No storage permissions required
+    - Returns content:// URIs which are later copied to cache
+    """
     if platform != "android":
         return False
 
@@ -182,29 +193,49 @@ def android_open_gallery(*, on_selection, multiple=False, mime_types=None) -> bo
 
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
-        String = autoclass("java.lang.String")
         Activity = autoclass("android.app.Activity")
+        String = autoclass("java.lang.String")
+        MediaStore = autoclass("android.provider.MediaStore")
 
         act = PythonActivity.mActivity
         ctx = act.getApplicationContext()
-        resolver = ctx.getContentResolver()
 
-        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        intent.addCategory(Intent.CATEGORY_OPENABLE)
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
+        if not mimes:
+            mimes = ["image/*"]
 
-        mimes = mime_types or ["image/*"]
-        intent.setType(mimes[0])
+        is_media = any(
+            m.startswith("image/") or m.startswith("video/")
+            for m in mimes
+        )
 
-        if len(mimes) > 1:
-            arr = jarray("java.lang.String")([String(m) for m in mimes])
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+        # -------------------------
+        # Choose intent type
+        # -------------------------
+        if is_media:
+            # WhatsApp / Slack gallery-style picker
+            intent = Intent(Intent.ACTION_PICK)
+            intent.setDataAndType(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                mimes[0],
+            )
+        else:
+            # File picker (Drive, Downloads, Files)
+            intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+            intent.setType(mimes[0])
+
+            if len(mimes) > 1:
+                arr = jarray("java.lang.String")([String(m) for m in mimes])
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
         chooser = Intent.createChooser(intent, "Select file")
         req_code = 13579
 
-        def _deliver(sel):
+        def _deliver(sel: list[str]) -> None:
             Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
 
         def _on_activity_result(requestCode, resultCode, data):
@@ -220,7 +251,7 @@ def android_open_gallery(*, on_selection, multiple=False, mime_types=None) -> bo
                 _deliver([])
                 return
 
-            out = []
+            out: list[str] = []
 
             clip = data.getClipData()
             if clip:
@@ -239,6 +270,5 @@ def android_open_gallery(*, on_selection, multiple=False, mime_types=None) -> bo
         act.startActivityForResult(chooser, req_code)
         return True
 
-    except Exception as e:
-        _log(f"Picker failed: {e}")
+    except Exception:
         return False
