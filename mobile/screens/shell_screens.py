@@ -814,12 +814,14 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
     def refresh_status(self):
         if self.is_loading:
             return
+
         sess = get_session() or {}
-        if not (sess.get("token") or ""):
+        if not sess.get("token"):
             _popup("Login required", "Please login to view Subscription.")
             if self.manager:
                 self.manager.current = "login"
             return
+
         self.is_loading = True
 
         from threading import Thread
@@ -827,7 +829,7 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
         def work():
             try:
                 data = api_subscription_status()
-                status = str(data.get("status") or "inactive").strip() or "inactive"
+                status = str(data.get("status") or "inactive").strip()
                 provider = str(data.get("provider") or "").strip()
                 expires_at = str(data.get("expires_at") or "").strip()
 
@@ -838,15 +840,14 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
                     self.is_loading = False
 
                 Clock.schedule_once(done, 0)
-            except ApiError as e:
-                msg = str(e) or "Failed to load subscription."
 
+            except ApiError as e:
                 def fail(*_):
                     self.status_text = "Status: unavailable"
                     self.provider_text = ""
                     self.expires_text = ""
                     self.is_loading = False
-                    _popup("Error", msg)
+                    _popup("Error", str(e) or "Failed to load subscription.")
 
                 Clock.schedule_once(fail, 0)
 
@@ -855,6 +856,7 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
     def go_back(self):
         if self.manager:
             self.manager.current = "home"
+
 
 
 class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
