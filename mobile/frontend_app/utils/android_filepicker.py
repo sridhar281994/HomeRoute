@@ -149,8 +149,12 @@ def android_open_gallery(
     mime_types: list[str] | None = None,
 ) -> bool:
     """
-    Android SAF picker (images/videos/files).
-    Fully PyJNIus-safe (no jarray, no fake constructors).
+    Android file/media picker with SAF + Gallery fallback.
+
+    - Primary: ACTION_OPEN_DOCUMENT (files/images/videos)
+    - Fallback: ACTION_PICK (gallery images only) for OEM ROMs
+    - PyJNIus-safe
+    - UI-thread safe
     """
 
     if platform != "android":
@@ -170,40 +174,9 @@ def android_open_gallery(
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
 
-        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
-        if not mimes:
-            mimes = ["image/*"]
-
-        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        intent.addCategory(Intent.CATEGORY_OPENABLE)
-
-        if len(mimes) == 1:
-            intent.setType(mimes[0])
-        else:
-            intent.setType("*/*")
-
-            # ✅ CORRECT way to create String[]
-            arr = Array.newInstance(JavaString, len(mimes))
-            for i, m in enumerate(mimes):
-                Array.set(arr, i, JavaString(m))
-
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
-
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
-        try:
-            intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-            intent.addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
-        except Exception:
-            pass
-
-        # OEM / ROM safety
-        if intent.resolveActivity(pm) is None:
-            _log("No system picker available on this device")
-            return False
-
-        chooser = Intent.createChooser(intent, "Select file")
+        # -----------------------
+        # Result delivery helper
+        # -----------------------
         req_code = 13579
 
         def _deliver(sel):
@@ -239,7 +212,60 @@ def android_open_gallery(
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        # 🔴 MUST run on UI thread
+        # -----------------------
+        # Build SAF intent
+        # -----------------------
+        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
+        if not mimes:
+            mimes = ["image/*"]
+
+        saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+        if len(mimes) == 1:
+            saf_intent.setType(mimes[0])
+        else:
+            saf_intent.setType("*/*")
+            arr = Array.newInstance(JavaString, len(mimes))
+            for i, m in enumerate(mimes):
+                Array.set(arr, i, JavaString(m))
+            saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+
+        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        saf_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        try:
+            saf_intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            saf_intent.addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+        except Exception:
+            pass
+
+        # -----------------------
+        # Decide which picker to launch
+        # -----------------------
+        if saf_intent.resolveActivity(pm) is not None:
+            # SAF available
+            chooser = Intent.createChooser(saf_intent, "Select file")
+            Clock.schedule_once(
+                lambda *_: act.startActivityForResult(chooser, req_code),
+                0.15,
+            )
+            return True
+
+        # -----------------------
+        # Fallback: Gallery picker
+        # -----------------------
+        _log("SAF picker missing, falling back to gallery")
+
+        pick_intent = Intent(Intent.ACTION_PICK)
+        pick_intent.setType("image/*")  # Gallery supports images only
+
+        if pick_intent.resolveActivity(pm) is None:
+            _log("No gallery app available on this device")
+            return False
+
+        chooser = Intent.createChooser(pick_intent, "Select image")
+
         Clock.schedule_once(
             lambda *_: act.startActivityForResult(chooser, req_code),
             0.15,
