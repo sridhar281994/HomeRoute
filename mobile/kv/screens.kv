@@ -1180,6 +1180,7 @@
 
 <SubscriptionScreen>:
     name: "subscription"
+
     FloatLayout:
         canvas.before:
             Color:
@@ -1209,59 +1210,81 @@
             ScrollView:
                 do_scroll_x: False
                 bar_width: dp(6)
-                WebPanel:
-                    size_hint_x: None
-                    width: min(root.width * 0.95, dp(980))
-                    x: (root.width - self.width) / 2
 
-                    WebCard:
-                        Label:
-                            text: "[b]Subscription[/b]  [font=EmojiFont]💳[/font]"
-                            font_size: sp(18)
-                            size_hint_y: None
-                            height: dp(26)
-                        Label:
-                            text: root.status_text
-                            size_hint_y: None
-                            height: dp(24)
-                            color: TEXT_MAIN
-                        Label:
-                            text: root.expires_text
-                            size_hint_y: None
-                            height: dp(22)
-                            color: TEXT_MUTED
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    padding: dp(12)
+                    spacing: dp(12)
 
-                        AppButton:
-                            text: "[b]FREE - 0[/b]\nUnlock 30 owner/service contacts"
-                            size_hint_x: 1
-                            size_hint_y: None
-                            height: dp(64)
+                    WebPanel:
+                        size_hint_x: None
+                        width: min(root.width * 0.95, dp(980))
+                        pos_hint: {"center_x": 0.5}
 
-                        AppButton:
-                            text: "[b]INSTANT - ₹10[/b]\nUnlock 60 owner/service contacts"
-                            size_hint_x: 1
-                            size_hint_y: None
-                            height: dp(64)
+                        WebCard:
+                            BoxLayout:
+                                orientation: "vertical"
+                                size_hint_y: None
+                                height: self.minimum_height
+                                spacing: dp(14)
+                                padding: dp(14)
 
-                        AppButton:
-                            text: "[b]SMART - ₹50[/b]\nUnlock 200 contacts"
-                            size_hint_x: 1
-                            size_hint_y: None
-                            height: dp(64)
+                                Label:
+                                    text: "[b]Subscription[/b]  [font=EmojiFont]💳[/font]"
+                                    markup: True
+                                    font_size: sp(18)
+                                    size_hint_y: None
+                                    height: dp(28)
 
-                        AppButton:
-                            text: "[b]BUSINESS - ₹150[/b]\nUnlimited contact unlocks/Month"
-                            size_hint_x: 1
-                            size_hint_y: None
-                            height: dp(64)
+                                Label:
+                                    text: root.status_text
+                                    size_hint_y: None
+                                    height: dp(22)
+                                    color: TEXT_MAIN
 
-                        AppButton:
-                            text: "Back"
-                            size_hint_x: 1
-                            size_hint_y: None
-                            height: dp(44)
-                            color: (0.94, 0.27, 0.27, 1)
-                            on_release: root.go_back()
+                                Label:
+                                    text: root.expires_text
+                                    size_hint_y: None
+                                    height: dp(20)
+                                    color: TEXT_MUTED
+
+                                AppButton:
+                                    text: "[b]FREE - 0[/b]\nUnlock 30 owner/service contacts"
+                                    markup: True
+                                    size_hint_x: 1
+                                    size_hint_y: None
+                                    height: dp(64)
+
+                                AppButton:
+                                    text: "[b]INSTANT - ₹10[/b]\nUnlock 60 owner/service contacts"
+                                    markup: True
+                                    size_hint_x: 1
+                                    size_hint_y: None
+                                    height: dp(64)
+
+                                AppButton:
+                                    text: "[b]SMART - ₹50[/b]\nUnlock 200 contacts"
+                                    markup: True
+                                    size_hint_x: 1
+                                    size_hint_y: None
+                                    height: dp(64)
+
+                                AppButton:
+                                    text: "[b]BUSINESS - ₹150[/b]\nUnlimited contact unlocks / Month"
+                                    markup: True
+                                    size_hint_x: 1
+                                    size_hint_y: None
+                                    height: dp(64)
+
+                                AppButton:
+                                    text: "Back"
+                                    size_hint_x: 1
+                                    size_hint_y: None
+                                    height: dp(44)
+                                    color: (0.94, 0.27, 0.27, 1)
+                                    on_release: root.go_back()
 
 
 <RegisterScreen>:
