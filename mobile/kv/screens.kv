@@ -350,6 +350,33 @@
             pos: self.x + dp(12), self.center_y - dp(10)
             size: self.width - dp(24), dp(2)
 
+
+<AvatarButton@ButtonBehavior+FloatLayout>:
+    image_source: ""
+    fallback_text: ""
+
+    size_hint: None, None
+
+    canvas.before:
+        # Circular background
+        Color:
+            rgba: (1, 1, 1, 0.18)
+        Ellipse:
+            pos: self.pos
+            size: self.size
+
+    Label:
+        text: root.fallback_text[0].upper() if root.fallback_text else "ME"
+        bold: True
+        font_size: sp(18)
+        halign: "center"
+        valign: "middle"
+        size: root.size
+        pos: root.pos
+        text_size: self.size
+        color: 1, 1, 1, 1
+
+
 <MobileTopBar@BoxLayout>:
     avatar_text: ""
     avatar_image: ""
@@ -358,8 +385,8 @@
     orientation: "horizontal"
     size_hint_y: None
     height: dp(52)
-    padding: [dp(6), 0, dp(6), 0]
-    spacing: dp(10)
+    padding: dp(6), 0
+    spacing: dp(8)
 
     HamburgerButton:
         on_release:
@@ -369,58 +396,14 @@
     Widget:
 
     AvatarButton:
+        size_hint: None, None
+        size: dp(44), dp(44)
         image_source: root.avatar_image
         fallback_text: root.avatar_text
         on_release:
             root.avatar_cb() if root.avatar_cb else None
 
-<AvatarButton@FloatLayout>:
-    image_source: ""
-    fallback_text: "ME"
-    has_image: bool(root.image_source)
 
-    size_hint: None, None
-    size: dp(44), dp(44)
-
-    # --- Circle background ---
-    canvas.before:
-        Color:
-            rgba: ACCENT_PURPLE
-        Ellipse:
-            pos: self.pos
-            size: self.size
-
-        Color:
-            rgba: (1, 1, 1, 0.35)
-        Line:
-            width: 1.2
-            ellipse: self.x, self.y, self.width, self.height
-
-    # --- Avatar Image ---
-    AsyncImage:
-        source: root.image_source
-        fit_mode: "cover"
-        allow_stretch: True
-        keep_ratio: False
-        size_hint: 1, 1
-        opacity: 1 if root.has_image else 0
-        on_error: root.image_source = ""
-
-    # --- Fallback Letter (CENTERED correctly) ---
-    Label:
-        text: root.fallback_text if root.fallback_text else "ME"
-        font_size: sp(20)
-        bold: True
-        color: 1, 1, 1, 1
-        halign: "center"
-        valign: "middle"
-
-        # IMPORTANT: bind to parent (root), not self
-        text_size: root.size
-        size: root.size
-        pos: root.pos
-
-        opacity: 0 if root.has_image else 1
 
 <AuthHeader@BoxLayout>:
     orientation: "vertical"
@@ -549,6 +532,7 @@
 
 <LoginScreen>:
     name: "login"
+
     FloatLayout:
         canvas.before:
             Color:
@@ -571,44 +555,43 @@
             orientation: "vertical"
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            spacing: dp(12)
 
             ScrollView:
                 id: login_scroll
                 do_scroll_x: False
                 do_scroll_y: True
-                bar_width: dp(6)
+                bar_width: 0
                 scroll_type: ["content"]
-                scroll_timeout: 150
 
-                WebPanel:
-                    size_hint_x: None
+                BoxLayout:
+                    orientation: "vertical"
                     size_hint_y: None
-                    width: min(root.width * 0.95, dp(980))
                     height: self.minimum_height
-                    x: (root.width - self.width) / 2
-                    spacing: dp(15)
+                    padding: dp(14)
+                    spacing: dp(16)
 
                     AuthHeader:
 
                     Label:
                         text: "[b]Secure Login[/b]  [font=EmojiFont]🔐[/font]"
+                        markup: True
                         font_size: sp(24)
                         halign: "center"
                         valign: "middle"
                         size_hint_y: None
                         text_size: (self.width, None)
-                        height: self.texture_size[1] + dp(10)
+                        height: self.texture_size[1] + dp(12)
 
-                    # ------------------------
-                    # Account Details Box
-                    # ------------------------
+                    # ========================
+                    # ACCOUNT DETAILS
+                    # ========================
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: self.minimum_height
                         spacing: dp(10)
-                        padding: dp(10)
+                        padding: dp(12)
+
                         canvas.before:
                             Color:
                                 rgba: CARD_BG
@@ -616,11 +599,6 @@
                                 pos: self.pos
                                 size: self.size
                                 radius: [10]
-                            Color:
-                                rgba: (1, 1, 1, 0.12)
-                            Line:
-                                width: 1.0
-                                rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
 
                         Label:
                             text: "Account Details"
@@ -633,9 +611,9 @@
                             id: phone_input
                             hint_text: "Email / Username / Phone"
                             multiline: False
-                            font_size: sp(16)
                             size_hint_y: None
                             height: dp(48)
+                            font_size: sp(16)
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
                             on_focus:
@@ -652,9 +630,9 @@
                                 multiline: False
                                 font_size: sp(16)
                                 size_hint: 1, 1
+                                padding: [dp(10), dp(10), dp(42), dp(10)]
                                 background_color: (1, 1, 1, 0.18)
                                 foreground_color: TEXT_MAIN
-                                padding: [dp(10), dp(10), dp(40), dp(10)]
                                 on_focus:
                                     if self.focus: root.scroll_to_field(self)
 
@@ -663,76 +641,47 @@
                                 size_hint: None, None
                                 size: dp(40), dp(40)
                                 pos_hint: {"right": 1, "center_y": 0.5}
-                                text: ""
                                 background_normal: ""
                                 background_down: ""
-                                background_color: (0,0,0,0)
-                                color: (0.2, 0.2, 0.2, 1)
-                                canvas:
+                                background_color: 0, 0, 0, 0
+
+                                canvas.after:
+                                    # Eye outline
                                     Color:
-                                        rgba: 0.2, 0.2, 0.2, 1
+                                        rgba: (1, 1, 1, 0.9)
                                     Line:
-                                        width: 1.2
-                                        ellipse: (self.x + dp(5), self.y + dp(10), dp(30), dp(20))
-                                    Color:
-                                        rgba: (0.2, 0.2, 0.2, 1) if self.state == 'down' else (0, 0, 0, 0)
+                                        width: 1.4
+                                        ellipse: (self.center_x - dp(12), self.center_y - dp(6), dp(24), dp(12))
+
+                                    # Pupil
                                     Ellipse:
-                                        pos: self.x + dp(15), self.y + dp(15)
-                                        size: dp(10), dp(10)
+                                        size: dp(6), dp(6)
+                                        pos: (self.center_x - dp(3), self.center_y - dp(3))
+
+                                    # Slash when password hidden
                                     Color:
-                                        rgba: (0.2, 0.2, 0.2, 1) if self.state == 'normal' else (0, 0, 0, 0)
+                                        rgba: (1, 1, 1, 0.9) if self.state == "normal" else (0, 0, 0, 0)
                                     Line:
-                                        points: [self.x + dp(5), self.y + dp(10), self.x + dp(35), self.y + dp(30)]
-                                        width: 1.2
-
-                        BoxLayout:
-                            size_hint_y: None
-                            height: dp(32)
-                            spacing: dp(10)
-
-                            CheckBox:
-                                id: remember_me
-                                size_hint: None, None
-                                size: dp(32), dp(32)
-                                active: root.remember_me
-                                on_active: root.remember_me = self.active
-
-                            Label:
-                                text: "Keep me logged in"
-                                color: 1, 1, 1, 0.9
-                                halign: "left"
-                                valign: "middle"
-                                text_size: self.size
-
-                        BoxLayout:
-                            size_hint_y: None
-                            height: dp(32)
-                            spacing: dp(10)
-
-                            Label:
-                                text: ""
-                                size_hint_y: None
-                                height: 0
-                                opacity: 0
+                                        width: 1.4
+                                        points: (self.x + dp(8), self.y + dp(8), self.right - dp(8), self.top - dp(8))
 
                         AppButton:
                             id: request_otp_btn
                             text: "Request OTP"
                             size_hint_y: None
                             height: dp(44)
-                            on_press: root.send_otp_to_user()
+                            on_release: root.send_otp_to_user()
 
-                    # ------------------------
-                    # OTP Box
-                    # ------------------------
+                    # ========================
+                    # OTP VERIFICATION
+                    # ========================
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: self.minimum_height
                         spacing: dp(10)
-                        padding: dp(10)
-                        opacity: 1
-                        disabled: False
+                        padding: dp(12)
+
                         canvas.before:
                             Color:
                                 rgba: CARD_BG
@@ -740,11 +689,6 @@
                                 pos: self.pos
                                 size: self.size
                                 radius: [10]
-                            Color:
-                                rgba: (1, 1, 1, 0.12)
-                            Line:
-                                width: 1.0
-                                rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
 
                         Label:
                             text: "OTP Verification"
@@ -757,13 +701,14 @@
                             id: otp_input
                             hint_text: "Enter OTP"
                             multiline: False
-                            font_size: sp(16)
                             size_hint_y: None
                             height: dp(48)
+                            font_size: sp(16)
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
                             on_focus:
                                 if self.focus: root.scroll_to_field(self)
+
 
                         AppButton:
                             id: verify_login_btn
@@ -776,15 +721,16 @@
                             text: "Forgot Password?"
                             size_hint_y: None
                             height: dp(40)
-                            background_color: (0, 0, 0, 0)
+                            background_color: 0, 0, 0, 0
                             on_release: root.open_forgot_password()
 
                     AppButton:
                         text: "Back"
                         size_hint_y: None
                         height: dp(44)
-                        color: (0.94, 0.27, 0.27, 1)
+                        color: 0.94, 0.27, 0.27, 1
                         on_release: root.go_back()
+
 
 <ForgotPasswordScreen>:
     name: "forgot_password"
@@ -1290,25 +1236,25 @@
                             size_hint_x: 1
                             size_hint_y: None
                             height: dp(64)
-                        
+
                         AppButton:
                             text: "[b]INSTANT - ₹10[/b]\nUnlock 60 owner/service contacts"
                             size_hint_x: 1
                             size_hint_y: None
                             height: dp(64)
-                        
+
                         AppButton:
                             text: "[b]SMART - ₹50[/b]\nUnlock 200 contacts"
                             size_hint_x: 1
                             size_hint_y: None
                             height: dp(64)
-                        
+
                         AppButton:
                             text: "[b]BUSINESS - ₹150[/b]\nUnlimited contact unlocks/Month"
                             size_hint_x: 1
                             size_hint_y: None
                             height: dp(64)
-                        
+
                         AppButton:
                             text: "Back"
                             size_hint_x: 1
@@ -1531,17 +1477,17 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            # -------------------------------
+            # ==================================================
             # TOP BAR
-            # -------------------------------
+            # ==================================================
             MobileTopBar:
                 avatar_text: root.avatar_letter
                 avatar_image: root.profile_image_url
                 avatar_cb: root.go_settings
 
-            # -------------------------------
+            # ==================================================
             # MAIN PANEL
-            # -------------------------------
+            # ==================================================
             WebPanel:
                 size_hint_y: 1
                 spacing: dp(10)
@@ -1569,7 +1515,7 @@
                         color: TEXT_MAIN
 
                     # -------------------------------
-                    # ACTION BUTTON ROW (edge aligned)
+                    # ACTION BUTTON ROW
                     # -------------------------------
                     BoxLayout:
                         id: action_row
@@ -1578,7 +1524,6 @@
                         height: dp(46)
                         spacing: dp(10)
 
-                        # Left padding spacer
                         Widget:
                             size_hint_x: None
                             width: dp(6)
@@ -1600,7 +1545,6 @@
                             height: dp(40)
                             on_release: root.open_filters()
 
-                        # Right padding spacer
                         Widget:
                             size_hint_x: None
                             width: dp(6)
@@ -1632,6 +1576,7 @@
                         size_hint_y: None
                         height: self.minimum_height
                         spacing: dp(10)
+
 
 
 <FilterPopup>:
