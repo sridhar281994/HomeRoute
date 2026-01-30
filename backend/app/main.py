@@ -18,7 +18,7 @@ import math
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update as sa_update
@@ -763,7 +763,31 @@ def _log_moderation(
 
 
 os.makedirs(_uploads_dir(), exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=_uploads_dir()), name="uploads")
+
+
+@app.get("/uploads/{path:path}", include_in_schema=False)
+def uploads_proxy(path: str):
+    """
+    Serve locally-stored uploads from disk.
+
+    Render (and other PaaS) environments often have ephemeral filesystems; older DB rows
+    may reference files that no longer exist. To avoid noisy 404s in logs for these stale
+    URLs, we return 204 when the file is missing.
+    """
+    rel = (path or "").lstrip("/").replace("\\", "/")
+    if not rel:
+        return Response(status_code=204)
+    base = _uploads_dir()
+    try:
+        direct = os.path.join(base, rel)
+        if os.path.exists(direct):
+            return FileResponse(direct)
+        nested = os.path.join(base, "uploads", rel)
+        if os.path.exists(nested):
+            return FileResponse(nested)
+    except Exception:
+        pass
+    return Response(status_code=204)
 
 
 @app.on_event("startup")
@@ -3025,7 +3049,7 @@ def admin_pending_images(
                 "property_title": p.title if p else "",
                 "owner_id": owner.id if owner else None,
                 "owner_company_name": owner.company_name if owner else "",
-                "url": _public_image_url(img.file_path),
+                "url": _public_image_url_if_exists(img.file_path),
                 "image_hash": img.image_hash,
                 "status": img.status,
                 "original_filename": img.original_filename,
