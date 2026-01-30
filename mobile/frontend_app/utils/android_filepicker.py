@@ -27,59 +27,35 @@ def _strip_file_scheme(p: str) -> str:
 def _android_copy_content_uri_to_cache(uri: str) -> str:
     """
     Copy an Android content:// URI to the app's cache directory.
+    PyJNIus-safe (NO jarray).
     """
     _log(f"Copying content URI → cache: {uri}")
 
-    from jnius import autoclass, jarray  # type: ignore
+    from jnius import autoclass  # type: ignore
 
     PythonActivity = autoclass("org.kivy.android.PythonActivity")
     Uri = autoclass("android.net.Uri")
     OpenableColumns = autoclass("android.provider.OpenableColumns")
     File = autoclass("java.io.File")
     FileOutputStream = autoclass("java.io.FileOutputStream")
+    ByteArray = autoclass("[B")  # byte[]
 
     activity = PythonActivity.mActivity
     ctx = activity.getApplicationContext()
     resolver = ctx.getContentResolver()
     uri_obj = Uri.parse(str(uri))
 
-    def _guess_ext_from_mime(mime: str) -> str:
-        m = str(mime or "").strip().lower()
-        if not m:
-            return ""
-        # Common image types
-        if m in {"image/jpeg", "image/jpg"}:
-            return ".jpg"
-        if m == "image/png":
-            return ".png"
-        if m == "image/webp":
-            return ".webp"
-        if m == "image/gif":
-            return ".gif"
-        # Common video types
-        if m == "video/mp4":
-            return ".mp4"
-        if m == "video/quicktime":
-            return ".mov"
-        if m.startswith("image/"):
-            return ".jpg"
-        if m.startswith("video/"):
-            return ".mp4"
-        return ""
-
     display_name = ""
     cursor = None
     try:
         cursor = resolver.query(uri_obj, None, None, None, None)
-        if cursor is not None and cursor.moveToFirst():
+        if cursor and cursor.moveToFirst():
             idx = int(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME))
             if idx >= 0:
                 display_name = str(cursor.getString(idx) or "")
-    except Exception as e:
-        _log(f"Failed reading display name: {e}")
     finally:
         try:
-            if cursor is not None:
+            if cursor:
                 cursor.close()
         except Exception:
             pass
@@ -87,18 +63,11 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     if not display_name:
         display_name = f"picked_{int(time.time())}"
 
-    # Sanitize name + ensure extension so is_image_path()/is_video_path() works after copy.
-    display_name = display_name.replace("/", "_").replace("\\", "_").replace(":", "_")
-    base, ext = os.path.splitext(display_name)
-    if not ext:
-        mime = ""
-        try:
-            mime = str(resolver.getType(uri_obj) or "")
-        except Exception:
-            mime = ""
-        ext = _guess_ext_from_mime(mime)
-        if ext:
-            display_name = f"{display_name}{ext}"
+    display_name = (
+        display_name.replace("/", "_")
+        .replace("\\", "_")
+        .replace(":", "_")
+    )
 
     cache_dir = ctx.getCacheDir()
     out_file = File(cache_dir, display_name)
@@ -108,10 +77,13 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
         raise OSError("Unable to read selected file.")
 
     outs = FileOutputStream(out_file)
-    buf = jarray("b")(8192)
+
+    # ✅ CORRECT byte buffer (no jarray)
+    buf = ByteArray(8192)
+
     try:
         while True:
-            n = int(ins.read(buf))
+            n = ins.read(buf)
             if n == -1:
                 break
             outs.write(buf, 0, n)
@@ -129,6 +101,7 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     out_path = str(out_file.getAbsolutePath())
     _log(f"Copied file path: {out_path}")
     return out_path
+
 
 
 def ensure_local_path(p: str) -> str:
@@ -176,8 +149,8 @@ def android_open_gallery(
     mime_types: list[str] | None = None,
 ) -> bool:
     """
-    Android system picker (SAF).
-    Android 10–14 safe, PyJNIus-safe (no jarray).
+    Android SAF picker (images/videos/files).
+    Fully PyJNIus-safe (no jarray, no fake constructors).
     """
 
     if platform != "android":
@@ -192,9 +165,7 @@ def android_open_gallery(
         Intent = autoclass("android.content.Intent")
         Activity = autoclass("android.app.Activity")
         JavaString = autoclass("java.lang.String")
-
-        # Java String[] class
-        StringArray = autoclass("[Ljava.lang.String;")
+        Array = autoclass("java.lang.reflect.Array")
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
@@ -210,9 +181,12 @@ def android_open_gallery(
             intent.setType(mimes[0])
         else:
             intent.setType("*/*")
-            arr = StringArray(len(mimes))
+
+            # ✅ CORRECT way to create String[]
+            arr = Array.newInstance(JavaString, len(mimes))
             for i, m in enumerate(mimes):
-                arr[i] = JavaString(m)
+                Array.set(arr, i, JavaString(m))
+
             intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
@@ -224,9 +198,9 @@ def android_open_gallery(
         except Exception:
             pass
 
-        # OEM safety
+        # OEM / ROM safety
         if intent.resolveActivity(pm) is None:
-            _log("No system picker available")
+            _log("No system picker available on this device")
             return False
 
         chooser = Intent.createChooser(intent, "Select file")
