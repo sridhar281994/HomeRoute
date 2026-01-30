@@ -178,9 +178,11 @@ class GestureNavigationMixin:
         pull_down = -dy  # convert downward movement to positive value
 
         if (
-                pull_down >= float(self._REFRESH_START_DY)
+                self.gesture_refresh_enabled()
+                and pull_down >= float(self._REFRESH_START_DY)
                 and abs_dy > abs_dx * self._VERTICAL_DOMINANCE
         ):
+
             print("[GESTURE] PULL DOWN:", pull_down)
 
             try:
@@ -362,3 +364,12 @@ class GestureNavigationMixin:
         self._gesture_active = False
         self._gesture_destroyed = True
 
+    # ------------------------------------------------------------------
+    # Refresh enable flag (override per screen)
+    # ------------------------------------------------------------------
+    def gesture_refresh_enabled(self) -> bool:
+        """
+        Override in screens where pull-to-refresh is allowed.
+        Default: disabled.
+        """
+        return False
