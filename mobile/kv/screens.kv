@@ -58,9 +58,17 @@
 
 <AppButton@HoverButton>:
     markup: True
-    font_size: max(sp(14), self.height * 0.42)
     bold: True
     font_name: "AppFont"
+
+    # ✅ RESPONSIVE + SAFE TEXT
+    font_size: min(sp(15), self.height * 0.30)
+    text_size: self.width - dp(24), None   # ← NEVER constrain height
+    halign: "center"
+    valign: "middle"
+    line_height: 1.15
+    shorten: False
+    padding: dp(12), dp(8)
 
     # 🔴 Disable ALL native backgrounds completely
     background_normal: ""
