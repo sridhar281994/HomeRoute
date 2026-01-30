@@ -345,3 +345,6 @@ class LoginScreen(GestureNavigationMixin, Screen):
             Thread(target=work, daemon=True).start()
 
         google_sign_in(server_client_id=server_client_id, on_success=on_success, on_error=on_error)
+
+    def gesture_refresh_enabled(self) -> bool:
+        return False
