@@ -176,12 +176,14 @@ def android_open_gallery(
     mime_types: list[str] | None = None,
 ) -> bool:
     """
-    System picker (SAF) for images/videos/files.
+    Android system picker (SAF) for images/videos/files.
 
-    - Uses ACTION_OPEN_DOCUMENT (supports images + videos reliably)
-    - No storage permissions required (works on Android 10+ scoped storage)
-    - Returns content:// URIs which are later copied to cache via ensure_local_paths()
+    - UI-thread safe
+    - Android 10–14 compatible
+    - No storage permission required
+    - Returns content:// URIs
     """
+
     if platform != "android":
         return False
 
@@ -196,34 +198,35 @@ def android_open_gallery(
         String = autoclass("java.lang.String")
 
         act = PythonActivity.mActivity
-        ctx = act.getApplicationContext()
+        pm = act.getPackageManager()
 
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
             mimes = ["image/*"]
 
-        # Always use the SAF document picker (reliable across Android versions).
         intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         intent.addCategory(Intent.CATEGORY_OPENABLE)
+
         if len(mimes) == 1:
             intent.setType(mimes[0])
         else:
-            # Multiple mime types: SAF expects type "*/*" + EXTRA_MIME_TYPES.
             intent.setType("*/*")
             arr = jarray("java.lang.String")([String(m) for m in mimes])
             intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        # Best-effort: allow access even if the app process restarts before copy.
+
         try:
             intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        except Exception:
-            pass
-        try:
             intent.addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
         except Exception:
             pass
+
+        # 🔐 Check picker availability (OEM safety)
+        if intent.resolveActivity(pm) is None:
+            _log("No system picker available on this device")
+            return False
 
         chooser = Intent.createChooser(intent, "Select file")
         req_code = 13579
@@ -260,8 +263,14 @@ def android_open_gallery(
             _deliver(out)
 
         activity.bind(on_activity_result=_on_activity_result)
-        act.startActivityForResult(chooser, req_code)
+
+        # 🔴 CRITICAL FIX: always launch on UI thread with delay
+        Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, req_code), 0.15)
+
         return True
 
-    except Exception:
+    except Exception as e:
+        _log(f"Picker failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
