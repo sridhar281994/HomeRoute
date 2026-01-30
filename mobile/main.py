@@ -6,6 +6,7 @@ from kivy.app import App
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
 from kivy.lang import Builder
+from kivy.properties import StringProperty
 from kivy.resources import resource_add_path, resource_find
 from kivy.uix.screenmanager import FadeTransition, ScreenManager
 from kivy.utils import platform
@@ -30,6 +31,9 @@ from screens.shell_screens import (
 
 class QuickRentApp(App):
     title = "Flatnow.in"
+    # Shared user badge for all screens (used by MobileTopBar in KV).
+    user_initial = StringProperty("U")
+    user_avatar_url = StringProperty("")
 
     def build(self):
         base_dir = os.path.dirname(__file__)
@@ -65,6 +69,47 @@ class QuickRentApp(App):
             pass
 
         return sm
+
+    def on_start(self):
+        # Keep top-bar avatar consistent across screens.
+        try:
+            self.sync_user_badge()
+        except Exception:
+            pass
+        try:
+            if self.root is not None:
+                self.root.bind(current=lambda *_: self.sync_user_badge())
+        except Exception:
+            pass
+
+    def sync_user_badge(self) -> None:
+        """
+        Refresh `user_initial` + `user_avatar_url` from persisted session.
+        Called after login/profile updates and on screen changes.
+        """
+        try:
+            from frontend_app.utils.storage import get_user
+
+            u = get_user() or {}
+        except Exception:
+            u = {}
+
+        name = str(
+            u.get("name")
+            or u.get("full_name")
+            or u.get("username")
+            or u.get("email")
+            or u.get("phone")
+            or ""
+        ).strip()
+        self.user_initial = (name[0].upper() if name else "U")
+
+        try:
+            # `set_session()` already normalizes relative URLs to absolute when possible.
+            avatar = str(u.get("profile_image_url") or "").strip()
+            self.user_avatar_url = avatar
+        except Exception:
+            self.user_avatar_url = ""
 
     # ------------------------------------------------------------------
     # Android BACK interception (maps to screen.back())

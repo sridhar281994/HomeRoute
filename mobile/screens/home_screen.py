@@ -392,10 +392,26 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     clear_session()
             except Exception:
                 pass
+            try:
+                from kivy.app import App as _App
+
+                a = _App.get_running_app()
+                if a and hasattr(a, "sync_user_badge"):
+                    a.sync_user_badge()  # type: ignore[attr-defined]
+            except Exception:
+                pass
             if self.manager:
                 self.manager.current = "welcome"
             return
         clear_session()
+        try:
+            from kivy.app import App as _App
+
+            a = _App.get_running_app()
+            if a and hasattr(a, "sync_user_badge"):
+                a.sync_user_badge()  # type: ignore[attr-defined]
+        except Exception:
+            pass
         self.is_logged_in = False
         self.is_guest = False
         if self.manager:
@@ -584,6 +600,14 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     self._preferred_district = pref_district
                     self._apply_preferred_state()
                     self._apply_avatar(u)
+                    try:
+                        from kivy.app import App as _App
+
+                        a = _App.get_running_app()
+                        if a and hasattr(a, "sync_user_badge"):
+                            a.sync_user_badge()  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
 
                 Clock.schedule_once(apply, 0)
             except Exception:

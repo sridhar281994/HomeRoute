@@ -241,6 +241,15 @@ class RegisterScreen(GestureNavigationMixin, Screen):
                     set_session(token=str(token), user=dict(user), remember=bool(sess.get("remember_me") or False))
 
                     def after(*_):
+                        # Ensure top-bar avatar reflects the logged-in user immediately.
+                        try:
+                            from kivy.app import App as _App
+
+                            a = _App.get_running_app()
+                            if a and hasattr(a, "sync_user_badge"):
+                                a.sync_user_badge()  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
                         self._popup("Success", f"Logged in as {user.get('name') or profile.get('email') or 'Google user'}.")
                         if self.manager:
                             self.manager.current = "home"

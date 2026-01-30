@@ -334,6 +334,14 @@ class GestureNavigationMixin:
             except Exception:
                 pass
             try:
+                from kivy.app import App as _App
+
+                a = _App.get_running_app()
+                if a and hasattr(a, "sync_user_badge"):
+                    a.sync_user_badge()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            try:
                 mgr.current = "login"
             except Exception:
                 pass

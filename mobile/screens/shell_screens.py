@@ -46,6 +46,20 @@ from frontend_app.utils.android_location import get_last_known_location
 from frontend_app.utils.android_filepicker import android_open_gallery, ensure_local_paths, is_image_path, is_video_path
 
 
+def _sync_app_badge_best_effort() -> None:
+    """
+    Keep the shared MobileTopBar avatar in sync with session changes.
+    """
+    try:
+        from kivy.app import App as _App
+
+        a = _App.get_running_app()
+        if a and hasattr(a, "sync_user_badge"):
+            a.sync_user_badge()  # type: ignore[attr-defined]
+    except Exception:
+        return
+
+
 def _popup(title: str, msg: str) -> None:
     def _open(*_):
         popup = Popup(
@@ -210,7 +224,7 @@ class WelcomeScreen(GestureNavigationMixin, Screen):
 class PropertyDetailScreen(GestureNavigationMixin, Screen):
     property_id = NumericProperty(0)
     property_data = DictProperty({})
-    fallback_text = StringProperty("ME")
+    fallback_text = StringProperty("U")
     image_source = StringProperty("")
 
     def on_pre_enter(self, *args):
@@ -236,6 +250,23 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
                 Clock.schedule_once(lambda *_: setattr(self, "property_data", data), 0)
                 # Also rebuild media grid (if KV container exists).
                 Clock.schedule_once(lambda *_: self._render_media_grid(data), 0)
+                # Avatar in the detail header should reflect the post owner.
+                try:
+                    owner = str(
+                        (data or {}).get("owner_name")
+                        or (data or {}).get("posted_by")
+                        or (data or {}).get("user_name")
+                        or ""
+                    ).strip()
+                    owner_initial = owner[0].upper() if owner else "U"
+                except Exception:
+                    owner_initial = "U"
+                try:
+                    owner_img = str((data or {}).get("owner_image") or (data or {}).get("profile_image") or "").strip()
+                except Exception:
+                    owner_img = ""
+                Clock.schedule_once(lambda *_: setattr(self, "fallback_text", owner_initial), 0)
+                Clock.schedule_once(lambda *_: setattr(self, "image_source", to_api_url(owner_img) if owner_img else ""), 0)
             except ApiError as e:
                 err_msg = str(e)
                 Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
@@ -469,8 +500,8 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
                                 home = self.manager.get_screen("home") if self.manager else None
                                 for p in items:
                                     # Main card
-                                    if home and hasattr(home, "feed_card"):
-                                        card = home.feed_card(p)  # type: ignore[attr-defined]
+                                    if home and hasattr(home, "_feed_card"):
+                                        card = home._feed_card(p)  # type: ignore[attr-defined]
                                     else:
                                         title = str((p or {}).get("title") or "Post")
                                         card = Label(text=title, size_hint_y=None, height=dp(32))
@@ -598,6 +629,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
             except Exception:
                 return
 
@@ -618,6 +650,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                 Clock.schedule_once(lambda *_: _popup("Saved", "Name updated."), 0)
             except ApiError as e:
                 err_msg = str(e)
@@ -662,6 +695,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                 Clock.schedule_once(lambda *_: _popup("Saved", "Profile image updated."), 0)
             except ApiError as e:
                 err_msg = str(e)
@@ -703,6 +737,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                 Clock.schedule_once(lambda *_: _popup("Saved", "Email updated."), 0)
             except ApiError as e:
                 err_msg = str(e)
@@ -744,6 +779,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                 Clock.schedule_once(lambda *_: _popup("Saved", "Phone updated."), 0)
             except ApiError as e:
                 err_msg = str(e)
@@ -759,6 +795,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 try:
                     api_me_delete()
                     clear_session()
+                    Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                     Clock.schedule_once(lambda *_: _popup("Deleted", "Account deleted."), 0)
                     Clock.schedule_once(lambda *_: setattr(self.manager, "current", "welcome") if self.manager else None, 0)
                 except ApiError as e:
@@ -783,6 +820,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
 
     def logout(self):
         clear_session()
+        _sync_app_badge_best_effort()
         if self.manager:
             self.manager.current = "welcome"
 

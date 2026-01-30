@@ -366,7 +366,7 @@
             size: self.size
 
     Label:
-        text: root.fallback_text[0].upper() if root.fallback_text else "ME"
+        text: root.fallback_text[0].upper() if root.fallback_text else "U"
         bold: True
         font_size: sp(18)
         halign: "center"
@@ -378,8 +378,9 @@
 
 
 <MobileTopBar@BoxLayout>:
-    avatar_text: ""
-    avatar_image: ""
+    # Default: always show the logged-in user's initial + avatar (Home overrides explicitly).
+    avatar_text: (app.user_initial if app else "")
+    avatar_image: (app.user_avatar_url if app else "")
     avatar_cb: None
 
     orientation: "horizontal"
