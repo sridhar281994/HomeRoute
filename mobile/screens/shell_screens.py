@@ -1200,7 +1200,9 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
     def open_media_picker(self):
         """
         Pick up to 10 images + 1 video to upload with the ad.
+        Android-safe: forces picker launch on UI thread after permission callback.
         """
+
         def _apply_selection(selection) -> None:
             try:
                 paths = ensure_local_paths(selection or [])
@@ -1214,13 +1216,16 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     videos = videos[:1]
 
                 self._selected_media = list(images + videos)
+
                 if "media_summary" in self.ids:
                     parts: list[str] = []
                     if images:
                         parts.append(f"{len(images)} image(s)")
                     if videos:
                         parts.append(f"{len(videos)} video(s)")
-                    self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
+                    self.ids["media_summary"].text = (
+                            "Selected: " + " + ".join(parts)
+                    ) if parts else ""
             except Exception:
                 return
 
@@ -1231,20 +1236,34 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 _platform = ""
 
             if _platform == "android":
-                launched = android_open_gallery(on_selection=_apply_selection, multiple=True, mime_types=["image/*", "video/*"])
+                launched = android_open_gallery(
+                    on_selection=_apply_selection,
+                    multiple=True,
+                    mime_types=["image/*", "video/*"],
+                )
                 if not launched:
                     _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
                 return
 
-            # Desktop/dev fallback: simple file chooser popup.
+            # Desktop/dev fallback
             chooser = FileChooserListView(
                 path=os.path.abspath(_default_media_dir()),
                 multiselect=True,
-                filters=["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.mp4", "*.mov", "*.m4v", "*.avi", "*.mkv"],
+                filters=[
+                    "*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif",
+                    "*.mp4", "*.mov", "*.m4v", "*.avi", "*.mkv",
+                ],
             )
 
             root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
-            root.add_widget(Label(text="Select up to 10 images and optionally 1 video.", size_hint_y=None, height=dp(24), color=(1, 1, 1, 0.78)))
+            root.add_widget(
+                Label(
+                    text="Select up to 10 images and optionally 1 video.",
+                    size_hint_y=None,
+                    height=dp(24),
+                    color=(1, 1, 1, 0.78),
+                )
+            )
             root.add_widget(chooser)
 
             btns = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10))
@@ -1254,16 +1273,23 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
             btns.add_widget(btn_use)
             root.add_widget(btns)
 
-            popup = Popup(title="Choose Media", content=root, size_hint=(0.94, 0.94), auto_dismiss=False)
+            popup = Popup(
+                title="Choose Media",
+                content=root,
+                size_hint=(0.94, 0.94),
+                auto_dismiss=False,
+            )
             btn_cancel.bind(on_release=lambda *_: popup.dismiss())
             btn_use.bind(on_release=lambda *_: (_apply_selection(list(chooser.selection or [])), popup.dismiss()))
             popup.open()
 
         def _after(ok: bool) -> None:
-            # On modern Android, the system picker works even if media permission is denied.
+            # SAF picker works even if permission is denied.
             if not ok:
                 _popup("Permission", "Media permission denied. Opening picker anyway.")
-            _open_picker()
+
+            # 🔴 CRITICAL FIX: force UI-thread + delay
+            Clock.schedule_once(lambda *_: _open_picker(), 0.15)
 
         ensure_permissions(required_media_permissions(), on_result=_after)
 
