@@ -346,3 +346,6 @@ class RegisterScreen(GestureNavigationMixin, Screen):
             pass
         finally:
             self._applying_role = False
+
+    def gesture_refresh_enabled(self) -> bool:
+        return False
