@@ -592,11 +592,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
         Thread(target=work, daemon=True).start()
 
     def _apply_avatar(self, u: dict[str, Any]) -> None:
-        # Profile image
         img = str(u.get("profile_image_url") or "").strip()
         self.profile_image_url = to_api_url(img) if img else ""
 
-        # Fallback initial from user name
         name = str(
             u.get("name")
             or u.get("full_name")
@@ -605,11 +603,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
             or ""
         ).strip()
 
-        if name:
-            self.avatar_letter = name[0].upper()
-        else:
-            self.avatar_letter = "ME"
-
+        self.avatar_letter = name[0].upper() if name else "U"
 
     def _apply_preferred_state(self) -> bool:
         pref = str(getattr(self, "_preferred_state", "") or "").strip()
@@ -810,7 +804,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 if dist >= 0:
                     distance_txt = f"{dist:.1f}km from you" if dist < 10 else f"{round(dist)}km from you"
         except Exception:
-            distance_txt = ""
+            pass
 
         created_txt = ""
         try:
@@ -821,12 +815,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 dt = datetime.fromisoformat(created_raw)
                 created_txt = dt.date().isoformat()
         except Exception:
-            created_txt = ""
+            pass
 
         meta = " • ".join(
-            [
-                x
-                for x in [
+            x for x in [
                 distance_txt,
                 f"Ad #{adv_no}" if adv_no else "",
                 str(p.get("rent_sale") or ""),
@@ -834,9 +826,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 str(p.get("price_display") or ""),
                 str(p.get("location_display") or ""),
                 created_txt,
-            ]
-                if x
-            ]
+            ] if x
         )
 
         images = self._extract_media_items(p)
@@ -851,8 +841,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
             spacing=10,
             size_hint_y=None,
         )
-
-        # Card height strictly follows content
         card.bind(minimum_height=lambda *_: setattr(card, "height", card.minimum_height))
 
         with card.canvas.before:
@@ -870,6 +858,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
             border.rounded_rectangle = [card.x, card.y, card.width, card.height, 16]
 
         card.bind(pos=_sync_bg, size=_sync_bg)
+
 
         # =========================================================
         # HEADER (Avatar + Title + Meta)
@@ -932,96 +921,111 @@ class HomeScreen(GestureNavigationMixin, Screen):
         card.add_widget(header)
 
         # =========================================================
-        # PHOTOS — guaranteed vertical stretch
+        # PHOTOS
         # =========================================================
         if images:
-            media = list(images)[:4]  # 2x2 grid
             grid = GridLayout(cols=2, spacing=dp(6), size_hint_y=None)
-
-            CELL_RATIO = 1.20  # taller than wide
 
             def _resize_grid(*_):
                 if grid.width <= 0:
                     return
-
                 cell_w = (grid.width - dp(6)) / 2
-                cell_h = cell_w * CELL_RATIO
-                rows = (len(media) + 1) // 2
-
+                cell_h = cell_w * 1.2
+                rows = (len(images[:4]) + 1) // 2
                 grid.height = rows * cell_h + max(0, rows - 1) * dp(6)
-
-                for child in grid.children:
-                    child.size_hint = (1, None)
-                    child.height = cell_h
+                for c in grid.children:
+                    c.height = cell_h
+                    c.size_hint_y = None
 
             grid.bind(width=_resize_grid)
 
-            for it in media:
-                it = it or {}
-
-                img = AsyncImage(
-                    source=to_api_url(it.get("url") or ""),
-                    allow_stretch=True,
-                    keep_ratio=False,
-                )
-                img.size_hint = (1, None)
-
-                # Recalculate when texture loads
-                img.bind(texture=lambda *_: _resize_grid())
-
+            for it in images[:4]:
+                img = AsyncImage(source=to_api_url(it.get("url") or ""), allow_stretch=True, keep_ratio=False)
+                img.size_hint_y = None
                 grid.add_widget(img)
 
-            Clock.schedule_once(lambda *_: _resize_grid(), 0)
+            Clock.schedule_once(_resize_grid, 0)
             card.add_widget(grid)
-
-        else:
-            card.add_widget(
-                Label(
-                    text="No Photos",
-                    size_hint_y=None,
-                    height=dp(32),
-                    color=(1, 1, 1, 0.78),
-                )
-            )
 
         # =========================================================
         # AMENITIES
         # =========================================================
         amenities = [str(x).strip() for x in (p.get("amenities") or []) if str(x).strip()]
         if amenities:
-            card.add_widget(Label(text="[b]Amenities[/b]", size_hint_y=None, height=22))
-            card.add_widget(
-                Label(text=", ".join(amenities), size_hint_y=None, height=36, color=(1, 1, 1, 0.85))
-            )
+            card.add_widget(Label(text="[b]Amenities[/b]", markup=True, size_hint_y=None, height=22))
+            card.add_widget(Label(text=", ".join(amenities), size_hint_y=None, height=36))
 
         # =========================================================
-        # CONTACT + SHARE BUTTONS  (NO EXTRA SPACE)
+        # CONTACT + SHARE
         # =========================================================
-        btn_row = BoxLayout(
-            orientation="horizontal",
-            spacing=dp(10),
-            size_hint_y=None,
-            height=dp(44),
-        )
+        btn_row = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None, height=dp(44))
 
         btn_contact = Factory.AppButton(
             text="Contacted" if already_contacted else "Contact owner",
             size_hint=(1, None),
             height=dp(44),
+            disabled=already_contacted,
         )
-        btn_contact.disabled = already_contacted
 
-        btn_share = Factory.AppButton(
-            text="Share",
-            size_hint=(None, None),
-            width=dp(96),
-            height=dp(44),
-        )
+        btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
 
         btn_row.add_widget(btn_contact)
         btn_row.add_widget(btn_share)
-
         card.add_widget(btn_row)
+
+        def on_contact(_btn):
+            print("CONTACT PRESSED")
+            if not self.is_logged_in:
+                _popup("Login required", "Please login to contact the owner.")
+                return
+
+            pid = p.get("id")
+            if not pid:
+                _popup("Error", "Invalid property id.")
+                return
+
+            _btn.disabled = True
+
+            from threading import Thread
+
+            def work():
+                try:
+                    api_get_property_contact(pid)
+
+                    def done(*_):
+                        _btn.text = "Contacted"
+                        p["contacted"] = True
+
+                    Clock.schedule_once(done, 0)
+                except ApiError as e:
+
+                    def fail(*_):
+                        _btn.disabled = False
+                        _popup("Error", str(e))
+
+                    Clock.schedule_once(fail, 0)
+
+            Thread(target=work, daemon=True).start()
+
+        def on_share(_btn):
+            print("SHARE PRESSED")
+            subject = "Share Property"
+            body = f"{title}\n{p.get('price_display', '')}"
+
+            launched = share_text(subject=subject, text=body)
+
+            from kivy.utils import platform
+            if platform != "android":
+                from kivy.core.clipboard import Clipboard
+                Clipboard.copy(body)
+                _popup("Share", "Copied to clipboard")
+                return
+
+            if not launched:
+                _popup("Share", body)
+
+        btn_contact.bind(on_release=on_contact)
+        btn_share.bind(on_release=on_share)
 
         return card
 
@@ -1265,3 +1269,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
     @staticmethod
     def go_admin():
         _popup("Not available", "Admin entry is hidden in the app UI.")
+
+    def gesture_refresh_enabled(self) -> bool:
+        return True
