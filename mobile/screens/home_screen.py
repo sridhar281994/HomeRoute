@@ -240,7 +240,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
     is_guest = BooleanProperty(False)
 
     def on_pre_enter(self, *args):
-        # Gate buttons until user logs in.
         try:
             sess = get_session() or {}
             token = str(sess.get("token") or "")
@@ -249,14 +248,11 @@ class HomeScreen(GestureNavigationMixin, Screen):
         except Exception:
             self.is_logged_in = False
             self.is_guest = False
-
-        try:
-            u = get_user() or {}
-        except Exception:
-            u = {}
-        self._apply_avatar(u)
-
-        # Seed preferred location from the stored profile.
+    
+        # ✅ DELAY avatar application (CRITICAL FIX)
+        Clock.schedule_once(lambda dt: self._apply_avatar(get_user() or {}), 0)
+    
+        # Preferred location
         try:
             u = get_user() or {}
             self._preferred_state = str(u.get("state") or "").strip()
@@ -264,31 +260,24 @@ class HomeScreen(GestureNavigationMixin, Screen):
         except Exception:
             self._preferred_state = ""
             self._preferred_district = ""
-
-        # Revert to the glossy purple/orange background (no image).
+    
         self.bg_image = ""
-
-        # Load customer "need" categories (non-fatal if offline).
+    
         self._load_need_categories()
-
-        # Load state list (non-fatal if offline).
         self._load_states()
-        Clock.schedule_once(lambda _dt: self._render_area_options(), 0)
-        Clock.schedule_once(lambda _dt: self._render_area_chips(), 0)
-
-        # Best-effort: refresh user profile for latest location (non-fatal).
+    
+        Clock.schedule_once(lambda dt: self._render_area_options(), 0)
+        Clock.schedule_once(lambda dt: self._render_area_chips(), 0)
+    
         if self.is_logged_in:
             self._refresh_profile_from_server()
-
-        # Best-effort GPS capture (non-fatal); refresh once it becomes available.
+    
         self._ensure_gps_best_effort()
-
-        Clock.schedule_once(lambda _dt: self.refresh(), 0)
-        # Enable gesture capture even when ScrollView consumes touches.
+    
+        Clock.schedule_once(lambda dt: self.refresh(), 0)
+    
         self.gesture_bind_window()
 
-        Clock.schedule_once(lambda *_: self._show_refresh_indicator(), 1)
-        Clock.schedule_once(lambda *_: self._hide_refresh_indicator(), 3)
 
     def on_leave(self, *args):
         # Avoid leaking Window bindings when screen is not visible.
