@@ -1201,319 +1201,68 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         """
         Pick up to 10 images + 1 video to upload with the ad.
         """
+        def _apply_selection(selection) -> None:
+            try:
+                paths = ensure_local_paths(selection or [])
+                media = [p for p in paths if is_image_path(p) or is_video_path(p)]
+                images = [x for x in media if is_image_path(x)]
+                videos = [x for x in media if is_video_path(x)]
+
+                if len(images) > 10:
+                    images = images[:10]
+                if len(videos) > 1:
+                    videos = videos[:1]
+
+                self._selected_media = list(images + videos)
+                if "media_summary" in self.ids:
+                    parts: list[str] = []
+                    if images:
+                        parts.append(f"{len(images)} image(s)")
+                    if videos:
+                        parts.append(f"{len(videos)} video(s)")
+                    self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
+            except Exception:
+                return
+
         def _open_picker() -> None:
-            # Android: prefer native SAF picker (no folder scanning).
             try:
                 from kivy.utils import platform as _platform
             except Exception:
                 _platform = ""
 
             if _platform == "android":
-                try:
-                    from plyer import filechooser  # type: ignore
-                except Exception:
-                    filechooser = None
+                launched = android_open_gallery(on_selection=_apply_selection, multiple=True, mime_types=["image/*", "video/*"])
+                if not launched:
+                    _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+                return
 
-                def _on_sel(selection):
-                    try:
-                        paths = ensure_local_paths(selection or [])
-                        media = [p for p in paths if is_image_path(p) or is_video_path(p)]
-                        images = [x for x in media if is_image_path(x)]
-                        videos = [x for x in media if is_video_path(x)]
+            # Desktop/dev fallback: simple file chooser popup.
+            chooser = FileChooserListView(
+                path=os.path.abspath(_default_media_dir()),
+                multiselect=True,
+                filters=["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.mp4", "*.mov", "*.m4v", "*.avi", "*.mkv"],
+            )
 
-                        # Enforce limits for the Android picker as well.
-                        if len(images) > 10:
-                            images = images[:10]
-                        if len(videos) > 1:
-                            videos = videos[:1]
+            root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
+            root.add_widget(Label(text="Select up to 10 images and optionally 1 video.", size_hint_y=None, height=dp(24), color=(1, 1, 1, 0.78)))
+            root.add_widget(chooser)
 
-                        self._selected_media = list(images + videos)
-                        if "media_summary" in self.ids:
-                            parts = []
-                            if images:
-                                parts.append(f"{len(images)} image(s)")
-                            if videos:
-                                parts.append(f"{len(videos)} video(s)")
-                            self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
-                    except Exception:
-                        return
+            btns = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10))
+            btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
+            btn_use = Factory.AppButton(text="Use Selected")
+            btns.add_widget(btn_cancel)
+            btns.add_widget(btn_use)
+            root.add_widget(btns)
 
-                if filechooser is None:
-                    launched = android_open_gallery(on_selection=_on_sel, multiple=True, mime_types=["image/*", "video/*"])
-                    if not launched:
-                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
-                    return
-
-                try:
-                    filechooser.open_file(on_selection=_on_sel, multiple=True)
-                    return
-                except Exception:
-                    launched = android_open_gallery(on_selection=_on_sel, multiple=True, mime_types=["image/*", "video/*"])
-                    if not launched:
-                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
-                    return
-
-        # On modern Android, SAF works even without storage permissions.
-        # Still request media permissions best-effort (older devices / OEM pickers).
-        try:
-            from kivy.utils import platform as _platform
-        except Exception:
-            _platform = ""
-        if _platform == "android":
-            def _after(_ok: bool) -> None:
-                _open_picker()
-
-            ensure_permissions(required_media_permissions(), on_result=_after)
-            return
-
-        _open_picker()
-
-            """
-            Custom media picker:
-            - Folder navigation (list)
-            - On open, show folder contents as a scrollable preview grid (thumbnails for photos)
-            - Multi-select with validation (max 10 images + 1 video)
-            """
-
-            def _is_image(fp: str) -> bool:
-                ext = os.path.splitext(fp.lower())[1]
-                return ext in {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-
-            def _is_video(fp: str) -> bool:
-                ext = os.path.splitext(fp.lower())[1]
-                return ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
-
-            class _MediaPickerPopup(Popup):
-                def __init__(self, **kwargs):
-                    super().__init__(**kwargs)
-                    self.title = "Choose Media (max 10 images + 1 video)"
-                    self.size_hint = (0.94, 0.94)
-                    self.auto_dismiss = False
-
-                    self._mode = "folders"  # folders|grid
-                    self._path = os.path.abspath(_default_media_dir())
-                    self._selected: set[str] = set()
-
-                    root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
-
-                    # Header (path + actions)
-                    header = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
-                    btn_up = Factory.AppButton(text="Up", size_hint_x=None, width=dp(90))
-                    path_label = os.path.basename(self._path) or "Photos"
-                    self._path_lbl = Label(text=path_label, halign="left", valign="middle", color=(1, 1, 1, 0.78))
-                    self._path_lbl.text_size = (0, None)
-                    header.add_widget(btn_up)
-                    header.add_widget(self._path_lbl)
-                    root.add_widget(header)
-
-                    # Folder list view
-                    self._chooser = FileChooserListView(path=self._path, filters=[], multiselect=False, dirselect=True)
-
-                    # Grid view
-                    from kivy.uix.scrollview import ScrollView
-                    from kivy.uix.togglebutton import ToggleButton
-                    from kivy.uix.image import AsyncImage
-                    from kivy.uix.gridlayout import GridLayout
-
-                    self._grid_scroll = ScrollView(do_scroll_x=False, bar_width=dp(6))
-                    self._grid = GridLayout(cols=3, spacing=dp(8), size_hint_y=None)
-                    self._grid.bind(minimum_height=self._grid.setter("height"))
-                    self._grid_scroll.add_widget(self._grid)
-
-                    # Footer buttons
-                    footer = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(10))
-                    btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
-                    btn_open = Factory.AppButton(text="Folders")
-                    btn_use = Factory.AppButton(text="Use Selected")
-                    footer.add_widget(btn_cancel)
-                    footer.add_widget(btn_open)
-                    footer.add_widget(btn_use)
-                    root.add_widget(Label(text="Select up to 10 images and optionally 1 video.", size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
-
-                    self._body = BoxLayout()
-                    root.add_widget(self._body)
-                    root.add_widget(footer)
-                    self.content = root
-
-                    def _set_path(new_path: str) -> None:
-                        p = os.path.abspath(str(new_path or "").strip() or self._path)
-                        if not os.path.isdir(p):
-                            return
-                        self._path = p
-                        try:
-                            self._path_lbl.text = os.path.basename(p) or "Photos"
-                        except Exception:
-                            pass
-                        try:
-                            self._chooser.path = p
-                        except Exception:
-                            pass
-
-                    def _go_up(*_):
-                        parent = os.path.dirname(self._path.rstrip(os.sep))
-                        if parent and parent != self._path:
-                            _set_path(parent)
-                            if self._mode == "grid":
-                                _show_grid()
-
-                    def _list_dir(p: str) -> tuple[list[str], list[str]]:
-                        """
-                        Returns (dirs, media_files) within p.
-                        """
-                        try:
-                            items = [os.path.join(p, x) for x in os.listdir(p)]
-                        except Exception:
-                            return ([], [])
-                        dirs = []
-                        media = []
-                        for fp in items:
-                            try:
-                                if os.path.isdir(fp):
-                                    dirs.append(fp)
-                                elif os.path.isfile(fp) and (_is_image(fp) or _is_video(fp)):
-                                    media.append(fp)
-                            except Exception:
-                                continue
-                        dirs.sort(key=lambda x: os.path.basename(x).lower())
-                        media.sort(key=lambda x: os.path.basename(x).lower())
-                        return (dirs, media)
-
-                    def _toggle_select(fp: str, active: bool) -> None:
-                        if active:
-                            self._selected.add(fp)
-                        else:
-                            self._selected.discard(fp)
-
-                    def _render_tile_dir(fp: str) -> None:
-                        name = os.path.basename(fp.rstrip(os.sep)) or fp
-                        tile = Factory.AppButton(text=f"[b]{name}[/b]\n[small](Folder)[/small]")
-                        tile.size_hint_y = None
-                        tile.height = dp(110)
-                        tile.bind(on_release=lambda *_: (_set_path(fp), _show_grid()))
-                        self._grid.add_widget(tile)
-
-                    def _render_tile_media(fp: str) -> None:
-                        # ToggleButton lets the user tap to select/deselect.
-                        wrap = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(150), spacing=dp(6))
-                        if _is_image(fp):
-                            img = AsyncImage(source=fp, fit_mode="fill")
-                            img.size_hint_y = None
-                            img.height = dp(110)
-                            wrap.add_widget(img)
-                        else:
-                            # Video: simple placeholder tile (thumbnail extraction is expensive).
-                            wrap.add_widget(Label(text="[b]Video[/b]", size_hint_y=None, height=dp(110), color=(1, 1, 1, 0.78)))
-
-                        tb = ToggleButton(text="", size_hint_y=None, height=dp(32))
-                        tb.state = "down" if fp in self._selected else "normal"
-
-                        def _sync_label(btn):
-                            btn.text = "✓" if btn.state == "down" else ""
-
-                        def _on_state(btn, value):
-                            _toggle_select(fp, value == "down")
-                            _sync_label(btn)
-
-                        _sync_label(tb)
-                        tb.bind(state=_on_state)
-                        wrap.add_widget(tb)
-                        self._grid.add_widget(wrap)
-
-                    def _show_folders(*_) -> None:
-                        self._mode = "folders"
-                        self._body.clear_widgets()
-                        self._body.add_widget(self._chooser)
-                        btn_open.disabled = False
-                        btn_open.text = "Open folder"
-                        btn_use.disabled = True
-
-                    def _show_grid(*_) -> None:
-                        self._mode = "grid"
-                        self._body.clear_widgets()
-                        self._body.add_widget(self._grid_scroll)
-                        # Keep a way to jump back to folder list if user prefers.
-                        btn_open.disabled = False
-                        btn_open.text = "Folders"
-                        btn_use.disabled = False
-
-                        # rebuild grid
-                        self._grid.clear_widgets()
-                        dirs, media = _list_dir(self._path)
-                        # Dirs first
-                        for d in dirs[:120]:
-                            _render_tile_dir(d)
-                        # Then media
-                        for fp in media[:400]:
-                            _render_tile_media(fp)
-                        if not dirs and not media:
-                            self._grid.add_widget(Label(text="No photos/videos found in this folder.", size_hint_y=None, height=dp(42), color=(1, 1, 1, 0.75)))
-
-                    def _open_folder(*_):
-                        # Choose folder from list view; fallback to current path.
-                        try:
-                            sel = list(self._chooser.selection or [])
-                            if sel:
-                                _set_path(sel[0])
-                        except Exception:
-                            pass
-                        _show_grid()
-
-                    def _toggle_folders_or_open(*_):
-                        # In grid mode: show folder list. In folder mode: open selected folder.
-                        if self._mode == "grid":
-                            _show_folders()
-                        else:
-                            _open_folder()
-
-                    def _apply(*_):
-                        selected = sorted([x for x in self._selected if os.path.isfile(x)])
-                        images = [x for x in selected if _is_image(x)]
-                        videos = [x for x in selected if _is_video(x)]
-                        if len(images) > 10:
-                            _popup("Error", "Maximum 10 images are allowed.")
-                            return
-                        if len(videos) > 1:
-                            _popup("Error", "Maximum 1 video is allowed.")
-                            return
-                        self.dismiss()
-                        self._on_done(images + videos)
-
-                    btn_up.bind(on_release=_go_up)
-                    btn_cancel.bind(on_release=lambda *_: self.dismiss())
-                    btn_open.bind(on_release=_toggle_folders_or_open)
-                    btn_use.bind(on_release=_apply)
-
-                    # Expose selection to caller.
-                    self._on_done = lambda _sel: None
-
-                    # UX: open straight into a scrollable preview grid (folders as tiles),
-                    # so users immediately see photos/videos instead of a folder list.
-                    _show_grid()
-
-            popup = _MediaPickerPopup()
-
-            def _done(selected: list[str]) -> None:
-                try:
-                    self._selected_media = list(selected or [])
-                    images = [x for x in self._selected_media if _is_image(x)]
-                    videos = [x for x in self._selected_media if _is_video(x)]
-                    if "media_summary" in self.ids:
-                        parts: list[str] = []
-                        if images:
-                            parts.append(f"{len(images)} image(s)")
-                        if videos:
-                            parts.append("1 video")
-                        self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
-                except Exception:
-                    pass
-
-            popup._on_done = _done  # type: ignore[attr-defined]
+            popup = Popup(title="Choose Media", content=root, size_hint=(0.94, 0.94), auto_dismiss=False)
+            btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+            btn_use.bind(on_release=lambda *_: (_apply_selection(list(chooser.selection or [])), popup.dismiss()))
             popup.open()
 
         def _after(ok: bool) -> None:
+            # On modern Android, the system picker works even if media permission is denied.
             if not ok:
-                _popup("Permission required", "Please allow Photos/Media permission to pick files for upload.")
-                return
+                _popup("Permission", "Media permission denied. Opening picker anyway.")
             _open_picker()
 
         ensure_permissions(required_media_permissions(), on_result=_after)
