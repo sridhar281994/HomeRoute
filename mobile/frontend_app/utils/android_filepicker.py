@@ -148,22 +148,14 @@ def android_open_gallery(
     multiple: bool = False,
     mime_types: list[str] | None = None,
 ) -> bool:
-    """
-    Android file/media picker with SAF + Gallery fallback.
-
-    - Primary: ACTION_OPEN_DOCUMENT (files/images/videos)
-    - Fallback: ACTION_PICK (gallery images only) for OEM ROMs
-    - PyJNIus-safe
-    - UI-thread safe
-    """
 
     if platform != "android":
         return False
 
     try:
-        from android import activity  # type: ignore
+        from android import activity
         from kivy.clock import Clock
-        from jnius import autoclass  # type: ignore
+        from jnius import autoclass
 
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
@@ -174,9 +166,6 @@ def android_open_gallery(
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
 
-        # -----------------------
-        # Result delivery helper
-        # -----------------------
         req_code = 13579
 
         def _deliver(sel):
@@ -185,7 +174,6 @@ def android_open_gallery(
         def _on_activity_result(requestCode, resultCode, data):
             if requestCode != req_code:
                 return
-
             try:
                 activity.unbind(on_activity_result=_on_activity_result)
             except Exception:
@@ -196,7 +184,6 @@ def android_open_gallery(
                 return
 
             out = []
-
             clip = data.getClipData()
             if clip:
                 for i in range(clip.getItemCount()):
@@ -212,9 +199,7 @@ def android_open_gallery(
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        # -----------------------
-        # Build SAF intent
-        # -----------------------
+        # ---------- SAF picker ----------
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
             mimes = ["image/*"]
@@ -234,37 +219,31 @@ def android_open_gallery(
         saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
         saf_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-        try:
-            saf_intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-            saf_intent.addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
-        except Exception:
-            pass
-
-        # -----------------------
-        # Decide which picker to launch
-        # -----------------------
         if saf_intent.resolveActivity(pm) is not None:
-            # SAF available
-            chooser = Intent.createChooser(saf_intent, "Select file")
+            chooser = Intent.createChooser(
+                saf_intent,
+                JavaString("Select file"),
+            )
             Clock.schedule_once(
                 lambda *_: act.startActivityForResult(chooser, req_code),
                 0.15,
             )
             return True
 
-        # -----------------------
-        # Fallback: Gallery picker
-        # -----------------------
+        # ---------- Gallery fallback ----------
         _log("SAF picker missing, falling back to gallery")
 
         pick_intent = Intent(Intent.ACTION_PICK)
-        pick_intent.setType("image/*")  # Gallery supports images only
+        pick_intent.setType("image/*")
 
         if pick_intent.resolveActivity(pm) is None:
-            _log("No gallery app available on this device")
+            _log("No gallery app available")
             return False
 
-        chooser = Intent.createChooser(pick_intent, "Select image")
+        chooser = Intent.createChooser(
+            pick_intent,
+            JavaString("Select image"),
+        )
 
         Clock.schedule_once(
             lambda *_: act.startActivityForResult(chooser, req_code),
