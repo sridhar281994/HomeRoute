@@ -2574,10 +2574,18 @@ def owner_create_property(
         # IMPORTANT: allow duplicate addresses by default (DB has a unique index
         # that applies only when allow_duplicate_address=false).
         allow_duplicate_address=True,
+        # IMPORTANT: allow multiple ads per same phone (DB has a unique index
+        # that applies only when allow_duplicate_phone=false).
+        allow_duplicate_phone=True,
         updated_at=dt.datetime.now(dt.timezone.utc),
     )
     db.add(p)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # If a legacy DB constraint still triggers, return a user-friendly conflict
+        # instead of a 500.
+        raise HTTPException(status_code=409, detail="Duplicate detected. Please change address or try again.")
     _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="create", reason="")
     return {"id": p.id, "ad_number": (p.ad_number or "").strip() or str(p.id), "status": p.status}
 
