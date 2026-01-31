@@ -2571,6 +2571,9 @@ def owner_create_property(
         contact_phone=contact_phone,
         contact_phone_normalized=contact_phone_norm,
         contact_email=(data.contact_email or "").strip(),
+        # IMPORTANT: allow duplicate addresses by default (DB has a unique index
+        # that applies only when allow_duplicate_address=false).
+        allow_duplicate_address=True,
         updated_at=dt.datetime.now(dt.timezone.utc),
     )
     db.add(p)
