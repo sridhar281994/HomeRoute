@@ -1683,7 +1683,8 @@
                 do_scroll_x: False
                 bar_width: dp(6)
                 GridLayout:
-                    cols: 2
+                    # Responsive: stack filters on smaller screens.
+                    cols: 1 if root.width < dp(620) else 2
                     size_hint_y: None
                     height: self.minimum_height
                     spacing: dp(10)
@@ -1737,6 +1738,12 @@
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
+                        Label:
+                            text: "Select State + District to load areas"
+                            color: TEXT_MUTED
+                            size_hint_y: None
+                            height: dp(18)
+                            opacity: 1 if (root.home and ((root.home.state_value == "Any") or (root.home.district_value == "Any"))) else 0
                         TextInput:
                             hint_text: "Search areas ..."
                             text: root.home.area_search if root.home else ""
