@@ -621,9 +621,6 @@ export default function HomePage() {
                     {String(p.owner_company_name || p.owner_name || p.title || "A").trim().slice(0, 1).toUpperCase()}
                   </div>
                   <div>
-                    <div className="h2" style={{ margin: 0 }}>
-                      {p.title}
-                    </div>
                     <div className="muted post-meta">
                       {p.distance_km != null ? `${fmtDistance(p.distance_km)} • ` : ""}
                       Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} •{" "}
@@ -638,9 +635,7 @@ export default function HomePage() {
                     aria-label="Share"
                     onClick={async () => {
                       const title = String(p.title || "Property").trim() || "Property";
-                      const adv = String(p.adv_number || p.ad_number || p.id || "").trim();
                       const meta = [
-                        adv ? `Ad #${adv}` : "",
                         String(p.rent_sale || "").trim(),
                         String(p.property_type || "").trim(),
                         String(p.price_display || "").trim(),
@@ -648,8 +643,7 @@ export default function HomePage() {
                       ]
                         .filter(Boolean)
                         .join(" • ");
-                      const img = p.images?.length ? toApiUrl(p.images[0].url) : "";
-                      const text = [title, meta, img ? `Image: ${img}` : ""].filter(Boolean).join("\n");
+                      const text = [title, meta].filter(Boolean).join("\n");
                       const res = await sharePost({ title, text, url: shareUrl });
                       if (res === "copied") setErr("Copied share text to clipboard.");
                     }}

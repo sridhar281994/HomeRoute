@@ -309,6 +309,7 @@ class GestureNavigationMixin:
             _mk_item("Settings", "profile")
             _mk_item("Publish Ad", "owner_add_property")
             _mk_item("Subscription", "subscription")
+            _mk_item("Enable GPS", "enable_gps")
             _mk_item("Logout", "logout")
 
             try:
@@ -334,6 +335,14 @@ class GestureNavigationMixin:
             except Exception:
                 pass
             try:
+                from kivy.app import App as _App
+
+                a = _App.get_running_app()
+                if a and hasattr(a, "sync_user_badge"):
+                    a.sync_user_badge()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            try:
                 mgr.current = "login"
             except Exception:
                 pass
@@ -346,6 +355,15 @@ class GestureNavigationMixin:
                     scr.start_new()
             except Exception:
                 pass
+
+        if action == "enable_gps":
+            try:
+                home = mgr.get_screen("home")
+                if hasattr(home, "enable_gps"):
+                    home.enable_gps()
+            except Exception:
+                pass
+            return
 
         try:
             mgr.current = action

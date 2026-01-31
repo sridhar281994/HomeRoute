@@ -33,6 +33,7 @@ from frontend_app.utils.api import (
     api_me_upload_profile_image,
     api_meta_categories,
     api_owner_create_property,
+    api_owner_delete_property,
     api_owner_list_properties,
     api_owner_update_property,
     api_subscription_status,
@@ -44,6 +45,20 @@ from frontend_app.utils.storage import clear_session, get_session, get_user, set
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
 from frontend_app.utils.android_filepicker import android_open_gallery, ensure_local_paths, is_image_path, is_video_path
+
+
+def _sync_app_badge_best_effort() -> None:
+    """
+    Keep the shared MobileTopBar avatar in sync with session changes.
+    """
+    try:
+        from kivy.app import App as _App
+
+        a = _App.get_running_app()
+        if a and hasattr(a, "sync_user_badge"):
+            a.sync_user_badge()  # type: ignore[attr-defined]
+    except Exception:
+        return
 
 
 def _popup(title: str, msg: str) -> None:
@@ -210,7 +225,7 @@ class WelcomeScreen(GestureNavigationMixin, Screen):
 class PropertyDetailScreen(GestureNavigationMixin, Screen):
     property_id = NumericProperty(0)
     property_data = DictProperty({})
-    fallback_text = StringProperty("ME")
+    fallback_text = StringProperty("U")
     image_source = StringProperty("")
 
     def on_pre_enter(self, *args):
@@ -236,6 +251,23 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
                 Clock.schedule_once(lambda *_: setattr(self, "property_data", data), 0)
                 # Also rebuild media grid (if KV container exists).
                 Clock.schedule_once(lambda *_: self._render_media_grid(data), 0)
+                # Avatar in the detail header should reflect the post owner.
+                try:
+                    owner = str(
+                        (data or {}).get("owner_name")
+                        or (data or {}).get("posted_by")
+                        or (data or {}).get("user_name")
+                        or ""
+                    ).strip()
+                    owner_initial = owner[0].upper() if owner else "U"
+                except Exception:
+                    owner_initial = "U"
+                try:
+                    owner_img = str((data or {}).get("owner_image") or (data or {}).get("profile_image") or "").strip()
+                except Exception:
+                    owner_img = ""
+                Clock.schedule_once(lambda *_: setattr(self, "fallback_text", owner_initial), 0)
+                Clock.schedule_once(lambda *_: setattr(self, "image_source", to_api_url(owner_img) if owner_img else ""), 0)
             except ApiError as e:
                 err_msg = str(e)
                 Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
@@ -395,17 +427,22 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
                 meta_lines.append(x)
         # Prefer linking to the web UI route if hosted on the same domain.
         api_link = to_api_url(f"/property/{pid}") if pid else ""
-        img_link = ""
-        try:
-            imgs = self._extract_media_items(p)
-            if imgs:
-                img_link = to_api_url(str((imgs[0] or {}).get("url") or "").strip())
-        except Exception:
-            img_link = ""
-        subject = f"{title_s} (Ad #{adv})" if adv else title_s
-        body = "\n".join(
-            [x for x in [title_s, (" • ".join(meta_lines) if meta_lines else ""), api_link, (f"Image: {img_link}" if img_link else "")] if x]
+        # Share format (3 lines):
+        # Title
+        # rent • type • price • location
+        # URL
+        share_meta = " • ".join(
+            x
+            for x in [
+                str(p.get("rent_sale") or "").strip(),
+                str(p.get("property_type") or "").strip(),
+                str(p.get("price_display") or "").strip(),
+                str(p.get("location_display") or "").strip(),
+            ]
+            if x
         )
+        subject = title_s
+        body = "\n".join([x for x in [title_s, share_meta, api_link] if x])
 
         launched = share_text(subject=subject, text=body)
         if launched:
@@ -465,31 +502,20 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
                             else:
                                 from kivy.metrics import dp
 
-                                # Reuse HomeScreen card layout when possible, but add an Edit button.
+                                # Reuse HomeScreen card layout in "my posts" mode so buttons render inside the card.
                                 home = self.manager.get_screen("home") if self.manager else None
                                 for p in items:
-                                    # Main card
-                                    if home and hasattr(home, "feed_card"):
-                                        card = home.feed_card(p)  # type: ignore[attr-defined]
+                                    if home and hasattr(home, "_feed_card"):
+                                        raw2 = dict(p or {})
+                                        raw2["_my_posts"] = True
+                                        raw2["_on_edit"] = (lambda p=p: self.edit_post(p))
+                                        raw2["_on_delete"] = (lambda p=p: self.delete_post(p))
+                                        card = home._feed_card(raw2)  # type: ignore[attr-defined]
                                     else:
                                         title = str((p or {}).get("title") or "Post")
                                         card = Label(text=title, size_hint_y=None, height=dp(32))
 
-                                    wrap = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
-                                    wrap.bind(minimum_height=wrap.setter("height"))
-                                    wrap.add_widget(card)
-
-                                    actions = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(8))
-                                    btn_edit = Factory.AppButton(text="Edit")
-                                    actions.add_widget(btn_edit)
-                                    wrap.add_widget(actions)
-
-                                    def _edit(*_args, p=p):
-                                        self.edit_post(p)
-
-                                    btn_edit.bind(on_release=_edit)
-
-                                    container.add_widget(wrap)
+                                    container.add_widget(card)
                     except Exception:
                         pass
                     self.is_loading = False
@@ -520,6 +546,60 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
             self.manager.current = "owner_add_property"
         except Exception:
             _popup("Error", "Unable to open edit screen.")
+
+    def delete_post(self, p: dict[str, Any]) -> None:
+        """
+        Delete an owned post and refresh the list.
+        """
+        try:
+            pid = int((p or {}).get("id") or 0)
+        except Exception:
+            pid = 0
+        if pid <= 0:
+            _popup("Error", "Invalid post id.")
+            return
+
+        # Confirm popup
+        try:
+            adv = str((p or {}).get("adv_number") or (p or {}).get("ad_number") or pid).strip()
+        except Exception:
+            adv = str(pid)
+
+        def do_delete(*_):
+            from threading import Thread
+
+            def work():
+                try:
+                    api_owner_delete_property(property_id=pid)
+                    Clock.schedule_once(lambda *_: _popup("Deleted", f"Deleted Ad #{adv}"), 0)
+                    Clock.schedule_once(lambda *_: self.refresh(), 0)
+                except ApiError as e:
+                    err_msg = str(e)
+                    Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
+                except Exception as e:
+                    err_msg = str(e) or "Delete failed."
+                    Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
+
+            Thread(target=work, daemon=True).start()
+            try:
+                popup.dismiss()
+            except Exception:
+                pass
+
+        buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10), padding=[dp(10), dp(8)])
+        btn_no = Factory.AppButton(text="Cancel")
+        btn_yes = Factory.AppButton(text="Delete", color=(0.94, 0.27, 0.27, 1))
+        btn_no.size_hint_x = 1
+        btn_yes.size_hint_x = 1
+        buttons.add_widget(btn_no)
+        buttons.add_widget(btn_yes)
+        root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+        root.add_widget(Label(text=f"Delete Ad #{adv}?\nThis cannot be undone."))
+        root.add_widget(buttons)
+        popup = Popup(title="Confirm", content=root, size_hint=(0.92, 0.45), auto_dismiss=False)
+        btn_no.bind(on_release=lambda *_: popup.dismiss())
+        btn_yes.bind(on_release=do_delete)
+        popup.open()
 
 
 class SettingsScreen(GestureNavigationMixin, Screen):
@@ -598,6 +678,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
             except Exception:
                 return
 
@@ -618,6 +699,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                 Clock.schedule_once(lambda *_: _popup("Saved", "Name updated."), 0)
             except ApiError as e:
                 err_msg = str(e)
@@ -645,9 +727,9 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 _popup("Picker Error", "Unable to open system picker.")
 
         def _after(ok: bool):
+            # SAF picker works even without media permissions on modern Android.
             if not ok:
-                _popup("Permission", "Media permission required.")
-                return
+                _popup("Permission", "Media permission denied. Opening system picker anyway.")
             _open()
 
         ensure_permissions(required_media_permissions(), on_result=_after)
@@ -662,6 +744,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                 Clock.schedule_once(lambda *_: _popup("Saved", "Profile image updated."), 0)
             except ApiError as e:
                 err_msg = str(e)
@@ -703,6 +786,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                 Clock.schedule_once(lambda *_: _popup("Saved", "Email updated."), 0)
             except ApiError as e:
                 err_msg = str(e)
@@ -744,6 +828,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 sess = get_session() or {}
                 set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
+                Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                 Clock.schedule_once(lambda *_: _popup("Saved", "Phone updated."), 0)
             except ApiError as e:
                 err_msg = str(e)
@@ -759,6 +844,7 @@ class SettingsScreen(GestureNavigationMixin, Screen):
                 try:
                     api_me_delete()
                     clear_session()
+                    Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                     Clock.schedule_once(lambda *_: _popup("Deleted", "Account deleted."), 0)
                     Clock.schedule_once(lambda *_: setattr(self.manager, "current", "welcome") if self.manager else None, 0)
                 except ApiError as e:
@@ -768,21 +854,24 @@ class SettingsScreen(GestureNavigationMixin, Screen):
             Thread(target=work, daemon=True).start()
             popup.dismiss()
 
-        buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+        buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10), padding=[dp(10), dp(8)])
         btn_yes = Factory.AppButton(text="Delete", color=(0.94, 0.27, 0.27, 1))
         btn_no = Factory.AppButton(text="Cancel")
+        btn_no.size_hint_x = 1
+        btn_yes.size_hint_x = 1
         buttons.add_widget(btn_no)
         buttons.add_widget(btn_yes)
         root = BoxLayout(orientation="vertical", spacing=8, padding=8)
         root.add_widget(Label(text="Delete your account permanently?\nThis cannot be undone."))
         root.add_widget(buttons)
-        popup = Popup(title="Confirm", content=root, size_hint=(0.85, 0.4), auto_dismiss=False)
+        popup = Popup(title="Confirm", content=root, size_hint=(0.92, 0.45), auto_dismiss=False)
         btn_no.bind(on_release=lambda *_: popup.dismiss())
         btn_yes.bind(on_release=do_delete)
         popup.open()
 
     def logout(self):
         clear_session()
+        _sync_app_badge_best_effort()
         if self.manager:
             self.manager.current = "welcome"
 
@@ -884,7 +973,10 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
             if "price_input" in self.ids:
                 self.ids["price_input"].text = ""
             if "contact_phone_input" in self.ids:
-                self.ids["contact_phone_input"].text = ""
+                u = get_user() or {}
+                # Always lock contact phone to the registered user phone.
+                self.ids["contact_phone_input"].text = str(u.get("phone") or "")
+                self.ids["contact_phone_input"].disabled = True
             if "category_spinner" in self.ids:
                 self.ids["category_spinner"].text = "Select Category"
             if "media_summary" in self.ids:
@@ -931,7 +1023,9 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 elif (sp.text or "").strip() in {"", "Select Category", "property"}:
                     sp.text = "Select Category"
             if "contact_phone_input" in self.ids:
-                self.ids["contact_phone_input"].text = str(p.get("contact_phone") or p.get("phone") or "")
+                u = get_user() or {}
+                self.ids["contact_phone_input"].text = str(u.get("phone") or "")
+                self.ids["contact_phone_input"].disabled = True
             if "media_summary" in self.ids:
                 # Edits currently don't manage media uploads.
                 self.ids["media_summary"].text = ""
@@ -1005,6 +1099,13 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         preferred_district = str(p.get("district") or u.get("district") or "").strip()
         preferred_area = str(p.get("area") or "").strip()
         self._apply_edit_prefill()
+        # Ensure contact phone is always set/locked even in new-ad flow.
+        try:
+            if "contact_phone_input" in self.ids:
+                self.ids["contact_phone_input"].text = str(u.get("phone") or "")
+                self.ids["contact_phone_input"].disabled = True
+        except Exception:
+            pass
         self._load_publish_categories(str(p.get("property_type") or "").strip())
 
         from threading import Thread
@@ -1157,306 +1258,96 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
     def open_media_picker(self):
         """
         Pick up to 10 images + 1 video to upload with the ad.
+        Android-safe: forces picker launch on UI thread after permission callback.
         """
+
+        def _apply_selection(selection) -> None:
+            try:
+                paths = ensure_local_paths(selection or [])
+                media = [p for p in paths if is_image_path(p) or is_video_path(p)]
+                images = [x for x in media if is_image_path(x)]
+                videos = [x for x in media if is_video_path(x)]
+
+                if len(images) > 10:
+                    images = images[:10]
+                if len(videos) > 1:
+                    videos = videos[:1]
+
+                self._selected_media = list(images + videos)
+
+                if "media_summary" in self.ids:
+                    parts: list[str] = []
+                    if images:
+                        parts.append(f"{len(images)} image(s)")
+                    if videos:
+                        parts.append(f"{len(videos)} video(s)")
+                    self.ids["media_summary"].text = (
+                            "Selected: " + " + ".join(parts)
+                    ) if parts else ""
+            except Exception:
+                return
+
         def _open_picker() -> None:
-            # Android: prefer native SAF picker (no folder scanning).
             try:
                 from kivy.utils import platform as _platform
             except Exception:
                 _platform = ""
 
             if _platform == "android":
-                try:
-                    from plyer import filechooser  # type: ignore
-                except Exception:
-                    filechooser = None
+                launched = android_open_gallery(
+                    on_selection=_apply_selection,
+                    multiple=True,
+                    mime_types=["image/*", "video/*"],
+                )
+                if not launched:
+                    _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+                return
 
-                def _on_sel(selection):
-                    try:
-                        paths = ensure_local_paths(selection or [])
-                        media = [p for p in paths if is_image_path(p) or is_video_path(p)]
-                        images = [x for x in media if is_image_path(x)]
-                        videos = [x for x in media if is_video_path(x)]
+            # Desktop/dev fallback
+            chooser = FileChooserListView(
+                path=os.path.abspath(_default_media_dir()),
+                multiselect=True,
+                filters=[
+                    "*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif",
+                    "*.mp4", "*.mov", "*.m4v", "*.avi", "*.mkv",
+                ],
+            )
 
-                        # Enforce limits for the Android picker as well.
-                        if len(images) > 10:
-                            images = images[:10]
-                        if len(videos) > 1:
-                            videos = videos[:1]
+            root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
+            root.add_widget(
+                Label(
+                    text="Select up to 10 images and optionally 1 video.",
+                    size_hint_y=None,
+                    height=dp(24),
+                    color=(1, 1, 1, 0.78),
+                )
+            )
+            root.add_widget(chooser)
 
-                        self._selected_media = list(images + videos)
-                        if "media_summary" in self.ids:
-                            parts = []
-                            if images:
-                                parts.append(f"{len(images)} image(s)")
-                            if videos:
-                                parts.append(f"{len(videos)} video(s)")
-                            self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
-                    except Exception:
-                        return
+            btns = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10))
+            btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
+            btn_use = Factory.AppButton(text="Use Selected")
+            btns.add_widget(btn_cancel)
+            btns.add_widget(btn_use)
+            root.add_widget(btns)
 
-                if filechooser is None:
-                    launched = android_open_gallery(on_selection=_on_sel, multiple=True, mime_types=["image/*", "video/*"])
-                    if not launched:
-                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
-                    return
-
-                try:
-                    filechooser.open_file(on_selection=_on_sel, multiple=True)
-                    return
-                except Exception:
-                    launched = android_open_gallery(on_selection=_on_sel, multiple=True, mime_types=["image/*", "video/*"])
-                    if not launched:
-                        _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
-                    return
-
-            """
-            Custom media picker:
-            - Folder navigation (list)
-            - On open, show folder contents as a scrollable preview grid (thumbnails for photos)
-            - Multi-select with validation (max 10 images + 1 video)
-            """
-
-            def _is_image(fp: str) -> bool:
-                ext = os.path.splitext(fp.lower())[1]
-                return ext in {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-
-            def _is_video(fp: str) -> bool:
-                ext = os.path.splitext(fp.lower())[1]
-                return ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
-
-            class _MediaPickerPopup(Popup):
-                def __init__(self, **kwargs):
-                    super().__init__(**kwargs)
-                    self.title = "Choose Media (max 10 images + 1 video)"
-                    self.size_hint = (0.94, 0.94)
-                    self.auto_dismiss = False
-
-                    self._mode = "folders"  # folders|grid
-                    self._path = os.path.abspath(_default_media_dir())
-                    self._selected: set[str] = set()
-
-                    root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
-
-                    # Header (path + actions)
-                    header = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
-                    btn_up = Factory.AppButton(text="Up", size_hint_x=None, width=dp(90))
-                    path_label = os.path.basename(self._path) or "Photos"
-                    self._path_lbl = Label(text=path_label, halign="left", valign="middle", color=(1, 1, 1, 0.78))
-                    self._path_lbl.text_size = (0, None)
-                    header.add_widget(btn_up)
-                    header.add_widget(self._path_lbl)
-                    root.add_widget(header)
-
-                    # Folder list view
-                    self._chooser = FileChooserListView(path=self._path, filters=[], multiselect=False, dirselect=True)
-
-                    # Grid view
-                    from kivy.uix.scrollview import ScrollView
-                    from kivy.uix.togglebutton import ToggleButton
-                    from kivy.uix.image import AsyncImage
-                    from kivy.uix.gridlayout import GridLayout
-
-                    self._grid_scroll = ScrollView(do_scroll_x=False, bar_width=dp(6))
-                    self._grid = GridLayout(cols=3, spacing=dp(8), size_hint_y=None)
-                    self._grid.bind(minimum_height=self._grid.setter("height"))
-                    self._grid_scroll.add_widget(self._grid)
-
-                    # Footer buttons
-                    footer = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(10))
-                    btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
-                    btn_open = Factory.AppButton(text="Folders")
-                    btn_use = Factory.AppButton(text="Use Selected")
-                    footer.add_widget(btn_cancel)
-                    footer.add_widget(btn_open)
-                    footer.add_widget(btn_use)
-                    root.add_widget(Label(text="Select up to 10 images and optionally 1 video.", size_hint_y=None, height=dp(22), color=(1, 1, 1, 0.78)))
-
-                    self._body = BoxLayout()
-                    root.add_widget(self._body)
-                    root.add_widget(footer)
-                    self.content = root
-
-                    def _set_path(new_path: str) -> None:
-                        p = os.path.abspath(str(new_path or "").strip() or self._path)
-                        if not os.path.isdir(p):
-                            return
-                        self._path = p
-                        try:
-                            self._path_lbl.text = os.path.basename(p) or "Photos"
-                        except Exception:
-                            pass
-                        try:
-                            self._chooser.path = p
-                        except Exception:
-                            pass
-
-                    def _go_up(*_):
-                        parent = os.path.dirname(self._path.rstrip(os.sep))
-                        if parent and parent != self._path:
-                            _set_path(parent)
-                            if self._mode == "grid":
-                                _show_grid()
-
-                    def _list_dir(p: str) -> tuple[list[str], list[str]]:
-                        """
-                        Returns (dirs, media_files) within p.
-                        """
-                        try:
-                            items = [os.path.join(p, x) for x in os.listdir(p)]
-                        except Exception:
-                            return ([], [])
-                        dirs = []
-                        media = []
-                        for fp in items:
-                            try:
-                                if os.path.isdir(fp):
-                                    dirs.append(fp)
-                                elif os.path.isfile(fp) and (_is_image(fp) or _is_video(fp)):
-                                    media.append(fp)
-                            except Exception:
-                                continue
-                        dirs.sort(key=lambda x: os.path.basename(x).lower())
-                        media.sort(key=lambda x: os.path.basename(x).lower())
-                        return (dirs, media)
-
-                    def _toggle_select(fp: str, active: bool) -> None:
-                        if active:
-                            self._selected.add(fp)
-                        else:
-                            self._selected.discard(fp)
-
-                    def _render_tile_dir(fp: str) -> None:
-                        name = os.path.basename(fp.rstrip(os.sep)) or fp
-                        tile = Factory.AppButton(text=f"[b]{name}[/b]\n[small](Folder)[/small]")
-                        tile.size_hint_y = None
-                        tile.height = dp(110)
-                        tile.bind(on_release=lambda *_: (_set_path(fp), _show_grid()))
-                        self._grid.add_widget(tile)
-
-                    def _render_tile_media(fp: str) -> None:
-                        # ToggleButton lets the user tap to select/deselect.
-                        wrap = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(150), spacing=dp(6))
-                        if _is_image(fp):
-                            img = AsyncImage(source=fp, fit_mode="fill")
-                            img.size_hint_y = None
-                            img.height = dp(110)
-                            wrap.add_widget(img)
-                        else:
-                            # Video: simple placeholder tile (thumbnail extraction is expensive).
-                            wrap.add_widget(Label(text="[b]Video[/b]", size_hint_y=None, height=dp(110), color=(1, 1, 1, 0.78)))
-
-                        tb = ToggleButton(text="", size_hint_y=None, height=dp(32))
-                        tb.state = "down" if fp in self._selected else "normal"
-
-                        def _sync_label(btn):
-                            btn.text = "✓" if btn.state == "down" else ""
-
-                        def _on_state(btn, value):
-                            _toggle_select(fp, value == "down")
-                            _sync_label(btn)
-
-                        _sync_label(tb)
-                        tb.bind(state=_on_state)
-                        wrap.add_widget(tb)
-                        self._grid.add_widget(wrap)
-
-                    def _show_folders(*_) -> None:
-                        self._mode = "folders"
-                        self._body.clear_widgets()
-                        self._body.add_widget(self._chooser)
-                        btn_open.disabled = False
-                        btn_open.text = "Open folder"
-                        btn_use.disabled = True
-
-                    def _show_grid(*_) -> None:
-                        self._mode = "grid"
-                        self._body.clear_widgets()
-                        self._body.add_widget(self._grid_scroll)
-                        # Keep a way to jump back to folder list if user prefers.
-                        btn_open.disabled = False
-                        btn_open.text = "Folders"
-                        btn_use.disabled = False
-
-                        # rebuild grid
-                        self._grid.clear_widgets()
-                        dirs, media = _list_dir(self._path)
-                        # Dirs first
-                        for d in dirs[:120]:
-                            _render_tile_dir(d)
-                        # Then media
-                        for fp in media[:400]:
-                            _render_tile_media(fp)
-                        if not dirs and not media:
-                            self._grid.add_widget(Label(text="No photos/videos found in this folder.", size_hint_y=None, height=dp(42), color=(1, 1, 1, 0.75)))
-
-                    def _open_folder(*_):
-                        # Choose folder from list view; fallback to current path.
-                        try:
-                            sel = list(self._chooser.selection or [])
-                            if sel:
-                                _set_path(sel[0])
-                        except Exception:
-                            pass
-                        _show_grid()
-
-                    def _toggle_folders_or_open(*_):
-                        # In grid mode: show folder list. In folder mode: open selected folder.
-                        if self._mode == "grid":
-                            _show_folders()
-                        else:
-                            _open_folder()
-
-                    def _apply(*_):
-                        selected = sorted([x for x in self._selected if os.path.isfile(x)])
-                        images = [x for x in selected if _is_image(x)]
-                        videos = [x for x in selected if _is_video(x)]
-                        if len(images) > 10:
-                            _popup("Error", "Maximum 10 images are allowed.")
-                            return
-                        if len(videos) > 1:
-                            _popup("Error", "Maximum 1 video is allowed.")
-                            return
-                        self.dismiss()
-                        self._on_done(images + videos)
-
-                    btn_up.bind(on_release=_go_up)
-                    btn_cancel.bind(on_release=lambda *_: self.dismiss())
-                    btn_open.bind(on_release=_toggle_folders_or_open)
-                    btn_use.bind(on_release=_apply)
-
-                    # Expose selection to caller.
-                    self._on_done = lambda _sel: None
-
-                    # UX: open straight into a scrollable preview grid (folders as tiles),
-                    # so users immediately see photos/videos instead of a folder list.
-                    _show_grid()
-
-            popup = _MediaPickerPopup()
-
-            def _done(selected: list[str]) -> None:
-                try:
-                    self._selected_media = list(selected or [])
-                    images = [x for x in self._selected_media if _is_image(x)]
-                    videos = [x for x in self._selected_media if _is_video(x)]
-                    if "media_summary" in self.ids:
-                        parts: list[str] = []
-                        if images:
-                            parts.append(f"{len(images)} image(s)")
-                        if videos:
-                            parts.append("1 video")
-                        self.ids["media_summary"].text = ("Selected: " + " + ".join(parts)) if parts else ""
-                except Exception:
-                    pass
-
-            popup._on_done = _done  # type: ignore[attr-defined]
+            popup = Popup(
+                title="Choose Media",
+                content=root,
+                size_hint=(0.94, 0.94),
+                auto_dismiss=False,
+            )
+            btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+            btn_use.bind(on_release=lambda *_: (_apply_selection(list(chooser.selection or [])), popup.dismiss()))
             popup.open()
 
         def _after(ok: bool) -> None:
+            # SAF picker works even if permission is denied.
             if not ok:
-                _popup("Permission required", "Please allow Photos/Media permission to pick files for upload.")
-                return
-            _open_picker()
+                _popup("Permission", "Media permission denied. Opening picker anyway.")
+
+            # 🔴 CRITICAL FIX: force UI-thread + delay
+            Clock.schedule_once(lambda *_: _open_picker(), 0.15)
 
         ensure_permissions(required_media_permissions(), on_result=_after)
 

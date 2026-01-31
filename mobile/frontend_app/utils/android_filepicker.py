@@ -26,60 +26,39 @@ def _strip_file_scheme(p: str) -> str:
 
 def _android_copy_content_uri_to_cache(uri: str) -> str:
     """
-    Copy an Android content:// URI to the app's cache directory.
+    Copy Android content:// URI into app cache file.
+    Fully PyJNIus-safe.
     """
+
     _log(f"Copying content URI → cache: {uri}")
 
-    from jnius import autoclass, jarray  # type: ignore
+    from jnius import autoclass
 
     PythonActivity = autoclass("org.kivy.android.PythonActivity")
     Uri = autoclass("android.net.Uri")
     OpenableColumns = autoclass("android.provider.OpenableColumns")
     File = autoclass("java.io.File")
     FileOutputStream = autoclass("java.io.FileOutputStream")
+    ByteClass = autoclass("java.lang.Byte")
+    Array = autoclass("java.lang.reflect.Array")
 
-    activity = PythonActivity.mActivity
-    ctx = activity.getApplicationContext()
+    act = PythonActivity.mActivity
+    ctx = act.getApplicationContext()
     resolver = ctx.getContentResolver()
     uri_obj = Uri.parse(str(uri))
 
-    def _guess_ext_from_mime(mime: str) -> str:
-        m = str(mime or "").strip().lower()
-        if not m:
-            return ""
-        # Common image types
-        if m in {"image/jpeg", "image/jpg"}:
-            return ".jpg"
-        if m == "image/png":
-            return ".png"
-        if m == "image/webp":
-            return ".webp"
-        if m == "image/gif":
-            return ".gif"
-        # Common video types
-        if m == "video/mp4":
-            return ".mp4"
-        if m == "video/quicktime":
-            return ".mov"
-        if m.startswith("image/"):
-            return ".jpg"
-        if m.startswith("video/"):
-            return ".mp4"
-        return ""
-
+    # -------- filename --------
     display_name = ""
     cursor = None
     try:
         cursor = resolver.query(uri_obj, None, None, None, None)
-        if cursor is not None and cursor.moveToFirst():
+        if cursor and cursor.moveToFirst():
             idx = int(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME))
             if idx >= 0:
                 display_name = str(cursor.getString(idx) or "")
-    except Exception as e:
-        _log(f"Failed reading display name: {e}")
     finally:
         try:
-            if cursor is not None:
+            if cursor:
                 cursor.close()
         except Exception:
             pass
@@ -87,31 +66,38 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     if not display_name:
         display_name = f"picked_{int(time.time())}"
 
-    # Sanitize name + ensure extension so is_image_path()/is_video_path() works after copy.
-    display_name = display_name.replace("/", "_").replace("\\", "_").replace(":", "_")
-    base, ext = os.path.splitext(display_name)
-    if not ext:
-        mime = ""
+    display_name = (
+        display_name.replace("/", "_")
+        .replace("\\", "_")
+        .replace(":", "_")
+    )
+
+    # ensure extension (important for your is_image_path logic)
+    if "." not in display_name:
         try:
-            mime = str(resolver.getType(uri_obj) or "")
+            mime = resolver.getType(uri_obj) or ""
+            if mime.startswith("image/"):
+                display_name += ".jpg"
+            elif mime.startswith("video/"):
+                display_name += ".mp4"
         except Exception:
-            mime = ""
-        ext = _guess_ext_from_mime(mime)
-        if ext:
-            display_name = f"{display_name}{ext}"
+            pass
 
     cache_dir = ctx.getCacheDir()
     out_file = File(cache_dir, display_name)
 
     ins = resolver.openInputStream(uri_obj)
     if ins is None:
-        raise OSError("Unable to read selected file.")
+        raise OSError("Unable to open input stream")
 
     outs = FileOutputStream(out_file)
-    buf = jarray("b")(8192)
+
+    # ✅ SAFE byte[] buffer creation
+    buf = Array.newInstance(ByteClass.TYPE, 8192)
+
     try:
         while True:
-            n = int(ins.read(buf))
+            n = ins.read(buf)
             if n == -1:
                 break
             outs.write(buf, 0, n)
@@ -126,9 +112,10 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
         except Exception:
             pass
 
-    out_path = str(out_file.getAbsolutePath())
-    _log(f"Copied file path: {out_path}")
-    return out_path
+    path = str(out_file.getAbsolutePath())
+    _log(f"Copied file path: {path}")
+    return path
+
 
 
 def ensure_local_path(p: str) -> str:
@@ -175,73 +162,32 @@ def android_open_gallery(
     multiple: bool = False,
     mime_types: list[str] | None = None,
 ) -> bool:
-    """
-    WhatsApp / Slack style picker behavior:
 
-    - Images/Videos  -> ACTION_PICK (MediaStore gallery UI)
-    - Other files    -> ACTION_OPEN_DOCUMENT
-    - No storage permissions required
-    - Returns content:// URIs which are later copied to cache
-    """
     if platform != "android":
         return False
 
     try:
-        from android import activity  # type: ignore
+        from android import activity
         from kivy.clock import Clock
-        from jnius import autoclass, jarray  # type: ignore
+        from jnius import autoclass
 
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
         Activity = autoclass("android.app.Activity")
-        String = autoclass("java.lang.String")
-        MediaStore = autoclass("android.provider.MediaStore")
+        JavaString = autoclass("java.lang.String")
+        Array = autoclass("java.lang.reflect.Array")
 
         act = PythonActivity.mActivity
-        ctx = act.getApplicationContext()
+        pm = act.getPackageManager()
 
-        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
-        if not mimes:
-            mimes = ["image/*"]
-
-        is_media = any(
-            m.startswith("image/") or m.startswith("video/")
-            for m in mimes
-        )
-
-        # -------------------------
-        # Choose intent type
-        # -------------------------
-        if is_media:
-            # WhatsApp / Slack gallery-style picker
-            intent = Intent(Intent.ACTION_PICK)
-            intent.setDataAndType(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                mimes[0],
-            )
-        else:
-            # File picker (Drive, Downloads, Files)
-            intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            intent.addCategory(Intent.CATEGORY_OPENABLE)
-            intent.setType(mimes[0])
-
-            if len(mimes) > 1:
-                arr = jarray("java.lang.String")([String(m) for m in mimes])
-                intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
-
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
-        chooser = Intent.createChooser(intent, "Select file")
         req_code = 13579
 
-        def _deliver(sel: list[str]) -> None:
+        def _deliver(sel):
             Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
 
         def _on_activity_result(requestCode, resultCode, data):
             if requestCode != req_code:
                 return
-
             try:
                 activity.unbind(on_activity_result=_on_activity_result)
             except Exception:
@@ -251,8 +197,7 @@ def android_open_gallery(
                 _deliver([])
                 return
 
-            out: list[str] = []
-
+            out = []
             clip = data.getClipData()
             if clip:
                 for i in range(clip.getItemCount()):
@@ -267,8 +212,62 @@ def android_open_gallery(
             _deliver(out)
 
         activity.bind(on_activity_result=_on_activity_result)
-        act.startActivityForResult(chooser, req_code)
+
+        # ---------- SAF picker ----------
+        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
+        if not mimes:
+            mimes = ["image/*"]
+
+        saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+        if len(mimes) == 1:
+            saf_intent.setType(mimes[0])
+        else:
+            saf_intent.setType("*/*")
+            arr = Array.newInstance(JavaString, len(mimes))
+            for i, m in enumerate(mimes):
+                Array.set(arr, i, JavaString(m))
+            saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+
+        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        saf_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        if saf_intent.resolveActivity(pm) is not None:
+            chooser = Intent.createChooser(
+                saf_intent,
+                JavaString("Select file"),
+            )
+            Clock.schedule_once(
+                lambda *_: act.startActivityForResult(chooser, req_code),
+                0.15,
+            )
+            return True
+
+        # ---------- Gallery fallback ----------
+        _log("SAF picker missing, falling back to gallery")
+
+        pick_intent = Intent(Intent.ACTION_PICK)
+        pick_intent.setType("image/*")
+
+        if pick_intent.resolveActivity(pm) is None:
+            _log("No gallery app available")
+            return False
+
+        chooser = Intent.createChooser(
+            pick_intent,
+            JavaString("Select image"),
+        )
+
+        Clock.schedule_once(
+            lambda *_: act.startActivityForResult(chooser, req_code),
+            0.15,
+        )
+
         return True
 
-    except Exception:
+    except Exception as e:
+        _log(f"Picker failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False

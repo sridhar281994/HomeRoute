@@ -18,7 +18,7 @@ import math
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update as sa_update
@@ -763,7 +763,31 @@ def _log_moderation(
 
 
 os.makedirs(_uploads_dir(), exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=_uploads_dir()), name="uploads")
+
+
+@app.get("/uploads/{path:path}", include_in_schema=False)
+def uploads_proxy(path: str):
+    """
+    Serve locally-stored uploads from disk.
+
+    Render (and other PaaS) environments often have ephemeral filesystems; older DB rows
+    may reference files that no longer exist. To avoid noisy 404s in logs for these stale
+    URLs, we return 204 when the file is missing.
+    """
+    rel = (path or "").lstrip("/").replace("\\", "/")
+    if not rel:
+        return Response(status_code=204)
+    base = _uploads_dir()
+    try:
+        direct = os.path.join(base, rel)
+        if os.path.exists(direct):
+            return FileResponse(direct)
+        nested = os.path.join(base, "uploads", rel)
+        if os.path.exists(nested):
+            return FileResponse(nested)
+    except Exception:
+        pass
+    return Response(status_code=204)
 
 
 @app.on_event("startup")
@@ -825,6 +849,14 @@ def get_current_user(
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    # Treat suspended accounts as disabled (except admin).
+    try:
+        if (user.role or "").lower() != "admin" and (user.approval_status or "").lower() == "suspended":
+            raise HTTPException(status_code=403, detail="Account disabled")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     return user
 
 
@@ -2490,8 +2522,15 @@ def owner_create_property(
             raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
     address = (data.address or "").strip() or (data.location or "").strip()
     address_norm = _norm_key(address)
-    contact_phone = (data.contact_phone or "").strip()
+    # Enforce: posting contact phone must match the user's registered phone.
+    # (UI also locks this field, but backend must enforce.)
+    if me.role != "admin":
+        contact_phone = str(getattr(me, "phone", "") or "").strip()
+    else:
+        contact_phone = (data.contact_phone or "").strip()
     contact_phone_norm = _norm_phone(contact_phone)
+    if me.role != "admin" and not contact_phone_norm:
+        raise HTTPException(status_code=400, detail="Your profile phone number is required to publish ads")
     company_name = (data.company_name or "").strip()
     company_name_norm = _norm_key(company_name)
 
@@ -2501,24 +2540,9 @@ def owner_create_property(
         me.company_name_normalized = company_name_norm
         db.add(me)
 
-    # Duplicate prevention: address + phone (admin can create duplicates explicitly).
-    if me.role != "admin":
-        if address_norm:
-            dup_addr = db.execute(
-                select(Property.id).where(
-                    (Property.address_normalized == address_norm) & (Property.allow_duplicate_address == False)  # noqa: E712
-                )
-            ).first()
-            if dup_addr:
-                raise HTTPException(status_code=409, detail="Duplicate address detected (admin override required)")
-        if contact_phone_norm:
-            dup_phone = db.execute(
-                select(Property.id).where(
-                    (Property.contact_phone_normalized == contact_phone_norm) & (Property.allow_duplicate_phone == False)  # noqa: E712
-                )
-            ).first()
-            if dup_phone:
-                raise HTTPException(status_code=409, detail="Duplicate listing phone detected (admin override required)")
+    # Duplicate prevention:
+    # - Address duplicates are allowed (user requested).
+    # - Phone number is enforced to be the user's registered phone; do not block multiple ads by same phone.
 
     p = Property(
         owner_id=me.id,
@@ -2547,10 +2571,21 @@ def owner_create_property(
         contact_phone=contact_phone,
         contact_phone_normalized=contact_phone_norm,
         contact_email=(data.contact_email or "").strip(),
+        # IMPORTANT: allow duplicate addresses by default (DB has a unique index
+        # that applies only when allow_duplicate_address=false).
+        allow_duplicate_address=True,
+        # IMPORTANT: allow multiple ads per same phone (DB has a unique index
+        # that applies only when allow_duplicate_phone=false).
+        allow_duplicate_phone=True,
         updated_at=dt.datetime.now(dt.timezone.utc),
     )
     db.add(p)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # If a legacy DB constraint still triggers, return a user-friendly conflict
+        # instead of a 500.
+        raise HTTPException(status_code=409, detail="Duplicate detected. Please change address or try again.")
     _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="create", reason="")
     return {"id": p.id, "ad_number": (p.ad_number or "").strip() or str(p.id), "status": p.status}
 
@@ -2610,7 +2645,11 @@ def owner_update_property(
     if data.availability is not None:
         p.availability = (data.availability or "").strip() or p.availability
     if data.contact_phone is not None:
-        ph = (data.contact_phone or "").strip()
+        # Enforce: users cannot change contact phone on ads; it must match their profile.
+        if me.role != "admin":
+            ph = str(getattr(me, "phone", "") or "").strip()
+        else:
+            ph = (data.contact_phone or "").strip()
         p.contact_phone = ph
         p.contact_phone_normalized = _norm_phone(ph)
     if data.contact_email is not None:
@@ -3002,6 +3041,160 @@ def admin_suspend_owner(
     return {"ok": True}
 
 
+# -----------------------
+# Admin: user administration
+# -----------------------
+@app.get("/admin/users")
+def admin_list_users(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    q: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    qq = (q or "").strip().lower()
+
+    stmt = select(User).order_by(User.created_at.desc(), User.id.desc())
+    if qq:
+        # best-effort search across name/email/phone/username
+        stmt = stmt.where(
+            (func.lower(User.email).contains(qq))
+            | (func.lower(User.username).contains(qq))
+            | (func.lower(User.name).contains(qq))
+            | (func.lower(User.phone).contains(qq))
+        )
+    users = db.execute(stmt.limit(int(limit))).scalars().all()
+    ids = [int(u.id) for u in users]
+
+    counts: dict[int, int] = {}
+    if ids:
+        rows = db.execute(select(Property.owner_id, func.count(Property.id)).where(Property.owner_id.in_(ids)).group_by(Property.owner_id)).all()
+        for owner_id, cnt in rows:
+            try:
+                counts[int(owner_id)] = int(cnt or 0)
+            except Exception:
+                continue
+
+    items: list[dict[str, Any]] = []
+    for u in users:
+        items.append(
+            {
+                "id": u.id,
+                "email": u.email,
+                "username": u.username,
+                "name": u.name,
+                "phone": u.phone,
+                "role": u.role,
+                "approval_status": u.approval_status,
+                "approval_reason": u.approval_reason,
+                "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else "",
+                "total_posts": int(counts.get(int(u.id), 0)),
+            }
+        )
+    return {"items": items}
+
+
+@app.get("/admin/users/{user_id:int}")
+def admin_get_user(
+    user_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    u = db.get(User, int(user_id))
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    stmt = (
+        select(Property)
+        .options(selectinload(Property.images))
+        .where(Property.owner_id == int(u.id))
+        .order_by(Property.created_at.desc(), Property.id.desc())
+    )
+    props = db.execute(stmt).scalars().all()
+    items = [_property_out(p, owner=u, include_unapproved_images=True, include_internal=True) for p in props]
+
+    return {
+        "user": {
+            "id": u.id,
+            "email": u.email,
+            "username": u.username,
+            "name": u.name,
+            "phone": u.phone,
+            "role": u.role,
+            "approval_status": u.approval_status,
+            "approval_reason": u.approval_reason,
+            "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else "",
+        },
+        "total_posts": len(items),
+        "posts": items,
+    }
+
+
+@app.post("/admin/users/{user_id}/suspend")
+def admin_suspend_user(
+    user_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    if int(user_id) == int(me.id):
+        raise HTTPException(status_code=400, detail="Cannot suspend your own admin account")
+    u = db.get(User, int(user_id))
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if (u.role or "").lower() == "admin":
+        raise HTTPException(status_code=400, detail="Cannot suspend admin accounts")
+    u.approval_status = "suspended"
+    u.approval_reason = (data.reason if data else "") or ""
+    db.add(u)
+    _log_moderation(db, actor_user_id=me.id, entity_type="user", entity_id=u.id, action="suspend", reason=u.approval_reason)
+    return {"ok": True}
+
+
+@app.post("/admin/users/{user_id}/approve")
+def admin_approve_user(
+    user_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    u = db.get(User, int(user_id))
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if (u.role or "").lower() == "admin":
+        raise HTTPException(status_code=400, detail="Cannot modify admin accounts")
+    u.approval_status = "approved"
+    u.approval_reason = ""
+    db.add(u)
+    _log_moderation(db, actor_user_id=me.id, entity_type="user", entity_id=u.id, action="approve", reason="")
+    return {"ok": True}
+
+
+@app.post("/admin/properties/{property_id:int}/spam")
+def admin_mark_property_spam(
+    property_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    data: ModerateIn | None = None,
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    p = db.get(Property, int(property_id))
+    if not p:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    p.status = "suspended"
+    p.moderation_reason = "SPAM"
+    db.add(p)
+    _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=int(property_id), action="spam", reason=(data.reason if data else "") or "")
+    return {"ok": True}
+
+
 @app.get("/admin/images/pending")
 def admin_pending_images(
     me: Annotated[User, Depends(get_current_user)],
@@ -3025,7 +3218,7 @@ def admin_pending_images(
                 "property_title": p.title if p else "",
                 "owner_id": owner.id if owner else None,
                 "owner_company_name": owner.company_name if owner else "",
-                "url": _public_image_url(img.file_path),
+                "url": _public_image_url_if_exists(img.file_path),
                 "image_hash": img.image_hash,
                 "status": img.status,
                 "original_filename": img.original_filename,
