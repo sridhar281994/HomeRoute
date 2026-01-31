@@ -133,6 +133,14 @@ class QuickRentApp(App):
             if not screen:
                 return False
 
+            # Only allow the OS to exit the app from the Home screen.
+            # For all other screens, consume BACK and route to in-app navigation.
+            try:
+                if getattr(screen, "name", "") == "home":
+                    return False
+            except Exception:
+                pass
+
             # Prefer screen.back()
             if hasattr(screen, "back"):
                 screen.back()
