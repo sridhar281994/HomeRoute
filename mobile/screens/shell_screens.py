@@ -33,6 +33,7 @@ from frontend_app.utils.api import (
     api_me_upload_profile_image,
     api_meta_categories,
     api_owner_create_property,
+    api_owner_delete_property,
     api_owner_list_properties,
     api_owner_update_property,
     api_subscription_status,
@@ -517,13 +518,20 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
 
                                     actions = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(8))
                                     btn_edit = Factory.AppButton(text="Edit")
+                                    btn_delete = Factory.AppButton(text="Delete", color=(0.94, 0.27, 0.27, 1))
                                     actions.add_widget(btn_edit)
+                                    actions.add_widget(btn_delete)
                                     wrap.add_widget(actions)
 
                                     def _edit(*_args, p=p):
                                         self.edit_post(p)
 
                                     btn_edit.bind(on_release=_edit)
+
+                                    def _delete(*_args, p=p):
+                                        self.delete_post(p)
+
+                                    btn_delete.bind(on_release=_delete)
 
                                     container.add_widget(wrap)
                     except Exception:
@@ -556,6 +564,58 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
             self.manager.current = "owner_add_property"
         except Exception:
             _popup("Error", "Unable to open edit screen.")
+
+    def delete_post(self, p: dict[str, Any]) -> None:
+        """
+        Delete an owned post and refresh the list.
+        """
+        try:
+            pid = int((p or {}).get("id") or 0)
+        except Exception:
+            pid = 0
+        if pid <= 0:
+            _popup("Error", "Invalid post id.")
+            return
+
+        # Confirm popup
+        try:
+            adv = str((p or {}).get("adv_number") or (p or {}).get("ad_number") or pid).strip()
+        except Exception:
+            adv = str(pid)
+
+        def do_delete(*_):
+            from threading import Thread
+
+            def work():
+                try:
+                    api_owner_delete_property(property_id=pid)
+                    Clock.schedule_once(lambda *_: _popup("Deleted", f"Deleted Ad #{adv}"), 0)
+                    Clock.schedule_once(lambda *_: self.refresh(), 0)
+                except ApiError as e:
+                    err_msg = str(e)
+                    Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
+                except Exception as e:
+                    err_msg = str(e) or "Delete failed."
+                    Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
+
+            Thread(target=work, daemon=True).start()
+            try:
+                popup.dismiss()
+            except Exception:
+                pass
+
+        buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+        btn_no = Factory.AppButton(text="Cancel")
+        btn_yes = Factory.AppButton(text="Delete", color=(0.94, 0.27, 0.27, 1))
+        buttons.add_widget(btn_no)
+        buttons.add_widget(btn_yes)
+        root = BoxLayout(orientation="vertical", spacing=8, padding=8)
+        root.add_widget(Label(text=f"Delete Ad #{adv}?\nThis cannot be undone."))
+        root.add_widget(buttons)
+        popup = Popup(title="Confirm", content=root, size_hint=(0.85, 0.4), auto_dismiss=False)
+        btn_no.bind(on_release=lambda *_: popup.dismiss())
+        btn_yes.bind(on_release=do_delete)
+        popup.open()
 
 
 class SettingsScreen(GestureNavigationMixin, Screen):
