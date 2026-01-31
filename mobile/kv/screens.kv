@@ -1612,14 +1612,13 @@
 
 
 <FilterPopup>:
-    # Use a full-screen modal overlay and draw our own rounded panel,
-    # so the popup matches the Home screen card/panel theme.
     title: ""
     separator_height: 0
     size_hint: 1, 1
     auto_dismiss: True
     background: ""
     background_color: (0, 0, 0, 0)
+
     FloatLayout:
         canvas.before:
             Color:
@@ -1637,12 +1636,14 @@
             Ellipse:
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
+
         BoxLayout:
             orientation: "vertical"
             size_hint: 0.95, 0.9
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(10)
             padding: dp(12)
+
             canvas.before:
                 Color:
                     rgba: PANEL_BG
@@ -1656,16 +1657,21 @@
                     width: 1.0
                     rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
 
+            # ---------------- HEADER ----------------
+
             BoxLayout:
                 size_hint_y: None
                 height: dp(44)
                 spacing: dp(8)
+
                 Label:
                     text: "[b]Filters[/b]"
                     halign: "left"
                     valign: "middle"
                     text_size: self.size
+
                 Widget:
+
                 AppButton:
                     text: "Close"
                     size_hint_x: None
@@ -1679,26 +1685,31 @@
                 height: dp(22)
                 color: TEXT_MUTED
 
+            # ---------------- BODY ----------------
+
             ScrollView:
                 do_scroll_x: False
                 bar_width: dp(6)
+
                 GridLayout:
-                    # Responsive: stack filters on smaller screens.
                     cols: 1 if root.width < dp(620) else 2
                     size_hint_y: None
                     height: self.minimum_height
                     spacing: dp(10)
 
+                    # -------- STATE --------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: dp(82)
                         spacing: dp(4)
+
                         Label:
                             text: "State (optional)"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
+
                         PrettySpinner:
                             text: root.home.state_value if root.home else "Any"
                             values: root.home.state_options if root.home else ["Any"]
@@ -1708,16 +1719,19 @@
                             size_hint_y: None
                             height: dp(48)
 
+                    # -------- DISTRICT --------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: dp(82)
                         spacing: dp(4)
+
                         Label:
                             text: "District (optional)"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
+
                         PrettySpinner:
                             text: root.home.district_value if root.home else "Any"
                             values: root.home.district_options if root.home else ["Any"]
@@ -1728,99 +1742,42 @@
                             size_hint_y: None
                             height: dp(48)
 
-                    BoxLayout:
-                        orientation: "vertical"
-                        size_hint_y: None
-                        height: dp(260)
-                        spacing: dp(6)
-                        Label:
-                            text: "Area (optional)"
-                            color: TEXT_MUTED
-                            size_hint_y: None
-                            height: dp(22)
-                        Label:
-                            text: "Select State + District to load areas"
-                            color: TEXT_MUTED
-                            size_hint_y: None
-                            height: dp(18)
-                            opacity: 1 if (root.home and ((root.home.state_value == "Any") or (root.home.district_value == "Any"))) else 0
-                        TextInput:
-                            hint_text: "Search areas ..."
-                            text: root.home.area_search if root.home else ""
-                            multiline: False
-                            disabled: (not root.home) or (root.home.state_value == "Any") or (root.home.district_value == "Any")
-                            on_text:
-                                if root.home: root.home.area_search = self.text
-                                if root.home: root.home.render_area_options(root.ids.area_options_container)
-                            size_hint_y: None
-                            height: dp(48)
-                        ScrollView:
-                            do_scroll_x: False
-                            bar_width: dp(6)
-                            size_hint_y: None
-                            height: dp(150)
-                            GridLayout:
-                                id: area_options_container
-                                cols: 1
-                                size_hint_y: None
-                                height: self.minimum_height
-                                spacing: dp(6)
-                        BoxLayout:
-                            size_hint_y: None
-                            height: dp(40)
-                            spacing: dp(10)
-                            AppButton:
-                                text: "Clear Areas"
-                                disabled: (not root.home) or (not root.home.selected_areas)
-                                on_release:
-                                    if root.home: root.home.clear_areas()
-                                    if root.home: root.home.render_area_options(root.ids.area_options_container)
-                                size_hint_x: None
-                                width: dp(140)
-                            Label:
-                                text: ("Any" if (not root.home) or (not root.home.selected_areas) else (str(len(root.home.selected_areas)) + " selected"))
-                                color: TEXT_MUTED
-                                halign: "left"
-                                valign: "middle"
-                                text_size: self.size
-
-                    # GPS controls moved to hamburger menu (not in filters).
-
+                    # -------- NEED CATEGORY --------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: dp(96)
                         spacing: dp(4)
+
                         Label:
                             text: "Need category (materials / services / property)"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(42)
-                            halign: "left"
-                            valign: "middle"
                             text_size: self.width, None
+
                         PrettySpinner:
                             text: root.home.need_category if root.home else "Any"
                             values: root.home.need_values if root.home else ["Any"]
-                            # Ensure dropdown always uses the full list (even after a selection).
                             on_touch_down: self.values = (root.home.need_values if root.home else ["Any"])
                             on_text:
                                 if root.home: root.home.need_category = self.text
                             size_hint_y: None
                             height: dp(48)
 
-                    # Post date filter removed per UX request.
-
+                    # -------- SORT --------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: dp(82)
                         spacing: dp(4)
+
                         Label:
                             text: "Sort (by budget)"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
+
                         PrettySpinner:
                             text: root.home.sort_budget if root.home else "Any (Newest)"
                             values: ["Any (Newest)", "Top (high to low)", "Bottom (low to high)"]
@@ -1829,16 +1786,19 @@
                             size_hint_y: None
                             height: dp(48)
 
+                    # -------- MAX PRICE --------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: dp(82)
                         spacing: dp(4)
+
                         Label:
                             text: "Max budget"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
+
                         TextInput:
                             text: root.home.max_price if root.home else ""
                             multiline: False
@@ -1848,16 +1808,19 @@
                             size_hint_y: None
                             height: dp(48)
 
+                    # -------- RENT / SALE --------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: dp(82)
                         spacing: dp(4)
+
                         Label:
                             text: "Rent/Sale"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
+
                         PrettySpinner:
                             text: root.home.rent_sale if root.home else "Any"
                             values: ["Any", "Rent", "Sale"]
@@ -1866,15 +1829,19 @@
                             size_hint_y: None
                             height: dp(48)
 
+            # ---------------- FOOTER ----------------
+
             BoxLayout:
                 size_hint_y: None
                 height: dp(48)
                 spacing: dp(10)
+
                 AppButton:
                     text: "Apply filters"
                     on_release:
                         if root.home: root.home.refresh()
                         root.dismiss()
+
 
 <MyPostsScreen>:
     name: "my_posts"
