@@ -2514,8 +2514,15 @@ def owner_create_property(
             raise HTTPException(status_code=400, detail="Invalid GPS coordinates")
     address = (data.address or "").strip() or (data.location or "").strip()
     address_norm = _norm_key(address)
-    contact_phone = (data.contact_phone or "").strip()
+    # Enforce: posting contact phone must match the user's registered phone.
+    # (UI also locks this field, but backend must enforce.)
+    if me.role != "admin":
+        contact_phone = str(getattr(me, "phone", "") or "").strip()
+    else:
+        contact_phone = (data.contact_phone or "").strip()
     contact_phone_norm = _norm_phone(contact_phone)
+    if me.role != "admin" and not contact_phone_norm:
+        raise HTTPException(status_code=400, detail="Your profile phone number is required to publish ads")
     company_name = (data.company_name or "").strip()
     company_name_norm = _norm_key(company_name)
 
@@ -2525,24 +2532,9 @@ def owner_create_property(
         me.company_name_normalized = company_name_norm
         db.add(me)
 
-    # Duplicate prevention: address + phone (admin can create duplicates explicitly).
-    if me.role != "admin":
-        if address_norm:
-            dup_addr = db.execute(
-                select(Property.id).where(
-                    (Property.address_normalized == address_norm) & (Property.allow_duplicate_address == False)  # noqa: E712
-                )
-            ).first()
-            if dup_addr:
-                raise HTTPException(status_code=409, detail="Duplicate address detected (admin override required)")
-        if contact_phone_norm:
-            dup_phone = db.execute(
-                select(Property.id).where(
-                    (Property.contact_phone_normalized == contact_phone_norm) & (Property.allow_duplicate_phone == False)  # noqa: E712
-                )
-            ).first()
-            if dup_phone:
-                raise HTTPException(status_code=409, detail="Duplicate listing phone detected (admin override required)")
+    # Duplicate prevention:
+    # - Address duplicates are allowed (user requested).
+    # - Phone number is enforced to be the user's registered phone; do not block multiple ads by same phone.
 
     p = Property(
         owner_id=me.id,
@@ -2634,7 +2626,11 @@ def owner_update_property(
     if data.availability is not None:
         p.availability = (data.availability or "").strip() or p.availability
     if data.contact_phone is not None:
-        ph = (data.contact_phone or "").strip()
+        # Enforce: users cannot change contact phone on ads; it must match their profile.
+        if me.role != "admin":
+            ph = str(getattr(me, "phone", "") or "").strip()
+        else:
+            ph = (data.contact_phone or "").strip()
         p.contact_phone = ph
         p.contact_phone_normalized = _norm_phone(ph)
     if data.contact_email is not None:
