@@ -903,24 +903,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
         hb = BoxLayout(orientation="vertical", spacing=dp(2))
         hb.size_hint_x = 1
 
-        # Title
-        title_lbl = Label(
-            text=f"[b]{title}[/b]",
-            markup=True,
-            size_hint_y=None,
-            halign="left",
-            valign="middle",
-        )
-
-        def _resize_title(*_):
-            w = max(1, title_lbl.width)
-            fs = max(sp(12), min(sp(18), w * 0.052))
-            title_lbl.font_size = fs
-            title_lbl.text_size = (w, None)
-            title_lbl.height = title_lbl.texture_size[1] + dp(4)
-
-        title_lbl.bind(width=_resize_title, texture_size=_resize_title)
-
         # Meta
         meta_lbl = Label(
             text=str(meta),
@@ -939,7 +921,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         meta_lbl.bind(width=_resize_meta, texture_size=_resize_meta)
 
-        hb.add_widget(title_lbl)
         hb.add_widget(meta_lbl)
         header.add_widget(hb)
         card.add_widget(header)
