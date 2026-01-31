@@ -1850,6 +1850,8 @@
                         PrettySpinner:
                             text: root.home.need_category if root.home else "Any"
                             values: root.home.need_values if root.home else ["Any"]
+                            # Ensure dropdown always uses the full list (even after a selection).
+                            on_touch_down: self.values = (root.home.need_values if root.home else ["Any"])
                             on_text:
                                 if root.home: root.home.need_category = self.text
                             size_hint_y: None
@@ -2228,6 +2230,8 @@
                         id: category_spinner
                         text: "Select Category"
                         values: root.category_values()
+                        # Ensure dropdown always uses the full category list.
+                        on_touch_down: self.values = root.category_values()
                         size_hint_y: None
                         height: dp(44)
                     PrettySpinner:
