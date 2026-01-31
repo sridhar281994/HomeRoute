@@ -216,7 +216,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
     area_value = StringProperty("Any")
     selected_areas = ListProperty([])
     area_search = StringProperty("")
-    radius_km = StringProperty("20")
+    # Kept for backward compatibility, but radius is no longer shown in Filters UI.
+    radius_km = StringProperty("200")
     gps_status = StringProperty("GPS not available (showing non-nearby results).")
     gps_msg = StringProperty("")
     rent_sale = StringProperty("Any")
@@ -961,22 +962,40 @@ class HomeScreen(GestureNavigationMixin, Screen):
             card.add_widget(Label(text=", ".join(amenities), size_hint_y=None, height=36))
 
         # =========================================================
-        # CONTACT + SHARE
+        # ACTIONS
         # =========================================================
         btn_row = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None, height=dp(44))
 
-        btn_contact = Factory.AppButton(
-            text="Contacted" if already_contacted else "Contact owner",
-            size_hint=(1, None),
-            height=dp(44),
-            disabled=already_contacted,
-        )
+        is_my_posts = bool(p.get("_my_posts"))
+        if is_my_posts:
+            btn_edit = Factory.AppButton(text="Edit", size_hint=(1, None), height=dp(44))
+            btn_delete = Factory.AppButton(text="Delete", size_hint=(1, None), height=dp(44), color=(0.94, 0.27, 0.27, 1))
+            btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
+            btn_row.add_widget(btn_edit)
+            btn_row.add_widget(btn_delete)
+            btn_row.add_widget(btn_share)
 
-        btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
+            def _call_cb(key: str) -> None:
+                try:
+                    cb = p.get(key)
+                    if callable(cb):
+                        cb()
+                except Exception:
+                    return
 
-        btn_row.add_widget(btn_contact)
-        btn_row.add_widget(btn_share)
-        card.add_widget(btn_row)
+            btn_edit.bind(on_release=lambda *_: _call_cb("_on_edit"))
+            btn_delete.bind(on_release=lambda *_: _call_cb("_on_delete"))
+        else:
+            btn_contact = Factory.AppButton(
+                text="Contacted" if already_contacted else "Contact owner",
+                size_hint=(1, None),
+                height=dp(44),
+                disabled=already_contacted,
+            )
+            btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
+            btn_row.add_widget(btn_contact)
+            btn_row.add_widget(btn_share)
+            btn_contact.bind(on_release=lambda _btn: on_contact(_btn))
 
         def on_contact(_btn):
             print("CONTACT PRESSED")
@@ -1041,7 +1060,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
             if not launched:
                 _popup("Share", body)
 
-        btn_contact.bind(on_release=on_contact)
         btn_share.bind(on_release=on_share)
 
         return card
@@ -1166,16 +1184,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 elif sort_budget.lower().startswith("bottom"):
                     sort_budget_param = "bottom"
 
-                posted = (self.posted_within_days or "").strip()
-                posted_param = ""
-                if posted.lower() == "today":
-                    posted_param = "1"
-                elif posted.lower().startswith("last 7"):
-                    posted_param = "7"
-                elif posted.lower().startswith("last 30"):
-                    posted_param = "30"
-                elif posted.lower().startswith("last 90"):
-                    posted_param = "90"
+                posted_param = ""  # post-date filter removed
 
                 # Nearby endpoint if GPS is available; otherwise fall back to non-GPS listing.
                 loc = getattr(self, "_gps", None)
@@ -1192,10 +1201,11 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         q=q,
                         rent_sale=rent_sale_norm,
                         max_price=max_price,
-                        state=state,
-                        district=district,
-                        area=area,
-                        posted_within_days=posted_param,
+                        # For "Enable GPS" UX: show nearest posts regardless of state/district/area filters.
+                        state="",
+                        district="",
+                        area="",
+                        posted_within_days="",
                         limit=20,
                     )
                     if not (data.get("items") or []):
@@ -1207,7 +1217,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                             district=district,
                             area=area,
                             sort_budget=sort_budget_param,
-                            posted_within_days=posted_param,
+                            posted_within_days="",
                         )
                 else:
                     data = api_list_properties(
@@ -1218,7 +1228,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         district=district,
                         area=area,
                         sort_budget=sort_budget_param,
-                        posted_within_days=posted_param,
+                        posted_within_days="",
                     )
 
                 cards: list[dict[str, Any]] = []

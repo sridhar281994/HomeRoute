@@ -621,9 +621,6 @@ export default function HomePage() {
                     {String(p.owner_company_name || p.owner_name || p.title || "A").trim().slice(0, 1).toUpperCase()}
                   </div>
                   <div>
-                    <div className="h2" style={{ margin: 0 }}>
-                      {p.title}
-                    </div>
                     <div className="muted post-meta">
                       {p.distance_km != null ? `${fmtDistance(p.distance_km)} • ` : ""}
                       Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} •{" "}

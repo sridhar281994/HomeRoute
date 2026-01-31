@@ -7,6 +7,7 @@ import {
   adminImagesPending,
   adminListProperties,
   adminLogs,
+  adminMarkSpam,
   adminOwnerApprove,
   adminOwnerReject,
   adminOwnersPending,
@@ -399,12 +400,28 @@ export default function AdminReviewPage() {
             const draft = editDraftById[editKey] || {};
             return (
               <div key={p.id} className="col-12">
-                <div className="card">
+                <div className="card" style={{ position: "relative" }}>
+                  {String(p.status || "").toLowerCase() === "suspended" || String(p.moderation_reason || "").toUpperCase().includes("SPAM") ? (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 10,
+                        right: 10,
+                        padding: "6px 10px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(255,255,255,.35)",
+                        background: "rgba(239,68,68,.18)",
+                        color: "rgba(255,255,255,.92)",
+                        fontWeight: 700,
+                        letterSpacing: 1,
+                      }}
+                    >
+                      SPAM
+                    </div>
+                  ) : null}
                   <div className="row">
                     <div>
-                      <div className="h2">
-                        Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} — {p.title}
-                      </div>
+                      <div className="h2">Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()}</div>
                       <div className="muted">
                         {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display} • status: {p.status}
                       </div>
@@ -492,6 +509,20 @@ export default function AdminReviewPage() {
                       }}
                     >
                       Suspend
+                    </button>
+                    <button
+                      className="danger"
+                      onClick={async () => {
+                        try {
+                          const reason = window.prompt("Mark this post as SPAM? Reason (optional):", "SPAM") || "";
+                          await adminMarkSpam(p.id, reason);
+                          await runQuery();
+                        } catch (e: any) {
+                          setMsg(e.message || "Spam failed");
+                        }
+                      }}
+                    >
+                      SPAM
                     </button>
                     <button
                       className="danger"
@@ -825,9 +856,7 @@ export default function AdminReviewPage() {
             <div className="card">
               <div className="row">
                 <div>
-                  <div className="h2">
-                    Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} — {p.title}
-                  </div>
+                <div className="h2">Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()}</div>
                   <div className="muted">
                     {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display} • status: {p.status}
                   </div>

@@ -502,38 +502,20 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
                             else:
                                 from kivy.metrics import dp
 
-                                # Reuse HomeScreen card layout when possible, but add an Edit button.
+                                # Reuse HomeScreen card layout in "my posts" mode so buttons render inside the card.
                                 home = self.manager.get_screen("home") if self.manager else None
                                 for p in items:
-                                    # Main card
                                     if home and hasattr(home, "_feed_card"):
-                                        card = home._feed_card(p)  # type: ignore[attr-defined]
+                                        raw2 = dict(p or {})
+                                        raw2["_my_posts"] = True
+                                        raw2["_on_edit"] = (lambda p=p: self.edit_post(p))
+                                        raw2["_on_delete"] = (lambda p=p: self.delete_post(p))
+                                        card = home._feed_card(raw2)  # type: ignore[attr-defined]
                                     else:
                                         title = str((p or {}).get("title") or "Post")
                                         card = Label(text=title, size_hint_y=None, height=dp(32))
 
-                                    wrap = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
-                                    wrap.bind(minimum_height=wrap.setter("height"))
-                                    wrap.add_widget(card)
-
-                                    actions = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(8))
-                                    btn_edit = Factory.AppButton(text="Edit")
-                                    btn_delete = Factory.AppButton(text="Delete", color=(0.94, 0.27, 0.27, 1))
-                                    actions.add_widget(btn_edit)
-                                    actions.add_widget(btn_delete)
-                                    wrap.add_widget(actions)
-
-                                    def _edit(*_args, p=p):
-                                        self.edit_post(p)
-
-                                    btn_edit.bind(on_release=_edit)
-
-                                    def _delete(*_args, p=p):
-                                        self.delete_post(p)
-
-                                    btn_delete.bind(on_release=_delete)
-
-                                    container.add_widget(wrap)
+                                    container.add_widget(card)
                     except Exception:
                         pass
                     self.is_loading = False
@@ -604,15 +586,17 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
             except Exception:
                 pass
 
-        buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+        buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10), padding=[dp(10), dp(8)])
         btn_no = Factory.AppButton(text="Cancel")
         btn_yes = Factory.AppButton(text="Delete", color=(0.94, 0.27, 0.27, 1))
+        btn_no.size_hint_x = 1
+        btn_yes.size_hint_x = 1
         buttons.add_widget(btn_no)
         buttons.add_widget(btn_yes)
         root = BoxLayout(orientation="vertical", spacing=8, padding=8)
         root.add_widget(Label(text=f"Delete Ad #{adv}?\nThis cannot be undone."))
         root.add_widget(buttons)
-        popup = Popup(title="Confirm", content=root, size_hint=(0.85, 0.4), auto_dismiss=False)
+        popup = Popup(title="Confirm", content=root, size_hint=(0.92, 0.45), auto_dismiss=False)
         btn_no.bind(on_release=lambda *_: popup.dismiss())
         btn_yes.bind(on_release=do_delete)
         popup.open()
@@ -870,15 +854,17 @@ class SettingsScreen(GestureNavigationMixin, Screen):
             Thread(target=work, daemon=True).start()
             popup.dismiss()
 
-        buttons = BoxLayout(size_hint_y=None, height=48, spacing=8, padding=[8, 8])
+        buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10), padding=[dp(10), dp(8)])
         btn_yes = Factory.AppButton(text="Delete", color=(0.94, 0.27, 0.27, 1))
         btn_no = Factory.AppButton(text="Cancel")
+        btn_no.size_hint_x = 1
+        btn_yes.size_hint_x = 1
         buttons.add_widget(btn_no)
         buttons.add_widget(btn_yes)
         root = BoxLayout(orientation="vertical", spacing=8, padding=8)
         root.add_widget(Label(text="Delete your account permanently?\nThis cannot be undone."))
         root.add_widget(buttons)
-        popup = Popup(title="Confirm", content=root, size_hint=(0.85, 0.4), auto_dismiss=False)
+        popup = Popup(title="Confirm", content=root, size_hint=(0.92, 0.45), auto_dismiss=False)
         btn_no.bind(on_release=lambda *_: popup.dismiss())
         btn_yes.bind(on_release=do_delete)
         popup.open()

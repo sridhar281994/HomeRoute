@@ -111,7 +111,8 @@ export default function AdminUsersPage() {
                       style={{
                         width: "100%",
                         textAlign: "left",
-                        border: selected ? "1px solid rgba(255,255,255,.55)" : "1px solid rgba(255,255,255,.14)",
+                        border: selected ? "1px solid rgba(167,139,250,.75)" : "1px solid rgba(255,255,255,.14)",
+                        boxShadow: selected ? "0 0 0 3px rgba(167,139,250,.18)" : "none",
                       }}
                       onClick={async () => {
                         setActiveUserId(uid);

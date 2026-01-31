@@ -1784,55 +1784,7 @@
                                 valign: "middle"
                                 text_size: self.size
 
-                    BoxLayout:
-                        orientation: "vertical"
-                        size_hint_y: None
-                        height: dp(82)
-                        spacing: dp(4)
-                        Label:
-                            text: "Nearby radius (km)"
-                            color: TEXT_MUTED
-                            size_hint_y: None
-                            height: dp(22)
-                        TextInput:
-                            text: root.home.radius_km if root.home else "20"
-                            multiline: False
-                            input_filter: "int"
-                            on_text:
-                                if root.home: root.home.radius_km = self.text
-                            size_hint_y: None
-                            height: dp(48)
-
-                    BoxLayout:
-                        orientation: "horizontal"
-                        size_hint_y: None
-                        height: dp(44)
-                        spacing: dp(8)
-                        Label:
-                            text: root.home.gps_status if root.home else ""
-                            color: TEXT_MUTED
-                            halign: "left"
-                            valign: "middle"
-                            text_size: self.size
-                    Widget:
-
-                    BoxLayout:
-                        orientation: "horizontal"
-                        size_hint_y: None
-                        height: dp(44)
-                        spacing: dp(8)
-                        AppButton:
-                            text: "Enable GPS"
-                            size_hint_x: None
-                            width: dp(150)
-                            on_release:
-                                if root.home: root.home.enable_gps()
-                        Label:
-                            text: root.home.gps_msg if root.home else ""
-                            color: TEXT_MUTED
-                            halign: "left"
-                            valign: "middle"
-                            text_size: self.size
+                    # GPS controls moved to hamburger menu (not in filters).
 
                     BoxLayout:
                         orientation: "vertical"
@@ -1857,23 +1809,7 @@
                             size_hint_y: None
                             height: dp(48)
 
-                    BoxLayout:
-                        orientation: "vertical"
-                        size_hint_y: None
-                        height: dp(82)
-                        spacing: dp(4)
-                        Label:
-                            text: "Post date"
-                            color: TEXT_MUTED
-                            size_hint_y: None
-                            height: dp(22)
-                        PrettySpinner:
-                            text: root.home.posted_within_days if root.home else "Any"
-                            values: ["Any", "Today", "Last 7 days", "Last 30 days", "Last 90 days"]
-                            on_text:
-                                if root.home: root.home.posted_within_days = self.text
-                            size_hint_y: None
-                            height: dp(48)
+                    # Post date filter removed per UX request.
 
                     BoxLayout:
                         orientation: "vertical"

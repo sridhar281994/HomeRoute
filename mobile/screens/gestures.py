@@ -309,6 +309,7 @@ class GestureNavigationMixin:
             _mk_item("Settings", "profile")
             _mk_item("Publish Ad", "owner_add_property")
             _mk_item("Subscription", "subscription")
+            _mk_item("Enable GPS", "enable_gps")
             _mk_item("Logout", "logout")
 
             try:
@@ -354,6 +355,15 @@ class GestureNavigationMixin:
                     scr.start_new()
             except Exception:
                 pass
+
+        if action == "enable_gps":
+            try:
+                home = mgr.get_screen("home")
+                if hasattr(home, "enable_gps"):
+                    home.enable_gps()
+            except Exception:
+                pass
+            return
 
         try:
             mgr.current = action
