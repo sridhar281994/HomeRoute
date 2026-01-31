@@ -9,6 +9,7 @@ import PropertyPage from "./pages/PropertyPage";
 import ProfilePage from "./pages/ProfilePage";
 import OwnerAddPage from "./pages/OwnerAddPage";
 import AdminReviewPage from "./pages/AdminReviewPage";
+import AdminUsersPage from "./pages/AdminUsersPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import MyPostsPage from "./pages/MyPostsPage";
 
@@ -42,9 +43,14 @@ export default function App() {
             Publish Ad
           </button>
           {role === "admin" ? (
-            <button className="nav-button" type="button" onClick={() => nav("/admin/review")}>
-              Admin Review
-            </button>
+            <>
+              <button className="nav-button" type="button" onClick={() => nav("/admin/review")}>
+                Admin Review
+              </button>
+              <button className="nav-button" type="button" onClick={() => nav("/admin/users")}>
+                User Admin
+              </button>
+            </>
           ) : null}
           {!isLoggedIn ? (
             <>
@@ -89,6 +95,7 @@ export default function App() {
         <Route path="/owner/add" element={<OwnerAddPage />} />
         <Route path="/myposts" element={<MyPostsPage />} />
         <Route path="/admin/review" element={<AdminReviewPage />} />
+        <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot" element={<ForgotPasswordPage />} />

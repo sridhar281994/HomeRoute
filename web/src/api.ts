@@ -421,6 +421,38 @@ export function adminSuspend(id: number, reason = "") {
   });
 }
 
+export function adminMarkSpam(id: number, reason = "") {
+  return api<{ ok: boolean }>(`/admin/properties/${id}/spam`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function adminListUsers(params?: { q?: string; limit?: number }) {
+  const sp = new URLSearchParams();
+  if (params?.q) sp.set("q", params.q);
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  const qs = sp.toString() ? `?${sp.toString()}` : "";
+  return api<{ items: any[] }>(`/admin/users${qs}`);
+}
+
+export function adminGetUser(userId: number) {
+  return api<{ user: any; total_posts: number; posts: any[] }>(`/admin/users/${userId}`);
+}
+
+export function adminSuspendUser(userId: number, reason = "") {
+  return api<{ ok: boolean }>(`/admin/users/${userId}/suspend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function adminApproveUser(userId: number) {
+  return api<{ ok: boolean }>(`/admin/users/${userId}/approve`, { method: "POST" });
+}
+
 export function adminOwnersPending() {
   return api<{ items: any[] }>(`/admin/owners/pending`);
 }
