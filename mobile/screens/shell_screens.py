@@ -987,7 +987,10 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
             if "price_input" in self.ids:
                 self.ids["price_input"].text = ""
             if "contact_phone_input" in self.ids:
-                self.ids["contact_phone_input"].text = ""
+                u = get_user() or {}
+                # Always lock contact phone to the registered user phone.
+                self.ids["contact_phone_input"].text = str(u.get("phone") or "")
+                self.ids["contact_phone_input"].disabled = True
             if "category_spinner" in self.ids:
                 self.ids["category_spinner"].text = "Select Category"
             if "media_summary" in self.ids:
@@ -1034,7 +1037,9 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 elif (sp.text or "").strip() in {"", "Select Category", "property"}:
                     sp.text = "Select Category"
             if "contact_phone_input" in self.ids:
-                self.ids["contact_phone_input"].text = str(p.get("contact_phone") or p.get("phone") or "")
+                u = get_user() or {}
+                self.ids["contact_phone_input"].text = str(u.get("phone") or "")
+                self.ids["contact_phone_input"].disabled = True
             if "media_summary" in self.ids:
                 # Edits currently don't manage media uploads.
                 self.ids["media_summary"].text = ""
@@ -1108,6 +1113,13 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         preferred_district = str(p.get("district") or u.get("district") or "").strip()
         preferred_area = str(p.get("area") or "").strip()
         self._apply_edit_prefill()
+        # Ensure contact phone is always set/locked even in new-ad flow.
+        try:
+            if "contact_phone_input" in self.ids:
+                self.ids["contact_phone_input"].text = str(u.get("phone") or "")
+                self.ids["contact_phone_input"].disabled = True
+        except Exception:
+            pass
         self._load_publish_categories(str(p.get("property_type") or "").strip())
 
         from threading import Thread
