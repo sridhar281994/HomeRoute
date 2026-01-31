@@ -26,25 +26,28 @@ def _strip_file_scheme(p: str) -> str:
 
 def _android_copy_content_uri_to_cache(uri: str) -> str:
     """
-    Copy an Android content:// URI to the app's cache directory.
-    PyJNIus-safe (NO jarray).
+    Copy Android content:// URI into app cache file.
+    Fully PyJNIus-safe.
     """
+
     _log(f"Copying content URI → cache: {uri}")
 
-    from jnius import autoclass  # type: ignore
+    from jnius import autoclass
 
     PythonActivity = autoclass("org.kivy.android.PythonActivity")
     Uri = autoclass("android.net.Uri")
     OpenableColumns = autoclass("android.provider.OpenableColumns")
     File = autoclass("java.io.File")
     FileOutputStream = autoclass("java.io.FileOutputStream")
-    ByteArray = autoclass("[B")  # byte[]
+    ByteClass = autoclass("java.lang.Byte")
+    Array = autoclass("java.lang.reflect.Array")
 
-    activity = PythonActivity.mActivity
-    ctx = activity.getApplicationContext()
+    act = PythonActivity.mActivity
+    ctx = act.getApplicationContext()
     resolver = ctx.getContentResolver()
     uri_obj = Uri.parse(str(uri))
 
+    # -------- filename --------
     display_name = ""
     cursor = None
     try:
@@ -69,17 +72,28 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
         .replace(":", "_")
     )
 
+    # ensure extension (important for your is_image_path logic)
+    if "." not in display_name:
+        try:
+            mime = resolver.getType(uri_obj) or ""
+            if mime.startswith("image/"):
+                display_name += ".jpg"
+            elif mime.startswith("video/"):
+                display_name += ".mp4"
+        except Exception:
+            pass
+
     cache_dir = ctx.getCacheDir()
     out_file = File(cache_dir, display_name)
 
     ins = resolver.openInputStream(uri_obj)
     if ins is None:
-        raise OSError("Unable to read selected file.")
+        raise OSError("Unable to open input stream")
 
     outs = FileOutputStream(out_file)
 
-    # ✅ CORRECT byte buffer (no jarray)
-    buf = ByteArray(8192)
+    # ✅ SAFE byte[] buffer creation
+    buf = Array.newInstance(ByteClass.TYPE, 8192)
 
     try:
         while True:
@@ -98,9 +112,9 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
         except Exception:
             pass
 
-    out_path = str(out_file.getAbsolutePath())
-    _log(f"Copied file path: {out_path}")
-    return out_path
+    path = str(out_file.getAbsolutePath())
+    _log(f"Copied file path: {path}")
+    return path
 
 
 
