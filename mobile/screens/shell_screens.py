@@ -1265,13 +1265,15 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
             try:
                 paths = ensure_local_paths(selection or [])
                 media = [p for p in paths if is_image_path(p) or is_video_path(p)]
+                # Restrict videos for mobile publish (images only).
+                if any(is_video_path(x) for x in media):
+                    _popup("Videos not allowed", "Please select images only.")
+                    return
                 images = [x for x in media if is_image_path(x)]
-                videos = [x for x in media if is_video_path(x)]
+                videos: list[str] = []
 
                 if len(images) > 10:
                     images = images[:10]
-                if len(videos) > 1:
-                    videos = videos[:1]
 
                 self._selected_media = list(images + videos)
 
@@ -1297,7 +1299,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                 launched = android_open_gallery(
                     on_selection=_apply_selection,
                     multiple=True,
-                    mime_types=["image/*", "video/*"],
+                    mime_types=["image/*"],
                 )
                 if not launched:
                     _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")

@@ -220,6 +220,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
     radius_km = StringProperty("200")
     gps_status = StringProperty("GPS not available (showing non-nearby results).")
     gps_msg = StringProperty("")
+    nearby_mode = BooleanProperty(False)
     rent_sale = StringProperty("Any")
     max_price = StringProperty("")
     sort_budget = StringProperty("Any (Newest)")
@@ -786,6 +787,18 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         ensure_permissions(required_location_permissions(), on_result=after)
 
+    def search_nearby_50km(self) -> None:
+        """
+        Explicit user action: show nearby results within 50km.
+        """
+        self.nearby_mode = True
+        # Ensure radius is 50 for this mode (kept for compatibility).
+        try:
+            self.radius_km = "50"
+        except Exception:
+            pass
+        self.enable_gps()
+
     def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
         p = raw or {}
 
@@ -1153,7 +1166,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 # 🔒 HARD DEFAULT = 50 KM
                 radius = 50
 
-                if loc:
+                use_nearby = bool(getattr(self, "nearby_mode", False))
+                if use_nearby and loc:
                     data = api_list_nearby_properties(
                         lat=float(loc[0]),
                         lon=float(loc[1]),
@@ -1207,8 +1221,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     except Exception:
                         pass
 
-                    # Show empty-nearby message if GPS is ON but nothing found
-                    if loc and not cards:
+                    # Show empty-nearby message only when nearby mode is ON.
+                    if use_nearby and loc and not cards:
                         self.error_msg = "No properties found within 50 km."
 
                     self.is_loading = False

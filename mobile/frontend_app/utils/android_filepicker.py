@@ -84,7 +84,26 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
             pass
 
     cache_dir = ctx.getCacheDir()
-    out_file = File(cache_dir, display_name)
+    # Ensure unique filename in cache (avoid overwriting when multiple selected share same DISPLAY_NAME).
+    base = display_name
+    name = base
+    out_file = File(cache_dir, name)
+    try:
+        if out_file.exists():
+            # Keep extension if any.
+            root = name
+            ext = ""
+            if "." in name:
+                root, ext = name.rsplit(".", 1)
+                ext = "." + ext
+            # Use URI hash + timestamp for uniqueness.
+            stamp = int(time.time() * 1000)
+            tag = abs(hash(str(uri))) % 100000
+            name = f"{root}_{stamp}_{tag}{ext}"
+            out_file = File(cache_dir, name)
+    except Exception:
+        # Best-effort: proceed with original name.
+        out_file = File(cache_dir, base)
 
     ins = resolver.openInputStream(uri_obj)
     if ins is None:

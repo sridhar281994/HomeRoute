@@ -359,12 +359,10 @@ class GestureNavigationMixin:
         if action == "nearby_50":
             try:
                 home = mgr.get_screen("home")
-                if hasattr(home, "radius_km"):
-                    try:
-                        home.radius_km = "50"
-                    except Exception:
-                        pass
-                if hasattr(home, "enable_gps"):
+                if hasattr(home, "search_nearby_50km"):
+                    home.search_nearby_50km()
+                elif hasattr(home, "enable_gps"):
+                    # fallback
                     home.enable_gps()
             except Exception:
                 pass
