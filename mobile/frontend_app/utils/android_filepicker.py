@@ -176,6 +176,7 @@ def android_open_gallery(
         Activity = autoclass("android.app.Activity")
         JavaString = autoclass("java.lang.String")
         Array = autoclass("java.lang.reflect.Array")
+        ContentResolver = autoclass("android.content.ContentResolver")
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
@@ -188,6 +189,7 @@ def android_open_gallery(
         def _on_activity_result(requestCode, resultCode, data):
             if requestCode != req_code:
                 return
+
             try:
                 activity.unbind(on_activity_result=_on_activity_result)
             except Exception:
@@ -198,22 +200,38 @@ def android_open_gallery(
                 return
 
             out = []
+            resolver = act.getContentResolver()
+
             clip = data.getClipData()
             if clip:
                 for i in range(clip.getItemCount()):
                     uri = clip.getItemAt(i).getUri()
                     if uri:
+                        try:
+                            resolver.takePersistableUriPermission(
+                                uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                            )
+                        except Exception:
+                            pass
                         out.append(str(uri.toString()))
             else:
                 uri = data.getData()
                 if uri:
+                    try:
+                        resolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                        )
+                    except Exception:
+                        pass
                     out.append(str(uri.toString()))
 
             _deliver(out)
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        # ---------- SAF picker ----------
+        # ---------- SAF picker (MANDATORY for multi-select) ----------
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
             mimes = ["image/*"]
@@ -231,32 +249,19 @@ def android_open_gallery(
             saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
         saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        saf_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-        if saf_intent.resolveActivity(pm) is not None:
-            chooser = Intent.createChooser(
-                saf_intent,
-                JavaString("Select file"),
-            )
-            Clock.schedule_once(
-                lambda *_: act.startActivityForResult(chooser, req_code),
-                0.15,
-            )
-            return True
+        saf_intent.addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION
+            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+        )
 
-        # ---------- Gallery fallback ----------
-        _log("SAF picker missing, falling back to gallery")
-
-        pick_intent = Intent(Intent.ACTION_PICK)
-        pick_intent.setType("image/*")
-
-        if pick_intent.resolveActivity(pm) is None:
-            _log("No gallery app available")
+        if saf_intent.resolveActivity(pm) is None:
+            _log("SAF picker not available")
             return False
 
         chooser = Intent.createChooser(
-            pick_intent,
-            JavaString("Select image"),
+            saf_intent,
+            JavaString("Select file(s)"),
         )
 
         Clock.schedule_once(
