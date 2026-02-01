@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import os
+from PIL import Image
 import tempfile
 from io import BytesIO
 from typing import Literal
+from io import BytesIO
 
 import cloudinary.uploader
+
+
 
 from app.utils.cloudinary_config import cloudinary_is_configured  # ensures cloudinary.config() runs
 
@@ -26,6 +30,7 @@ def cloudinary_enabled() -> bool:
     return cloudinary_is_configured()
 
 
+
 def upload_bytes(
     *,
     raw: bytes,
@@ -34,22 +39,31 @@ def upload_bytes(
     filename: str,
     content_type: str,
 ) -> tuple[str, str]:
-    """
-    Upload raw bytes to Cloudinary using a temp file.
-    This avoids SAF / BytesIO corruption issues.
-    """
-    import tempfile
 
-    ext = os.path.splitext(filename or "")[1]
-    if not ext:
-        ext = ".jpg" if resource_type == "image" else ".mp4"
+    ext = os.path.splitext(filename or "")[1].lower()
 
     tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-            tmp.write(raw)
-            tmp.flush()
-            tmp_path = tmp.name
+        # 🔴 Normalize images (critical)
+        if resource_type == "image":
+            try:
+                img = Image.open(BytesIO(raw))
+                img = img.convert("RGB")  # removes HEIC/progressive issues
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                    img.save(tmp, format="JPEG", quality=90)
+                    tmp.flush()
+                    tmp_path = tmp.name
+            except Exception as e:
+                raise RuntimeError(f"Invalid image data: {e}")
+
+        else:
+            # video / other
+            if not ext:
+                ext = ".mp4"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                tmp.write(raw)
+                tmp.flush()
+                tmp_path = tmp.name
 
         res = cloudinary.uploader.upload(
             tmp_path,
@@ -61,13 +75,11 @@ def upload_bytes(
             invalidate=False,
         )
 
-        url = str((res or {}).get("secure_url") or "").strip()
-        pid = str((res or {}).get("public_id") or "").strip()
+        url = str(res.get("secure_url") or "").strip()
+        pid = str(res.get("public_id") or "").strip()
 
-        if not url:
-            raise RuntimeError("Cloudinary upload failed (missing secure_url)")
-        if not pid:
-            raise RuntimeError("Cloudinary upload failed (missing public_id)")
+        if not url or not pid:
+            raise RuntimeError("Cloudinary upload failed")
 
         return url, pid
 
