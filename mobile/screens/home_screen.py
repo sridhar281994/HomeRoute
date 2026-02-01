@@ -220,6 +220,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
     radius_km = StringProperty("200")
     gps_status = StringProperty("GPS not available (showing non-nearby results).")
     gps_msg = StringProperty("")
+    gps_enabled = BooleanProperty(False)
     rent_sale = StringProperty("Any")
     max_price = StringProperty("")
     sort_budget = StringProperty("Any (Newest)")
@@ -253,14 +254,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
         # ✅ DELAY avatar application (CRITICAL FIX)
         Clock.schedule_once(lambda dt: self._apply_avatar(get_user() or {}), 0)
     
-        # Preferred location
-        try:
-            u = get_user() or {}
-            self._preferred_state = str(u.get("state") or "").strip()
-            self._preferred_district = str(u.get("district") or "").strip()
-        except Exception:
-            self._preferred_state = ""
-            self._preferred_district = ""
+        # Do not auto-apply profile location to feed filters.
+        # Filters must remain stable unless the user changes them explicitly.
+        self._preferred_state = ""
+        self._preferred_district = ""
     
         self.bg_image = ""
     
@@ -597,9 +594,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 pref_district = str(u.get("district") or "").strip()
 
                 def apply(*_):
-                    self._preferred_state = pref_state
-                    self._preferred_district = pref_district
-                    self._apply_preferred_state()
                     self._apply_avatar(u)
                     try:
                         from kivy.app import App as _App
@@ -756,10 +750,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
             if self._is_valid_gps(loc):
                 self._gps = (float(loc[0]), float(loc[1]))
                 # Never show coordinates in the UI.
+                self.gps_enabled = True
                 self.gps_status = "GPS enabled (showing nearby results)."
                 self.gps_msg = ""
             else:
                 self._gps = None
+                self.gps_enabled = False
                 self.gps_status = "GPS not available (showing non-nearby results)."
                 self.gps_msg = "" if ok else "GPS permission denied."
 
@@ -779,6 +775,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
             if not ok:
                 self._gps = None
+                self.gps_enabled = False
                 self.gps_status = "GPS not available (showing non-nearby results)."
                 self.gps_msg = "Location permission denied."
                 return
@@ -791,6 +788,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
             if self._is_valid_gps(loc):
                 self._gps = (float(loc[0]), float(loc[1]))
+                self.gps_enabled = True
                 self.gps_status = "GPS enabled (showing nearby results)."
                 self.gps_msg = ""
                 # Immediately refresh so the user sees nearby results.
@@ -799,6 +797,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
             # Permissions are granted, but we have no fix yet (often because Location is OFF).
             self._gps = None
+            self.gps_enabled = False
             self.gps_status = "GPS is off (showing non-nearby results)."
             self.gps_msg = "Turn on Location/GPS in settings, then tap Enable GPS again."
             open_location_settings()
@@ -1209,13 +1208,15 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         limit=20,
                     )
                     if not (data.get("items") or []):
+                        # If no GPS-tagged ads exist (or radius misses), never show an empty feed.
+                        # Fall back to normal listing WITHOUT location filters.
                         data = api_list_properties(
                             q=q,
                             rent_sale=rent_sale_norm,
                             max_price=max_price,
-                            state=state,
-                            district=district,
-                            area=area,
+                            state="",
+                            district="",
+                            area="",
                             sort_budget=sort_budget_param,
                             posted_within_days="",
                         )

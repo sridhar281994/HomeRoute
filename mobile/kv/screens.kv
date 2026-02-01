@@ -1567,6 +1567,13 @@
                             height: dp(40)
                             on_release: root.refresh()
 
+                        AppButton:
+                            text: "GPS ENABLED" if root.gps_enabled else "Enable GPS"
+                            size_hint: None, None
+                            width: min(dp(140), root.width * 0.30)
+                            height: dp(40)
+                            on_release: root.enable_gps()
+
                         Widget:
                             size_hint_x: 1
 
