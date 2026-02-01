@@ -87,7 +87,17 @@ class GestureNavigationMixin:
     # ------------------------------------------------------------------
     # Touch tracking
     # ------------------------------------------------------------------
-    def _gesture_track_down(self, touch) -> None:
+    def _gesture_track_down(self, *args) -> None:
+        """
+        Track touch-down for swipe gestures.
+
+        This handler is used in two places:
+        - Window.bind(on_touch_down=...) which calls: (window, touch)
+        - Widget.on_touch_down which calls: (touch)
+        """
+        touch = args[-1] if args else None
+        if touch is None:
+            return
         if not getattr(self, "_gesture_active", False):
             return
 
@@ -135,7 +145,15 @@ class GestureNavigationMixin:
         except Exception:
             self._g_refresh_label = None
 
-    def _gesture_track_move(self, touch) -> bool:
+    def _gesture_track_move(self, *args) -> bool:
+        """
+        Track touch-move for swipe gestures.
+
+        Supports both Window.bind (window, touch) and widget touch flow (touch).
+        """
+        touch = args[-1] if args else None
+        if touch is None:
+            return False
         if not getattr(self, "_gesture_active", False):
             return False
 
@@ -207,7 +225,15 @@ class GestureNavigationMixin:
 
         return False
 
-    def _gesture_track_up(self, touch) -> None:
+    def _gesture_track_up(self, *args) -> None:
+        """
+        Track touch-up for swipe gestures.
+
+        Supports both Window.bind (window, touch) and widget touch flow (touch).
+        """
+        touch = args[-1] if args else None
+        if touch is None:
+            return
         if not getattr(self, "_gesture_active", False):
             return
 
