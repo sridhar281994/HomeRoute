@@ -2579,6 +2579,9 @@ def owner_create_property(
         # IMPORTANT: allow duplicate addresses by default (DB has a unique index
         # that applies only when allow_duplicate_address=false).
         allow_duplicate_address=True,
+        # IMPORTANT: allow posting multiple ads with the same phone by default.
+        # DB enforces uniqueness only when allow_duplicate_phone=false.
+        allow_duplicate_phone=True,
         updated_at=dt.datetime.now(dt.timezone.utc),
     )
     db.add(p)
@@ -2592,10 +2595,16 @@ def owner_create_property(
             pass
         msg = str(getattr(e, "orig", "") or e)
         if "uq_properties_contact_phone_normalized_no_override" in msg:
-            raise HTTPException(
-                status_code=409,
-                detail="Duplicate listing phone detected. Please use a different phone number or contact admin for override.",
-            )
+            # Best-effort retry: allow duplicates and try again.
+            try:
+                p.allow_duplicate_phone = True
+                db.add(p)
+                db.flush()
+            except Exception:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Unable to publish due to duplicate phone constraint. Please try again or contact support.",
+                )
         raise HTTPException(status_code=409, detail="Duplicate data detected. Please change your input and try again.")
     _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="create", reason="")
     return {"id": p.id, "ad_number": (p.ad_number or "").strip() or str(p.id), "status": p.status}
@@ -3185,6 +3194,50 @@ def admin_approve_user(
     db.add(u)
     _log_moderation(db, actor_user_id=me.id, entity_type="user", entity_id=u.id, action="approve", reason="")
     return {"ok": True}
+
+
+@app.delete("/admin/users/{user_id:int}")
+def admin_delete_user(
+    user_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if me.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    uid = int(user_id)
+    if uid <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+    if uid == int(me.id):
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account")
+
+    u = db.get(User, uid)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if (u.role or "").lower() == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete admin accounts")
+
+    # Delete all properties owned by this user (and their dependent rows/media).
+    prop_ids = [int(x) for x in db.execute(select(Property.id).where(Property.owner_id == uid)).scalars().all()]
+    deleted = 0
+    for pid in prop_ids:
+        try:
+            owner_delete_property(property_id=int(pid), me=me, db=db)
+            deleted += 1
+        except Exception:
+            # Best-effort continue.
+            continue
+
+    # Delete user-scoped rows.
+    db.execute(delete(FreeContactUsage).where(FreeContactUsage.user_id == uid))
+    db.execute(delete(ContactUsage).where(ContactUsage.user_id == uid))
+    db.execute(delete(SavedProperty).where(SavedProperty.user_id == uid))
+    db.execute(delete(UserSubscription).where(UserSubscription.user_id == uid))
+    db.execute(delete(Subscription).where(Subscription.user_id == uid))
+    db.execute(delete(ModerationLog).where(ModerationLog.actor_user_id == uid))
+
+    db.execute(delete(User).where(User.id == uid))
+    _log_moderation(db, actor_user_id=me.id, entity_type="user", entity_id=uid, action="delete", reason="")
+    return {"ok": True, "user_id": uid, "deleted_posts": deleted}
 
 
 @app.post("/admin/properties/{property_id:int}/spam")
