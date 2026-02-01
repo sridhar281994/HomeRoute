@@ -33,6 +33,7 @@ from frontend_app.utils.api import (
     api_me_upload_profile_image,
     api_meta_categories,
     api_owner_create_property,
+    api_owner_delete_property,
     api_owner_list_properties,
     api_owner_update_property,
     api_subscription_status,
@@ -465,31 +466,29 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
                             else:
                                 from kivy.metrics import dp
 
-                                # Reuse HomeScreen card layout when possible, but add an Edit button.
+                                # Reuse HomeScreen card layout, but in "My Posts" mode.
                                 home = self.manager.get_screen("home") if self.manager else None
                                 for p in items:
-                                    # Main card
                                     if home and hasattr(home, "feed_card"):
-                                        card = home.feed_card(p)  # type: ignore[attr-defined]
+                                        def _edit(*_args, p=p):
+                                            self.edit_post(p)
+
+                                        def _delete(*_args, p=p):
+                                            self.delete_post(p)
+
+                                        card = home.feed_card(  # type: ignore[attr-defined]
+                                            p,
+                                            show_share=True,
+                                            show_contact=False,
+                                            owner_actions=True,
+                                            on_edit=_edit,
+                                            on_delete=_delete,
+                                        )
                                     else:
                                         title = str((p or {}).get("title") or "Post")
                                         card = Label(text=title, size_hint_y=None, height=dp(32))
 
-                                    wrap = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
-                                    wrap.bind(minimum_height=wrap.setter("height"))
-                                    wrap.add_widget(card)
-
-                                    actions = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(8))
-                                    btn_edit = Factory.AppButton(text="Edit")
-                                    actions.add_widget(btn_edit)
-                                    wrap.add_widget(actions)
-
-                                    def _edit(*_args, p=p):
-                                        self.edit_post(p)
-
-                                    btn_edit.bind(on_release=_edit)
-
-                                    container.add_widget(wrap)
+                                    container.add_widget(card)
                     except Exception:
                         pass
                     self.is_loading = False
@@ -520,6 +519,58 @@ class MyPostsScreen(GestureNavigationMixin, Screen):
             self.manager.current = "owner_add_property"
         except Exception:
             _popup("Error", "Unable to open edit screen.")
+
+    def delete_post(self, p: dict[str, Any]) -> None:
+        try:
+            pid = int(str((p or {}).get("id") or 0).strip() or "0")
+        except Exception:
+            pid = 0
+        if pid <= 0:
+            _popup("Error", "Invalid ad id.")
+            return
+
+        # Confirmation popup
+        label = str((p or {}).get("adv_number") or (p or {}).get("ad_number") or pid).strip()
+
+        box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        box.add_widget(Label(text=f"Delete Ad #{label}? This cannot be undone.", size_hint_y=None, height=dp(70)))
+        row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(10))
+        btn_no = Factory.AppButton(text="Cancel")
+        btn_yes = Factory.AppButton(text="Delete")
+        row.add_widget(btn_no)
+        row.add_widget(btn_yes)
+        box.add_widget(row)
+        popup = Popup(title="Confirm delete", content=box, size_hint=(0.86, 0.36), auto_dismiss=True)
+
+        def do_cancel(*_):
+            try:
+                popup.dismiss()
+            except Exception:
+                pass
+
+        def do_delete(*_):
+            try:
+                popup.dismiss()
+            except Exception:
+                pass
+
+            from threading import Thread
+
+            def work():
+                try:
+                    api_owner_delete_property(pid)
+                    Clock.schedule_once(lambda *_: _popup("Deleted", f"Deleted Ad #{label}"), 0)
+                    Clock.schedule_once(lambda *_: self.refresh(), 0)
+                except ApiError as e:
+                    Clock.schedule_once(lambda *_dt, m=str(e) or "Delete failed": _popup("Error", m), 0)
+                except Exception:
+                    Clock.schedule_once(lambda *_: _popup("Error", "Delete failed"), 0)
+
+            Thread(target=work, daemon=True).start()
+
+        btn_no.bind(on_release=do_cancel)
+        btn_yes.bind(on_release=do_delete)
+        popup.open()
 
 
 class SettingsScreen(GestureNavigationMixin, Screen):
