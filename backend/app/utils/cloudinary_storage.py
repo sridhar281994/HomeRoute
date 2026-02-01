@@ -33,15 +33,14 @@ def cloudinary_enabled() -> bool:
 
 def _optimize_image(raw: bytes) -> str:
     """
-    Decode, rotate, resize, compress image.
-    Returns path to optimized JPEG file.
+    Try to optimize image.
+    If Pillow cannot decode, fall back to raw upload.
     """
     try:
         img = Image.open(BytesIO(raw))
-        img = ImageOps.exif_transpose(img)   # fix camera rotation
+        img = ImageOps.exif_transpose(img)
         img = img.convert("RGB")
 
-        # Resize (maintains aspect ratio)
         img.thumbnail((MAX_IMAGE_SIZE, MAX_IMAGE_SIZE), Image.LANCZOS)
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
@@ -56,11 +55,11 @@ def _optimize_image(raw: bytes) -> str:
         return tmp.name
 
     except UnidentifiedImageError:
-        raise RuntimeError(
-            "Unsupported image format. Please upload images from Gallery or Camera."
-        )
-    except Exception as e:
-        raise RuntimeError(f"Invalid image data: {e}")
+        # 🔴 FALLBACK: write raw bytes and let Cloudinary handle it
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        tmp.write(raw)
+        tmp.flush()
+        return tmp.name
 
 
 def upload_bytes(
