@@ -61,27 +61,42 @@
     bold: True
     font_name: "AppFont"
 
-    # ✅ RESPONSIVE + SAFE TEXT
+    # -------------------------------
+    # Text (safe + responsive)
+    # -------------------------------
     font_size: min(sp(15), self.height * 0.30)
-    text_size: self.width - dp(24), None   # ← NEVER constrain height
+    text_size: self.width - dp(24), None
     halign: "center"
     valign: "middle"
     line_height: 1.15
     shorten: False
     padding: dp(12), dp(8)
 
-    # 🔴 Disable ALL native backgrounds completely
+    # -------------------------------
+    # Disable native backgrounds
+    # -------------------------------
     background_normal: ""
     background_down: ""
     background_disabled_normal: ""
     background_color: 0, 0, 0, 0
 
+    # -------------------------------
+    # Colors
+    # -------------------------------
     color: ACCENT_PURPLE
     disabled_color: ACCENT_PURPLE_MUTED
 
-    # -------------------------------------------------
-    # Custom single-layer button skin
-    # -------------------------------------------------
+    # -------------------------------
+    # UX animation properties
+    # -------------------------------
+    ux_scale: 1.0
+    shadow_alpha: 0.18
+    shadow_offset_y: 2
+    is_active: False
+
+    # -------------------------------
+    # Custom skin
+    # -------------------------------
     canvas.before:
         PushMatrix:
         Scale:
@@ -90,7 +105,7 @@
             z: 1
             origin: self.center
 
-        # Soft shadow
+        # Shadow
         Color:
             rgba: (0, 0, 0, self.shadow_alpha) if not self.disabled else (0, 0, 0, 0)
         RoundedRectangle:
@@ -98,14 +113,10 @@
             size: self.size
             radius: [dp(14)]
 
-        # Button fill
+        # Fill
         Color:
             rgba:
-                (
-                (0.95, 0.95, 0.95, 1)
-                if self.state == "normal" else
-                (0.90, 0.90, 0.90, 1)
-                )
+                (0.55, 0.30, 0.95, 0.95) if self.is_active else (0.92, 0.92, 0.92, 1)
         RoundedRectangle:
             pos: self.pos
             size: self.size
@@ -113,13 +124,26 @@
 
         # Border
         Color:
-            rgba: ACCENT_PURPLE
+            rgba: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
         Line:
             width: 1.2
             rounded_rectangle: [self.x, self.y, self.width, self.height, dp(14)]
 
     canvas.after:
         PopMatrix:
+
+    # -------------------------------
+    # Smooth activation animation
+    # -------------------------------
+    on_is_active:
+        Animation.cancel_all(self)
+        Animation(
+            ux_scale = 1.06 if self.is_active else 1.0,
+            shadow_alpha = 0.35 if self.is_active else 0.18,
+            shadow_offset_y = 4 if self.is_active else 2,
+            d = 0.18,
+            t = "out_quad"
+        ).start(self)
 
 
 <NavButton@AppButton>:
@@ -1586,20 +1610,26 @@
                         size_hint_y: None
                         height: dp(44)
                         spacing: dp(10)
-
+                    
                         AppButton:
-                            text: "Property/material"
+                            text: "Property / Material"
                             size_hint_x: 1
+                            is_active: root.post_group == "property_material"
+                            color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
                             on_release:
-                                root.post_group = "property_material"; root.refresh()
-                            background_color: (0.55, 0.3, 0.95, 0.9) if root.post_group == "property_material" else (1,1,1,0.10)
-
+                                root.post_group = "property_material"
+                                root.refresh()
+                    
                         AppButton:
                             text: "Services"
                             size_hint_x: 1
+                            is_active: root.post_group == "services"
+                            color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
                             on_release:
-                                root.post_group = "services"; root.refresh()
-                            background_color: (0.55, 0.3, 0.95, 0.9) if root.post_group == "services" else (1,1,1,0.10)
+                                root.post_group = "services"
+                                root.refresh()
+
+
 
 
                 # -------------------------------
