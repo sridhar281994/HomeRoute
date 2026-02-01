@@ -15,6 +15,7 @@ import tempfile
 from typing import Annotated, Any
 from functools import lru_cache
 import math
+import logging
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,6 +56,8 @@ from app.google_play import GooglePlayNotConfigured, verify_subscription_with_go
 from app.sms import send_sms
 from app.utils.cloudinary_storage import cloudinary_enabled, destroy as cloudinary_destroy, upload_bytes as cloudinary_upload_bytes
 
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Quickrent4u API")
 
@@ -1594,6 +1597,7 @@ def me_upload_profile_image(
                 content_type=content_type,
             )
         except Exception:
+            logger.exception("Cloudinary upload failed (profile image) user_id=%s filename=%r content_type=%r", me.id, file.filename, content_type)
             raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
         me.profile_image_path = url
         me.profile_image_cloudinary_public_id = pid
@@ -3300,6 +3304,13 @@ def upload_property_image(
                 content_type=stored_content_type,
             )
         except Exception:
+            logger.exception(
+                "Cloudinary upload failed (property media) property_id=%s filename=%r content_type=%r size_bytes=%s",
+                p.id,
+                file.filename,
+                stored_content_type,
+                len(stored_bytes),
+            )
             raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
         stored_path = url
         cloud_pid = pid
