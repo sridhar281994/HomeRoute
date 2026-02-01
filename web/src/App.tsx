@@ -33,6 +33,21 @@ export default function App() {
           <button className="nav-button" type="button" onClick={() => nav("/home")}>
             Home
           </button>
+          <button
+            className="nav-button"
+            type="button"
+            onClick={() => {
+              try {
+                localStorage.setItem("pd_radius_km", "50");
+                localStorage.setItem("pd_force_nearby_50", "1");
+              } catch {
+                // ignore
+              }
+              nav("/home");
+            }}
+          >
+            Search Nearby(50km)
+          </button>
           <button className="nav-button" type="button" onClick={() => nav("/myposts")}>
             My Posts
           </button>

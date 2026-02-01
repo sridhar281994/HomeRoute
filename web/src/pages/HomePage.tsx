@@ -360,6 +360,20 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    // Triggered by topbar "Search Nearby(50km)".
+    try {
+      if (localStorage.getItem("pd_force_nearby_50") === "1") {
+        localStorage.removeItem("pd_force_nearby_50");
+        setRadiusKm("50");
+        requestGps();
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function fmtDistance(dkm: any): string {
     const n = Number(dkm);
     if (!Number.isFinite(n)) return "";
@@ -537,7 +551,14 @@ export default function HomePage() {
             {isValidGps(gps) ? "GPS enabled (showing nearby results)." : "GPS not available (showing non-nearby results)."}
           </div>
           <div className="row" style={{ marginTop: 6, alignItems: "center" }}>
-            <button onClick={requestGps}>Enable GPS</button>
+            <button
+              onClick={() => {
+                setRadiusKm("50");
+                requestGps();
+              }}
+            >
+              Search Nearby(50km)
+            </button>
             <span className="muted">{gpsMsg}</span>
           </div>
         </div>

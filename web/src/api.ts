@@ -453,6 +453,10 @@ export function adminApproveUser(userId: number) {
   return api<{ ok: boolean }>(`/admin/users/${userId}/approve`, { method: "POST" });
 }
 
+export function adminDeleteUser(userId: number) {
+  return api<{ ok: boolean; user_id: number; deleted_posts: number }>(`/admin/users/${userId}`, { method: "DELETE" });
+}
+
 export function adminOwnersPending() {
   return api<{ items: any[] }>(`/admin/owners/pending`);
 }

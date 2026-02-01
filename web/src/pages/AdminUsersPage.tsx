@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { adminApproveUser, adminGetUser, adminListUsers, adminMarkSpam, adminSuspendUser, getSession } from "../api";
+import { adminApproveUser, adminDeleteUser, adminGetUser, adminListUsers, adminMarkSpam, adminSuspendUser, getSession } from "../api";
 import GuestGate from "../components/GuestGate";
 import { Link } from "react-router-dom";
 import { toApiUrl } from "../api";
@@ -175,6 +175,25 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="spacer" />
                 <div className="row" style={{ gap: 10 }}>
+                  <button
+                    className="danger"
+                    onClick={async () => {
+                      const ok = window.confirm(`Delete user #${activeUserId}? This will delete the user and all associated posts.`);
+                      if (!ok) return;
+                      try {
+                        await adminDeleteUser(activeUserId);
+                        setMsg(`Deleted user #${activeUserId}`);
+                        setActiveUserId(null);
+                        setActiveUser(null);
+                        setActivePosts([]);
+                        await loadUsers();
+                      } catch (e: any) {
+                        setMsg(e.message || "Delete failed");
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
                   {isSuspended ? (
                     <button
                       className="primary"
