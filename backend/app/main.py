@@ -1596,9 +1596,10 @@ def me_upload_profile_image(
                 filename=(file.filename or "").strip() or safe_name,
                 content_type=content_type,
             )
-        except Exception:
+        except Exception as e:
             logger.exception("Cloudinary upload failed (profile image) user_id=%s filename=%r content_type=%r", me.id, file.filename, content_type)
-            raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
+            msg = str(e) or "Cloudinary upload failed"
+            raise HTTPException(status_code=500, detail=f"Failed to upload to Cloudinary: {msg[:200]}")
         me.profile_image_path = url
         me.profile_image_cloudinary_public_id = pid
     else:
@@ -3407,7 +3408,7 @@ def upload_property_image(
                 filename=(file.filename or "").strip() or safe_name,
                 content_type=stored_content_type,
             )
-        except Exception:
+        except Exception as e:
             logger.exception(
                 "Cloudinary upload failed (property media) property_id=%s filename=%r content_type=%r size_bytes=%s",
                 p.id,
@@ -3415,7 +3416,8 @@ def upload_property_image(
                 stored_content_type,
                 len(stored_bytes),
             )
-            raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
+            msg = str(e) or "Cloudinary upload failed"
+            raise HTTPException(status_code=500, detail=f"Failed to upload to Cloudinary: {msg[:200]}")
         stored_path = url
         cloud_pid = pid
     else:
