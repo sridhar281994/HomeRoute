@@ -255,14 +255,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
             u = {}
         self._apply_avatar(u)
 
-        # Seed preferred location from the stored profile.
-        try:
-            u = get_user() or {}
-            self._preferred_state = str(u.get("state") or "").strip()
-            self._preferred_district = str(u.get("district") or "").strip()
-        except Exception:
-            self._preferred_state = ""
-            self._preferred_district = ""
+        # Do not auto-apply profile location to feed filters.
+        # Filters must remain stable unless the user changes them explicitly.
+        self._preferred_state = ""
+        self._preferred_district = ""
 
         # Revert to the glossy purple/orange background (no image).
         self.bg_image = ""
