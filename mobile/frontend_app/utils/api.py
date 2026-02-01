@@ -317,7 +317,7 @@ def api_owner_update_property(*, property_id: int, payload: dict[str, Any]) -> d
     return _handle(resp)
 
 
-def api_owner_delete_property(property_id: int) -> dict[str, Any]:
+def api_owner_delete_property(*, property_id: int) -> dict[str, Any]:
     """
     Owner listing delete.
     Backend endpoint: DELETE /owner/properties/{property_id}

@@ -280,6 +280,15 @@ class LoginScreen(GestureNavigationMixin, Screen):
                 set_session(token=token, user=user, remember=bool(self.remember_me))
 
                 def after(*_):
+                    # Ensure top-bar avatar reflects the logged-in user immediately.
+                    try:
+                        from kivy.app import App as _App
+
+                        a = _App.get_running_app()
+                        if a and hasattr(a, "sync_user_badge"):
+                            a.sync_user_badge()  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
                     if self.manager:
                         self.manager.current = "home"
                     _popup("Success", "Logged in.")
@@ -332,6 +341,14 @@ class LoginScreen(GestureNavigationMixin, Screen):
                     set_session(token=str(token), user=dict(user), remember=remember)
 
                     def after(*_):
+                        try:
+                            from kivy.app import App as _App
+
+                            a = _App.get_running_app()
+                            if a and hasattr(a, "sync_user_badge"):
+                                a.sync_user_badge()  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
                         if self.manager:
                             self.manager.current = "home"
                         _popup("Success", f"Logged in as {user.get('name') or profile.get('email') or 'Google user'}.")
@@ -345,3 +362,6 @@ class LoginScreen(GestureNavigationMixin, Screen):
             Thread(target=work, daemon=True).start()
 
         google_sign_in(server_client_id=server_client_id, on_success=on_success, on_error=on_error)
+
+    def gesture_refresh_enabled(self) -> bool:
+        return False
