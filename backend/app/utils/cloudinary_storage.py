@@ -30,12 +30,31 @@ def _cloudinary_folder() -> str:
 def cloudinary_enabled() -> bool:
     return cloudinary_is_configured()
 
+def _looks_like_image(raw: bytes) -> bool:
+    if not raw or len(raw) < 16:
+        return False
+
+    sig = raw[:16]
+
+    return (
+        sig.startswith(b"\xFF\xD8\xFF") or          # JPEG
+        sig.startswith(b"\x89PNG\r\n\x1a\n") or     # PNG
+        sig.startswith(b"RIFF") or                  # WEBP
+        sig[4:12] == b"ftypheic" or                  # HEIC
+        sig[4:12] == b"ftypheif"
+    )
+
+
 
 def _optimize_image(raw: bytes) -> str:
     """
-    Try to optimize image.
-    If Pillow cannot decode, fall back to raw upload.
+    Validate + optimize image.
+    Rejects non-image blobs returned by Android OEM pickers.
     """
+
+    if not _looks_like_image(raw):
+        raise RuntimeError("Selected file is not a valid image")
+
     try:
         img = Image.open(BytesIO(raw))
         img = ImageOps.exif_transpose(img)
@@ -54,8 +73,8 @@ def _optimize_image(raw: bytes) -> str:
         tmp.flush()
         return tmp.name
 
-    except UnidentifiedImageError:
-        # 🔴 FALLBACK: write raw bytes and let Cloudinary handle it
+    except Exception:
+        # If Pillow fails but signature is valid, let Cloudinary handle it
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         tmp.write(raw)
         tmp.flush()
