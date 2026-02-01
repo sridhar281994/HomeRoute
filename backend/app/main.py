@@ -2582,7 +2582,21 @@ def owner_create_property(
         updated_at=dt.datetime.now(dt.timezone.utc),
     )
     db.add(p)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as e:
+        # Convert DB uniqueness violations into a user-facing 409 instead of crashing with 500.
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        msg = str(getattr(e, "orig", "") or e)
+        if "uq_properties_contact_phone_normalized_no_override" in msg:
+            raise HTTPException(
+                status_code=409,
+                detail="Duplicate listing phone detected. Please use a different phone number or contact admin for override.",
+            )
+        raise HTTPException(status_code=409, detail="Duplicate data detected. Please change your input and try again.")
     _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="create", reason="")
     return {"id": p.id, "ad_number": (p.ad_number or "").strip() or str(p.id), "status": p.status}
 
