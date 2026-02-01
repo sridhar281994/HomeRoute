@@ -486,6 +486,18 @@ export function adminLogs(params?: { entity_type?: string; entity_id?: number; l
   return api<{ items: any[] }>(`/admin/logs${qs}`);
 }
 
+export function adminListUsers(params?: { q?: string; limit?: number }) {
+  const sp = new URLSearchParams();
+  if (params?.q) sp.set("q", params.q);
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  const qs = sp.toString() ? `?${sp.toString()}` : "";
+  return api<{ items: any[] }>(`/admin/users${qs}`);
+}
+
+export function adminDeleteUser(id: number) {
+  return api<{ ok: boolean; user_id: number; deleted_posts: number }>(`/admin/users/${id}`, { method: "DELETE" });
+}
+
 export function getCategoryCatalog() {
   return api<CategoryCatalog>(`/meta/categories`);
 }
