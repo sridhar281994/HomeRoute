@@ -253,15 +253,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
         # ✅ DELAY avatar application (CRITICAL FIX)
         Clock.schedule_once(lambda dt: self._apply_avatar(get_user() or {}), 0)
 
-        # Preferred location
-        try:
-            u = get_user() or {}
-            self._preferred_state = str(u.get("state") or "").strip()
-            self._preferred_district = str(u.get("district") or "").strip()
-        except Exception:
-            self._preferred_state = ""
-            self._preferred_district = ""
-
+        # Do not auto-apply profile location into feed filters.
+        # Filters must remain stable unless user changes them explicitly.
+        self._preferred_state = ""
+        self._preferred_district = ""
         self.bg_image = ""
 
         self._load_need_categories()
@@ -596,9 +591,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 pref_district = str(u.get("district") or "").strip()
 
                 def apply(*_):
-                    self._preferred_state = pref_state
-                    self._preferred_district = pref_district
-                    self._apply_preferred_state()
                     self._apply_avatar(u)
                     try:
                         from kivy.app import App as _App
