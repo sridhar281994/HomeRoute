@@ -2197,6 +2197,13 @@
                         size_hint_y: None
                         height: dp(44)
                     PrettySpinner:
+                        id: post_group_spinner
+                        text: "Owner(property/Material)"
+                        values: root.publish_type_values()
+                        size_hint_y: None
+                        height: dp(44)
+                        on_text: root.on_post_group_changed()
+                    PrettySpinner:
                         id: category_spinner
                         text: "Select Category"
                         values: root.category_values()

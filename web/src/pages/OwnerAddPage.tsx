@@ -19,6 +19,7 @@ import GuestGate from "../components/GuestGate";
 export default function OwnerAddPage() {
   const s = getSession();
   const isLocked = !s.token;
+  const [postGroup, setPostGroup] = useState<"property_material" | "services">("property_material");
   const [title, setTitle] = useState("");
   const [state, setState] = useState<string>(((s.user as any)?.state as string) || localStorage.getItem("pd_state") || "");
   const [district, setDistrict] = useState<string>(((s.user as any)?.district as string) || localStorage.getItem("pd_district") || "");
@@ -194,10 +195,18 @@ export default function OwnerAddPage() {
       .filter((g) => g.group && g.items.length);
     return grouped;
   })();
+  const needGroupsFiltered = useMemo(() => {
+    const propertyGroups = new Set(["property & space", "room & stay", "construction materials"]);
+    return needGroups.filter((g) => {
+      const gl = String(g.group || "").trim().toLowerCase();
+      const isPropertyMaterial = propertyGroups.has(gl);
+      return postGroup === "property_material" ? isPropertyMaterial : !isPropertyMaterial;
+    });
+  }, [needGroups, postGroup]);
   const needOptionsFlat = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const g of needGroups) {
+    for (const g of needGroupsFiltered) {
       for (const it of g.items) {
         const v = String(it || "").trim();
         const k = v.toLowerCase();
@@ -207,7 +216,7 @@ export default function OwnerAddPage() {
       }
     }
     return out.sort((a, b) => a.localeCompare(b));
-  }, [needGroups]);
+  }, [needGroupsFiltered]);
 
   if (isLocked) {
     return (
@@ -286,6 +295,24 @@ export default function OwnerAddPage() {
         <div className="col-6">
           <label className="muted">Title</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="col-6">
+          <label className="muted">Publish as</label>
+          <select
+            value={postGroup}
+            onChange={(e) => {
+              const v = e.target.value === "services" ? "services" : "property_material";
+              setPostGroup(v);
+              // Reset category if it doesn't fit the new group.
+              setPropertyType((prev) => {
+                const ok = needOptionsFlat.includes(prev);
+                return ok ? prev : "";
+              });
+            }}
+          >
+            <option value="property_material">Owner(property/Material)</option>
+            <option value="services">Owner(services Only)</option>
+          </select>
         </div>
         <div className="col-6">
           <label className="muted">Need category (materials / services / property)</label>

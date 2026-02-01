@@ -956,6 +956,8 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         self._selected_media: list[str] = []
         self._category_items_cache: list[str] = []
         self._preferred_category: str = ""
+        # Publish type (controls which categories are shown)
+        self._publish_post_group: str = "property_material"  # property_material | services
 
     def start_new(self) -> None:
         """
@@ -1038,6 +1040,22 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         """
         return list(getattr(self, "_category_items_cache", []) or [])
 
+    def publish_type_values(self) -> list[str]:
+        return ["Owner(property/Material)", "Owner(services Only)"]
+
+    def on_post_group_changed(self, *_):
+        """
+        Called from KV when the publish-type spinner changes.
+        """
+        try:
+            sp = self.ids.get("post_group_spinner")
+            label = str(getattr(sp, "text", "") or "").strip()
+        except Exception:
+            label = ""
+        self._publish_post_group = "services" if "service" in label.lower() else "property_material"
+        # Reload categories filtered by the selected type.
+        self._load_publish_categories(preferred=str(getattr(self, "_preferred_category", "") or ""))
+
     def _load_publish_categories(self, preferred: str = "") -> None:
         """
         Load publish category list from the backend category catalog.
@@ -1048,8 +1066,34 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
             try:
                 data = api_meta_categories()
                 cats = data.get("categories") or []
+                # Match backend grouping logic.
+                property_groups = {"property & space", "room & stay", "construction materials"}
+                pref = (preferred or self._preferred_category or "").strip()
+
+                # If editing, auto-pick the correct post group based on the existing category.
+                if pref:
+                    try:
+                        for g in cats:
+                            group_label = str((g or {}).get("group") or "").strip()
+                            gl = group_label.lower()
+                            items = [str(x or "").strip() for x in ((g or {}).get("items") or []) if str(x or "").strip()]
+                            if pref in items:
+                                self._publish_post_group = "property_material" if (gl in property_groups) else "services"
+                                break
+                    except Exception:
+                        pass
+
+                want_services = str(getattr(self, "_publish_post_group", "") or "").strip().lower() == "services"
+
                 values: list[str] = []
                 for g in cats:
+                    group_label = str((g or {}).get("group") or "").strip()
+                    gl = group_label.lower()
+                    is_property_material = gl in property_groups
+                    if want_services and is_property_material:
+                        continue
+                    if (not want_services) and (not is_property_material):
+                        continue
                     for it in ((g or {}).get("items") or []):
                         label = str(it or "").strip()
                         if label:
@@ -1066,12 +1110,18 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
 
                 def apply(*_):
                     self._category_items_cache = deduped
+                    # Sync the publish-type spinner label.
+                    try:
+                        pg = str(getattr(self, "_publish_post_group", "") or "").strip().lower()
+                        if "post_group_spinner" in self.ids:
+                            self.ids["post_group_spinner"].text = "Owner(services Only)" if pg == "services" else "Owner(property/Material)"
+                    except Exception:
+                        pass
                     if "category_spinner" not in self.ids:
                         return
                     sp = self.ids["category_spinner"]
                     sp.values = self.category_values()
 
-                    pref = (preferred or self._preferred_category or "").strip()
                     if pref and pref in (sp.values or []):
                         sp.text = pref
                         return
