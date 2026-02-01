@@ -94,11 +94,13 @@ def upload_bytes(
     tmp_path: str | None = None
 
     try:
-        # -------- IMAGE --------
         if resource_type == "image":
             tmp_path = _optimize_image(raw)
 
-        # -------- VIDEO --------
+            # 🔴 INVALID IMAGE → SKIP SILENTLY
+            if not tmp_path:
+                return "", ""
+
         else:
             ext = os.path.splitext(filename or "")[1].lower() or ".mp4"
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
@@ -106,7 +108,11 @@ def upload_bytes(
             tmp.flush()
             tmp_path = tmp.name
 
-        # -------- CLOUDINARY --------
+        # 🔴 EXTRA SAFETY
+        if not tmp_path or not os.path.exists(tmp_path):
+            return "", ""
+
+        # ---------- Cloudinary ----------
         res = cloudinary.uploader.upload(
             tmp_path,
             resource_type=resource_type,
@@ -121,7 +127,7 @@ def upload_bytes(
         pid = str(res.get("public_id") or "").strip()
 
         if not url or not pid:
-            raise RuntimeError("Cloudinary upload failed")
+            return "", ""
 
         return url, pid
 
@@ -131,6 +137,7 @@ def upload_bytes(
                 os.unlink(tmp_path)
             except Exception:
                 pass
+
 
 
 def destroy(*, public_id: str, resource_type: ResourceType) -> None:
