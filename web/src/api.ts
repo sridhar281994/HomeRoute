@@ -321,6 +321,14 @@ export function ownerDeleteProperty(id: number) {
   return api<{ ok: boolean }>(`/owner/properties/${id}`, { method: "DELETE" });
 }
 
+export function ownerUpdateProperty(id: number, input: any) {
+  return api<{ ok: boolean; property: any }>(`/owner/properties/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function uploadPropertyImage(propertyId: number, file: File, sortOrder = 0) {
   const s = getSession();
   const form = new FormData();
