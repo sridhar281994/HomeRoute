@@ -984,9 +984,21 @@ class HomeScreen(GestureNavigationMixin, Screen):
         )
 
         if is_my_posts:
-            btn_edit = Factory.AppButton(text="Edit", size_hint=(1, None), height=dp(44))
-            btn_delete = Factory.AppButton(text="Delete", size_hint=(1, None), height=dp(44))
-            btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
+            btn_edit = Factory.AppButton(
+                text="Edit",
+                size_hint=(1, None),
+                height=dp(44),
+            )
+            btn_delete = Factory.AppButton(
+                text="Delete",
+                size_hint=(1, None),
+                height=dp(44),
+            )
+            btn_share = Factory.AppButton(
+                text="Share",
+                size_hint=(1, None),
+                height=dp(44),
+            )
 
             btn_edit.bind(on_release=lambda *_: p.get("_on_edit", lambda: None)())
             btn_delete.bind(on_release=lambda *_: p.get("_on_delete", lambda: None)())
@@ -995,6 +1007,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
             btn_row.add_widget(btn_edit)
             btn_row.add_widget(btn_delete)
             btn_row.add_widget(btn_share)
+
         else:
             btn_contact = Factory.AppButton(
                 text="Contacted" if already_contacted else "Contact owner",
