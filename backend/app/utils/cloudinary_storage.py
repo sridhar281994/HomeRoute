@@ -1,34 +1,30 @@
 from __future__ import annotations
 
 import os
-from PIL import Image
 import tempfile
 from io import BytesIO
 from typing import Literal
-from io import BytesIO
 
 import cloudinary.uploader
+from PIL import Image, UnidentifiedImageError
+import pillow_heif
+
+from app.utils.cloudinary_config import cloudinary_is_configured
 
 
-
-from app.utils.cloudinary_config import cloudinary_is_configured  # ensures cloudinary.config() runs
+# 🔴 CRITICAL: enable HEIC / HEIF support (Android camera photos)
+pillow_heif.register_heif_opener()
 
 
 ResourceType = Literal["image", "video"]
 
 
 def _cloudinary_folder() -> str:
-    # Optional folder to keep assets organized in Cloudinary.
     return (os.getenv("CLOUDINARY_FOLDER") or "quickrent4u").strip() or "quickrent4u"
 
 
 def cloudinary_enabled() -> bool:
-    """
-    Cloudinary is enabled iff credentials are present.
-    Keeps local /uploads behavior for dev environments without env vars.
-    """
     return cloudinary_is_configured()
-
 
 
 def upload_bytes(
@@ -39,32 +35,44 @@ def upload_bytes(
     filename: str,
     content_type: str,
 ) -> tuple[str, str]:
+    """
+    Upload raw bytes to Cloudinary safely.
 
-    ext = os.path.splitext(filename or "")[1].lower()
+    - Supports HEIC / HEIF (Android camera)
+    - Normalizes images to real JPEG
+    - Uses temp files (Cloudinary-safe)
+    """
 
-    tmp_path = None
+    tmp_path: str | None = None
+
     try:
-        # 🔴 Normalize images (critical)
+        # ---------------- IMAGE ----------------
         if resource_type == "image":
             try:
                 img = Image.open(BytesIO(raw))
-                img = img.convert("RGB")  # removes HEIC/progressive issues
+                img = img.convert("RGB")
+
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                    img.save(tmp, format="JPEG", quality=90)
+                    img.save(tmp, format="JPEG", quality=90, optimize=True)
                     tmp.flush()
                     tmp_path = tmp.name
+
+            except UnidentifiedImageError:
+                raise RuntimeError(
+                    "Unsupported image format. Please upload photos from Gallery or Camera."
+                )
             except Exception as e:
                 raise RuntimeError(f"Invalid image data: {e}")
 
+        # ---------------- VIDEO ----------------
         else:
-            # video / other
-            if not ext:
-                ext = ".mp4"
+            ext = os.path.splitext(filename or "")[1].lower() or ".mp4"
             with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
                 tmp.write(raw)
                 tmp.flush()
                 tmp_path = tmp.name
 
+        # ---------------- CLOUDINARY ----------------
         res = cloudinary.uploader.upload(
             tmp_path,
             resource_type=resource_type,
@@ -92,15 +100,10 @@ def upload_bytes(
 
 
 def destroy(*, public_id: str, resource_type: ResourceType) -> None:
-    """
-    Best-effort delete of a Cloudinary asset.
-    """
     pid = (public_id or "").strip()
     if not pid:
         return
     try:
         cloudinary.uploader.destroy(pid, resource_type=resource_type, invalidate=False)
     except Exception:
-        # Best-effort cleanup; do not break API flows.
         return
-
