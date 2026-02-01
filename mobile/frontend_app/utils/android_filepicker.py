@@ -176,7 +176,6 @@ def android_open_gallery(
         Activity = autoclass("android.app.Activity")
         JavaString = autoclass("java.lang.String")
         Array = autoclass("java.lang.reflect.Array")
-        ContentResolver = autoclass("android.content.ContentResolver")
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
@@ -210,7 +209,7 @@ def android_open_gallery(
                         try:
                             resolver.takePersistableUriPermission(
                                 uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
                             )
                         except Exception:
                             pass
@@ -221,7 +220,7 @@ def android_open_gallery(
                     try:
                         resolver.takePersistableUriPermission(
                             uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
                         )
                     except Exception:
                         pass
@@ -231,7 +230,7 @@ def android_open_gallery(
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        # ---------- SAF picker (MANDATORY for multi-select) ----------
+        # ---------- SAF ONLY (required for multi-select) ----------
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
             mimes = ["image/*"]
@@ -249,14 +248,13 @@ def android_open_gallery(
             saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
         saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-
         saf_intent.addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION
             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
         )
 
         if saf_intent.resolveActivity(pm) is None:
-            _log("SAF picker not available")
+            _log("SAF picker not available – multi-select impossible")
             return False
 
         chooser = Intent.createChooser(
