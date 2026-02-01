@@ -170,6 +170,43 @@ def _catalog_flat_items(catalog: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _post_group_property_types(post_group: str | None) -> set[str]:
+    """
+    Map a high-level post group into allowed Property.property_type labels.
+
+    post_group:
+    - services: services-only posts
+    - property_material: property + materials posts
+    """
+    pg = (post_group or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if not pg:
+        return set()
+    if pg in {"services", "service"}:
+        want = "services"
+    elif pg in {"property", "material", "materials", "property_material", "property_and_material"}:
+        want = "property_material"
+    else:
+        return set()
+
+    catalog, _warning, _source = _load_category_catalog()
+    cats = catalog.get("categories") or []
+    items: set[str] = set()
+    # Define which catalog groups belong to which post_group.
+    property_groups = {"property & space", "room & stay", "construction materials"}
+    for g in cats:
+        group_label = str((g or {}).get("group") or "").strip()
+        gl = group_label.lower()
+        group_items = [str(x or "").strip() for x in ((g or {}).get("items") or []) if str(x or "").strip()]
+        if not group_items:
+            continue
+        is_property_material = gl in property_groups
+        if want == "property_material" and is_property_material:
+            items.update(group_items)
+        if want == "services" and (not is_property_material):
+            items.update(group_items)
+    return items
+
+
 def _uploads_dir() -> str:
     return os.environ.get("UPLOADS_DIR") or os.path.join(os.path.dirname(__file__), "..", "uploads")
 
@@ -1966,6 +2003,7 @@ def list_properties(
     q: str | None = Query(default=None),
     rent_sale: str | None = Query(default=None),
     property_type: str | None = Query(default=None),
+    post_group: str | None = Query(default=None),
     max_price: int | None = Query(default=None),
     state: str | None = Query(default=None),
     district: str | None = Query(default=None),
@@ -2011,6 +2049,9 @@ def list_properties(
         stmt = stmt.where((Property.title.ilike(q_like)) | (Property.location.ilike(q_like)))
     if rent_sale:
         stmt = stmt.where(Property.rent_sale == rent_sale)
+    pg_types = _post_group_property_types(post_group)
+    if pg_types:
+        stmt = stmt.where(Property.property_type.in_(sorted(pg_types)))
     if property_type:
         stmt = stmt.where(Property.property_type == property_type)
     if max_price is not None:
@@ -2197,6 +2238,7 @@ def list_nearby_properties(
     q: str | None = Query(default=None),
     rent_sale: str | None = Query(default=None),
     property_type: str | None = Query(default=None),
+    post_group: str | None = Query(default=None),
     max_price: int | None = Query(default=None),
     posted_within_days: int | None = Query(default=None, ge=1, le=365),
 ):
@@ -2253,6 +2295,9 @@ def list_nearby_properties(
         stmt = stmt.where((Property.title.ilike(q_like)) | (Property.location.ilike(q_like)))
     if rent_sale:
         stmt = stmt.where(Property.rent_sale == rent_sale)
+    pg_types = _post_group_property_types(post_group)
+    if pg_types:
+        stmt = stmt.where(Property.property_type.in_(sorted(pg_types)))
     if property_type:
         stmt = stmt.where(Property.property_type == property_type)
     if max_price is not None:
