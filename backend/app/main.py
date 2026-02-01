@@ -1885,7 +1885,9 @@ def _property_out(
         for i in sorted((p.images or []), key=lambda x: (int(getattr(x, "sort_order", 0) or 0), int(getattr(x, "id", 0) or 0))):
             if not include_unapproved_images and (i.status or "") != "approved":
                 continue
-            url = _public_image_url_if_exists(i.file_path)
+            # Always return a public URL; if a local file is missing, /uploads will return 204.
+            # This avoids hiding newly uploaded images in multi-instance environments.
+            url = _public_image_url(i.file_path)
             if not url:
                 continue
             img_out: dict[str, Any] = {
