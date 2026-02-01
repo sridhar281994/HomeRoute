@@ -14,7 +14,6 @@ import {
   getContact,
 } from "../api";
 import { getBrowserGps } from "../location";
-import { sharePost } from "../share";
 
 export default function HomePage() {
   const nav = useNavigate();
@@ -598,7 +597,6 @@ export default function HomePage() {
         {items.map((p) => {
           const pid = Number(p.id);
           const pidKey = Number.isInteger(pid) ? pid : Number.NaN;
-          const shareUrl = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
           const amenities = Array.isArray(p.amenities)
             ? p.amenities
                 .map((a: any) => String(a).trim())
@@ -632,31 +630,6 @@ export default function HomePage() {
                     </div>
                   </div>
                   <div className="spacer" />
-                  <button
-                    type="button"
-                    title="Share"
-                    aria-label="Share"
-                    onClick={async () => {
-                      const title = String(p.title || "Property").trim() || "Property";
-                      const adv = String(p.adv_number || p.ad_number || p.id || "").trim();
-                      const meta = [
-                        adv ? `Ad #${adv}` : "",
-                        String(p.rent_sale || "").trim(),
-                        String(p.property_type || "").trim(),
-                        String(p.price_display || "").trim(),
-                        String(p.location_display || "").trim(),
-                      ]
-                        .filter(Boolean)
-                        .join(" • ");
-                      const img = p.images?.length ? toApiUrl(p.images[0].url) : "";
-                      const text = [title, meta, img ? `Image: ${img}` : ""].filter(Boolean).join("\n");
-                      const res = await sharePost({ title, text, url: shareUrl });
-                      if (res === "copied") setErr("Copied share text to clipboard.");
-                    }}
-                    style={{ padding: "8px 10px", minWidth: 44 }}
-                  >
-                    Share
-                  </button>
                 </div>
 
                 <div className="post-body">

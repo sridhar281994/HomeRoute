@@ -15,6 +15,7 @@ import tempfile
 from typing import Annotated, Any
 from functools import lru_cache
 import math
+import logging
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,6 +56,8 @@ from app.google_play import GooglePlayNotConfigured, verify_subscription_with_go
 from app.sms import send_sms
 from app.utils.cloudinary_storage import cloudinary_enabled, destroy as cloudinary_destroy, upload_bytes as cloudinary_upload_bytes
 
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Quickrent4u API")
 
@@ -1593,8 +1596,10 @@ def me_upload_profile_image(
                 filename=(file.filename or "").strip() or safe_name,
                 content_type=content_type,
             )
-        except Exception:
-            raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
+        except Exception as e:
+            logger.exception("Cloudinary upload failed (profile image) user_id=%s filename=%r content_type=%r", me.id, file.filename, content_type)
+            msg = str(e) or "Cloudinary upload failed"
+            raise HTTPException(status_code=500, detail=f"Failed to upload to Cloudinary: {msg[:200]}")
         me.profile_image_path = url
         me.profile_image_cloudinary_public_id = pid
     else:
@@ -3174,6 +3179,110 @@ def admin_revenue(
     return {"items": items}
 
 
+@app.get("/admin/users")
+def admin_list_users(
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    q: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+):
+    if (me.role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    qv = (q or "").strip().lower()
+    stmt = select(User).order_by(User.id.desc()).limit(int(limit))
+    if qv:
+        like = f"%{qv}%"
+        stmt = (
+            select(User)
+            .where(
+                (func.lower(User.email).like(like))
+                | (func.lower(User.username).like(like))
+                | (func.lower(User.name).like(like))
+                | (func.lower(User.phone).like(like))
+                | (func.lower(User.company_name).like(like))
+            )
+            .order_by(User.id.desc())
+            .limit(int(limit))
+        )
+
+    users = db.execute(stmt).scalars().all()
+    items: list[dict[str, Any]] = []
+    for u in users:
+        props = db.execute(select(func.count(Property.id)).where(Property.owner_id == u.id)).scalar()
+        items.append(
+            {
+                "id": u.id,
+                "email": u.email,
+                "username": u.username,
+                "name": u.name,
+                "phone": u.phone,
+                "role": u.role,
+                "approval_status": u.approval_status,
+                "state": u.state,
+                "district": u.district,
+                "company_name": u.company_name,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "posts_count": int(props or 0),
+            }
+        )
+    return {"items": items}
+
+
+@app.delete("/admin/users/{user_id:int}")
+def admin_delete_user(
+    user_id: int,
+    me: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if (me.role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    uid = int(user_id)
+    if uid <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+    if int(me.id) == uid:
+        raise HTTPException(status_code=400, detail="Admin cannot delete self")
+
+    u = db.get(User, uid)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Best-effort: delete profile image asset.
+    try:
+        if (u.profile_image_cloudinary_public_id or "").strip():
+            cloudinary_destroy(public_id=u.profile_image_cloudinary_public_id, resource_type="image")
+        fp = (u.profile_image_path or "").strip().lstrip("/")
+        if fp and not fp.startswith("http"):
+            disk_path = os.path.join(_uploads_dir(), fp)
+            try:
+                if os.path.exists(disk_path):
+                    os.remove(disk_path)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Delete all posts belonging to the user (and their media + dependent rows).
+    prop_ids = [int(x) for x in db.execute(select(Property.id).where(Property.owner_id == uid)).scalars().all()]
+    for pid in prop_ids:
+        try:
+            owner_delete_property(property_id=int(pid), me=me, db=db)
+        except Exception:
+            # Best-effort: continue deleting other rows.
+            continue
+
+    # Delete user-scoped dependent rows.
+    db.execute(delete(FreeContactUsage).where(FreeContactUsage.user_id == uid))
+    db.execute(delete(ContactUsage).where(ContactUsage.user_id == uid))
+    db.execute(delete(SavedProperty).where(SavedProperty.user_id == uid))
+    db.execute(delete(UserSubscription).where(UserSubscription.user_id == uid))
+    db.execute(delete(Subscription).where(Subscription.user_id == uid))
+    db.execute(delete(ModerationLog).where(ModerationLog.actor_user_id == uid))
+
+    db.execute(delete(User).where(User.id == uid))
+    _log_moderation(db, actor_user_id=me.id, entity_type="user", entity_id=uid, action="delete", reason="")
+    return {"ok": True, "user_id": uid, "deleted_posts": len(prop_ids)}
+
 @app.post("/properties/{property_id:int}/images")
 def upload_property_image(
     property_id: int,
@@ -3299,8 +3408,16 @@ def upload_property_image(
                 filename=(file.filename or "").strip() or safe_name,
                 content_type=stored_content_type,
             )
-        except Exception:
-            raise HTTPException(status_code=500, detail="Failed to upload to Cloudinary")
+        except Exception as e:
+            logger.exception(
+                "Cloudinary upload failed (property media) property_id=%s filename=%r content_type=%r size_bytes=%s",
+                p.id,
+                file.filename,
+                stored_content_type,
+                len(stored_bytes),
+            )
+            msg = str(e) or "Cloudinary upload failed"
+            raise HTTPException(status_code=500, detail=f"Failed to upload to Cloudinary: {msg[:200]}")
         stored_path = url
         cloud_pid = pid
     else:

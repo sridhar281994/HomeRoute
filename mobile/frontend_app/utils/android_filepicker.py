@@ -7,6 +7,16 @@ from typing import Iterable
 from kivy.utils import platform
 
 
+LOG_TAG = "ANDROID_PICKER"
+
+
+def _log(msg: str) -> None:
+    try:
+        print(f"[{LOG_TAG}] {msg}")
+    except Exception:
+        pass
+
+
 def _strip_file_scheme(p: str) -> str:
     p = str(p or "").strip()
     if p.startswith("file://"):
@@ -16,38 +26,39 @@ def _strip_file_scheme(p: str) -> str:
 
 def _android_copy_content_uri_to_cache(uri: str) -> str:
     """
-    Copy an Android content:// URI to the app's cache directory.
-
-    Needed because Android's file picker (SAF) often returns content URIs, while our
-    upload code expects a real local filesystem path.
+    Copy Android content:// URI into app cache file.
+    Fully PyJNIus-safe.
     """
-    from jnius import autoclass, jarray  # type: ignore
+
+    _log(f"Copying content URI → cache: {uri}")
+
+    from jnius import autoclass
 
     PythonActivity = autoclass("org.kivy.android.PythonActivity")
     Uri = autoclass("android.net.Uri")
     OpenableColumns = autoclass("android.provider.OpenableColumns")
     File = autoclass("java.io.File")
     FileOutputStream = autoclass("java.io.FileOutputStream")
+    ByteClass = autoclass("java.lang.Byte")
+    Array = autoclass("java.lang.reflect.Array")
 
-    activity = PythonActivity.mActivity
-    ctx = activity.getApplicationContext()
+    act = PythonActivity.mActivity
+    ctx = act.getApplicationContext()
     resolver = ctx.getContentResolver()
     uri_obj = Uri.parse(str(uri))
 
-    # Best-effort display name (keeps extensions when provided by picker).
+    # -------- filename --------
     display_name = ""
     cursor = None
     try:
         cursor = resolver.query(uri_obj, None, None, None, None)
-        if cursor is not None and cursor.moveToFirst():
+        if cursor and cursor.moveToFirst():
             idx = int(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME))
             if idx >= 0:
                 display_name = str(cursor.getString(idx) or "")
-    except Exception:
-        display_name = ""
     finally:
         try:
-            if cursor is not None:
+            if cursor:
                 cursor.close()
         except Exception:
             pass
@@ -55,18 +66,38 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     if not display_name:
         display_name = f"picked_{int(time.time())}"
 
+    display_name = (
+        display_name.replace("/", "_")
+        .replace("\\", "_")
+        .replace(":", "_")
+    )
+
+    # ensure extension (important for your is_image_path logic)
+    if "." not in display_name:
+        try:
+            mime = resolver.getType(uri_obj) or ""
+            if mime.startswith("image/"):
+                display_name += ".jpg"
+            elif mime.startswith("video/"):
+                display_name += ".mp4"
+        except Exception:
+            pass
+
     cache_dir = ctx.getCacheDir()
     out_file = File(cache_dir, display_name)
 
     ins = resolver.openInputStream(uri_obj)
     if ins is None:
-        raise OSError("Unable to read selected file.")
+        raise OSError("Unable to open input stream")
 
     outs = FileOutputStream(out_file)
-    buf = jarray("b")(8192)
+
+    # ✅ SAFE byte[] buffer creation
+    buf = Array.newInstance(ByteClass.TYPE, 8192)
+
     try:
         while True:
-            n = int(ins.read(buf))
+            n = ins.read(buf)
             if n == -1:
                 break
             outs.write(buf, 0, n)
@@ -81,13 +112,13 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
         except Exception:
             pass
 
-    return str(out_file.getAbsolutePath())
+    path = str(out_file.getAbsolutePath())
+    _log(f"Copied file path: {path}")
+    return path
+
 
 
 def ensure_local_path(p: str) -> str:
-    """
-    Normalize picker results into a readable local filesystem path.
-    """
     p = str(p or "").strip()
     if not p:
         raise ValueError("Empty path")
@@ -110,8 +141,8 @@ def ensure_local_paths(paths: Iterable[str]) -> list[str]:
             lp = ensure_local_path(str(p))
             if lp and lp not in out:
                 out.append(lp)
-        except Exception:
-            continue
+        except Exception as e:
+            _log(f"Path normalize failed: {p} → {e}")
     return out
 
 
@@ -131,108 +162,117 @@ def android_open_gallery(
     multiple: bool = False,
     mime_types: list[str] | None = None,
 ) -> bool:
-    """
-    Android native gallery/document picker fallback using Intent.
 
-    This is used when `plyer.filechooser` is unavailable or fails.
-
-    - Returns True if an Intent was launched.
-    - Calls `on_selection(list_of_uris_or_paths)` on the Kivy main thread.
-    """
     if platform != "android":
         return False
 
     try:
-        from android import activity  # type: ignore
+        from android import activity
         from kivy.clock import Clock
-        from jnius import autoclass, cast, jarray  # type: ignore
+        from jnius import autoclass
 
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
-        String = autoclass("java.lang.String")
         Activity = autoclass("android.app.Activity")
+        JavaString = autoclass("java.lang.String")
+        Array = autoclass("java.lang.reflect.Array")
 
-        # ACTION_OPEN_DOCUMENT supports multi-select and returns content:// URIs.
-        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        act = PythonActivity.mActivity
+        pm = act.getPackageManager()
 
+        req_code = 13579
+
+        def _deliver(sel):
+            Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
+
+        def _on_activity_result(requestCode, resultCode, data):
+            if requestCode != req_code:
+                return
+            try:
+                activity.unbind(on_activity_result=_on_activity_result)
+            except Exception:
+                pass
+
+            if resultCode != Activity.RESULT_OK or data is None:
+                _deliver([])
+                return
+
+            out = []
+            clip = data.getClipData()
+            if clip:
+                for i in range(clip.getItemCount()):
+                    uri = clip.getItemAt(i).getUri()
+                    if uri:
+                        out.append(str(uri.toString()))
+            else:
+                uri = data.getData()
+                if uri:
+                    out.append(str(uri.toString()))
+
+            _deliver(out)
+
+        activity.bind(on_activity_result=_on_activity_result)
+
+        # ---------- SAF picker ----------
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
             mimes = ["image/*"]
 
-        # Set a general type and optionally pass multiple MIME types.
-        intent.setType(str(mimes[0]))
-        if len(mimes) > 1:
-            arr = jarray("java.lang.String")([String(m) for m in mimes])
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+        saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
 
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        if len(mimes) == 1:
+            saf_intent.setType(mimes[0])
+        else:
+            saf_intent.setType("*/*")
+            arr = Array.newInstance(JavaString, len(mimes))
+            for i, m in enumerate(mimes):
+                Array.set(arr, i, JavaString(m))
+            saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
-        # Use a request code that is unlikely to collide.
-        req_code = 13579
+        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        saf_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-        def _deliver(sel: list[str]) -> None:
-            try:
-                Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
-            except Exception:
-                pass
-
-        def _on_activity_result(requestCode, resultCode, data) -> None:  # noqa: N802 (android callback naming)
-            if int(requestCode) != int(req_code):
-                return
-            try:
-                activity.unbind(on_activity_result=_on_activity_result)
-            except Exception:
-                pass
-
-            if int(resultCode) != int(Activity.RESULT_OK) or data is None:
-                _deliver([])
-                return
-
-            out: list[str] = []
-            try:
-                clip = data.getClipData()
-            except Exception:
-                clip = None
-
-            if clip is not None:
-                try:
-                    n = int(clip.getItemCount())
-                except Exception:
-                    n = 0
-                for i in range(max(0, n)):
-                    try:
-                        item = clip.getItemAt(i)
-                        uri = item.getUri()
-                        if uri is not None:
-                            out.append(str(uri.toString()))
-                    except Exception:
-                        continue
-            else:
-                try:
-                    uri = data.getData()
-                    if uri is not None:
-                        out.append(str(uri.toString()))
-                except Exception:
-                    pass
-
-            _deliver(out)
-
-        try:
-            activity.bind(on_activity_result=_on_activity_result)
-        except Exception:
-            return False
-
-        try:
-            act = PythonActivity.mActivity
-            act.startActivityForResult(intent, req_code)
+        if saf_intent.resolveActivity(pm) is not None:
+            chooser = Intent.createChooser(
+                saf_intent,
+                JavaString("Select file"),
+            )
+            Clock.schedule_once(
+                lambda *_: act.startActivityForResult(chooser, req_code),
+                0.15,
+            )
             return True
-        except Exception:
-            try:
-                activity.unbind(on_activity_result=_on_activity_result)
-            except Exception:
-                pass
-            return False
-    except Exception:
-        return False
 
+        # ---------- Gallery fallback ----------
+        # ACTION_PICK often does not support multi-select on many devices.
+        # Use ACTION_GET_CONTENT with EXTRA_ALLOW_MULTIPLE instead.
+        _log("SAF picker missing, falling back to ACTION_GET_CONTENT")
+
+        pick_intent = Intent(Intent.ACTION_GET_CONTENT)
+        pick_intent.addCategory(Intent.CATEGORY_OPENABLE)
+        pick_intent.setType(mimes[0] if len(mimes) == 1 else "*/*")
+        pick_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        pick_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        if pick_intent.resolveActivity(pm) is None:
+            _log("No file picker app available")
+            return False
+
+        chooser = Intent.createChooser(
+            pick_intent,
+            JavaString("Select file"),
+        )
+
+        Clock.schedule_once(
+            lambda *_: act.startActivityForResult(chooser, req_code),
+            0.15,
+        )
+
+        return True
+
+    except Exception as e:
+        _log(f"Picker failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False

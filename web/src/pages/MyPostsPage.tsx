@@ -95,6 +95,21 @@ export default function MyPostsPage() {
                           <div className="spacer" />
                           <button
                             type="button"
+                            onClick={() => {
+                              const pid = Number(p.id);
+                              if (!Number.isInteger(pid) || pid <= 0) {
+                                setMsg("Invalid ad id.");
+                                return;
+                              }
+                              // Edit happens in Publish Ad screen.
+                              window.location.href = `/owner/add?edit=${pid}`;
+                            }}
+                            style={{ padding: "8px 10px", minWidth: 88 }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
                             title="Share"
                             aria-label="Share"
                             onClick={async () => {
@@ -146,7 +161,7 @@ export default function MyPostsPage() {
                               }
                             }}
                           >
-                            Remove
+                            Delete
                           </button>
                         </div>
 
