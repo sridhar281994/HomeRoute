@@ -198,6 +198,7 @@ def android_open_gallery(
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
+        resolver = act.getContentResolver()
 
         req_code = 13579
 
@@ -218,7 +219,6 @@ def android_open_gallery(
                 return
 
             out = []
-            resolver = act.getContentResolver()
 
             clip = data.getClipData()
             if clip:
@@ -228,7 +228,7 @@ def android_open_gallery(
                         try:
                             resolver.takePersistableUriPermission(
                                 uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION,
                             )
                         except Exception:
                             pass
@@ -239,7 +239,7 @@ def android_open_gallery(
                     try:
                         resolver.takePersistableUriPermission(
                             uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
                         )
                     except Exception:
                         pass
@@ -249,11 +249,12 @@ def android_open_gallery(
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        # ---------- SAF ONLY (required for multi-select) ----------
+        # ---------- MIME handling ----------
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
             mimes = ["image/*"]
 
+        # ---------- 1️⃣ TRY SAF (best) ----------
         saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
 
@@ -272,12 +273,41 @@ def android_open_gallery(
             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
         )
 
-        if saf_intent.resolveActivity(pm) is None:
-            _log("SAF picker not available – multi-select impossible")
+        if saf_intent.resolveActivity(pm) is not None:
+            chooser = Intent.createChooser(
+                saf_intent,
+                JavaString("Select file(s)"),
+            )
+            Clock.schedule_once(
+                lambda *_: act.startActivityForResult(chooser, req_code),
+                0.15,
+            )
+            return True
+
+        # ---------- 2️⃣ FALLBACK: ACTION_GET_CONTENT (OEM-safe) ----------
+        _log("SAF not available, falling back to ACTION_GET_CONTENT")
+
+        get_intent = Intent(Intent.ACTION_GET_CONTENT)
+        get_intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+        if len(mimes) == 1:
+            get_intent.setType(mimes[0])
+        else:
+            get_intent.setType("*/*")
+            arr = Array.newInstance(JavaString, len(mimes))
+            for i, m in enumerate(mimes):
+                Array.set(arr, i, JavaString(m))
+            get_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+
+        get_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        get_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        if get_intent.resolveActivity(pm) is None:
+            _log("No picker available on this device")
             return False
 
         chooser = Intent.createChooser(
-            saf_intent,
+            get_intent,
             JavaString("Select file(s)"),
         )
 
