@@ -1458,7 +1458,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                             container.clear_widgets()
                             for c in cards:
                                 raw = c.get("raw") or {}
-                                container.add_widget(self._feed_card(raw))
+                                container.add_widget(self.feed_card(raw, show_share=True, show_contact=True))
                     except Exception:
                         pass
                     self.is_loading = False
