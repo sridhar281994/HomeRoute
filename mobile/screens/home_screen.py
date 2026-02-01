@@ -211,6 +211,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
     need_values = ListProperty(["Any"])
 
     # Filters matching the web Home page
+    post_group = StringProperty("property_material")  # property_material | services
     state_value = StringProperty("Any")
     district_value = StringProperty("Any")
     area_value = StringProperty("Any")
@@ -1138,6 +1139,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 # -----------------------------
                 need = (self.need_category or "").strip()
                 q = need if need and need.lower() != "any" else ""
+                post_group = str(getattr(self, "post_group", "") or "").strip().lower()
 
                 rent_sale_norm = self._norm_any(self.rent_sale)
 
@@ -1173,6 +1175,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         lon=float(loc[1]),
                         radius_km=radius,
                         q=q,
+                        post_group=post_group,
                         rent_sale=rent_sale_norm,
                         max_price=max_price,
                         state=state,
@@ -1184,6 +1187,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 else:
                     data = api_list_properties(
                         q=q,
+                        post_group=post_group,
                         rent_sale=rent_sale_norm,
                         max_price=max_price,
                         state=state,

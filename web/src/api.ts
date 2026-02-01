@@ -176,6 +176,7 @@ export function listProperties(params: {
   q?: string;
   rent_sale?: string;
   property_type?: string;
+  post_group?: string;
   max_price?: string;
   state?: string;
   district?: string;
@@ -188,6 +189,7 @@ export function listProperties(params: {
   if (params.q) sp.set("q", params.q);
   if (params.rent_sale) sp.set("rent_sale", params.rent_sale);
   if (params.property_type) sp.set("property_type", params.property_type);
+  if (params.post_group) sp.set("post_group", params.post_group);
   if (params.max_price) sp.set("max_price", params.max_price);
   // Location filters are optional; pass them only when selected.
   if (params.state) sp.set("state", params.state);
@@ -210,6 +212,7 @@ export function listNearbyProperties(params: {
   q?: string;
   rent_sale?: string;
   property_type?: string;
+  post_group?: string;
   max_price?: string;
   posted_within_days?: string;
   limit?: number;
@@ -224,6 +227,7 @@ export function listNearbyProperties(params: {
   if (params.q) sp.set("q", params.q);
   if (params.rent_sale) sp.set("rent_sale", params.rent_sale);
   if (params.property_type) sp.set("property_type", params.property_type);
+  if (params.post_group) sp.set("post_group", params.post_group);
   if (params.max_price) sp.set("max_price", params.max_price);
   if (params.posted_within_days) sp.set("posted_within_days", params.posted_within_days);
   if (params.limit != null) sp.set("limit", String(params.limit));

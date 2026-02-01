@@ -25,6 +25,7 @@ export default function HomePage() {
     .trim()
     .slice(0, 1)
     .toUpperCase() || "U";
+  const [postGroup, setPostGroup] = useState<"property_material" | "services">("property_material");
   const [need, setNeed] = useState<string>("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rentSale, setRentSale] = useState("");
@@ -142,6 +143,7 @@ export default function HomePage() {
             state: state || undefined,
             area: areas.length ? areas.join(",") : undefined,
             q,
+            post_group: postGroup,
             max_price: maxPriceParam,
             rent_sale: rentSale || undefined,
             property_type: undefined,
@@ -150,6 +152,7 @@ export default function HomePage() {
           })
         : await listProperties({
             q,
+            post_group: postGroup,
             max_price: maxPriceParam,
             rent_sale: rentSale || undefined,
             district: district || undefined,
@@ -433,6 +436,30 @@ export default function HomePage() {
       </div>
 
       <div className="grid" style={{ marginTop: 12 }}>
+        <div className="col-12">
+          <div className="row" style={{ gap: 10, alignItems: "center" }}>
+            <button
+              className={postGroup === "property_material" ? "primary" : ""}
+              onClick={() => {
+                setPostGroup("property_material");
+                // reload with new group
+                setTimeout(() => load(), 0);
+              }}
+            >
+              Property/material
+            </button>
+            <button
+              className={postGroup === "services" ? "primary" : ""}
+              onClick={() => {
+                setPostGroup("services");
+                setTimeout(() => load(), 0);
+              }}
+            >
+              Services
+            </button>
+            <span className="muted">Showing: {postGroup === "services" ? "Services" : "Property/material"}</span>
+          </div>
+        </div>
         <div className="col-6">
           <label className="muted">State (optional)</label>
           <select
