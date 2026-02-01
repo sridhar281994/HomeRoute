@@ -26,7 +26,6 @@ def cloudinary_enabled() -> bool:
     return cloudinary_is_configured()
 
 
-def upload_bytes(*, raw: bytes, resource_type: ResourceType, public_id: str, filename: str, content_type: str) -> tuple[str, str]:
 def upload_bytes(
     *,
     raw: bytes,
@@ -39,6 +38,7 @@ def upload_bytes(
     Upload raw bytes to Cloudinary using a temp file.
     This avoids SAF / BytesIO corruption issues.
     """
+    import tempfile
 
     ext = os.path.splitext(filename or "")[1]
     if not ext:
@@ -64,8 +64,10 @@ def upload_bytes(
         url = str((res or {}).get("secure_url") or "").strip()
         pid = str((res or {}).get("public_id") or "").strip()
 
-        if not url or not pid:
-            raise RuntimeError("Cloudinary upload failed")
+        if not url:
+            raise RuntimeError("Cloudinary upload failed (missing secure_url)")
+        if not pid:
+            raise RuntimeError("Cloudinary upload failed (missing public_id)")
 
         return url, pid
 
