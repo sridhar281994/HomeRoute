@@ -32,18 +32,20 @@ def upload_bytes(*, raw: bytes, resource_type: ResourceType, public_id: str, fil
     Returns: (secure_url, public_id)
     """
     # Cloudinary's python SDK accepts file-like objects.
+    # Some mobile clients upload as octet-stream; giving a filename helps Cloudinary infer type.
     f = BytesIO(raw)
+    try:
+        f.name = (filename or "").strip() or "upload"
+    except Exception:
+        pass
+
+    # Keep params minimal to avoid SDK quirks across versions.
     res = cloudinary.uploader.upload(
         f,
         resource_type=resource_type,
         folder=_cloudinary_folder(),
         public_id=public_id,
         overwrite=False,
-        unique_filename=True,
-        use_filename=True,
-        filename_override=(filename or None),
-        # Helps Cloudinary infer correctly when clients send octet-stream.
-        format=None,
         type="upload",
         invalidate=False,
     )
