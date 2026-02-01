@@ -317,6 +317,16 @@ def api_owner_update_property(*, property_id: int, payload: dict[str, Any]) -> d
     return _handle(resp)
 
 
+def api_owner_delete_property(property_id: int) -> dict[str, Any]:
+    """
+    Owner listing delete.
+    Backend endpoint: DELETE /owner/properties/{property_id}
+    """
+    url = f"{_base_url()}/owner/properties/{int(property_id)}"
+    resp = _request("DELETE", url, headers=_headers(), timeout=20, verify=_verify_ca_bundle())
+    return _handle(resp)
+
+
 def api_upload_property_media(*, property_id: int, file_path: str, sort_order: int = 0) -> dict[str, Any]:
     """
     Upload an image/video for a property listing.

@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   getCategoryCatalog,
+  getProperty,
   getMe,
   getSession,
   listLocationAreas,
   listLocationDistricts,
   listLocationStates,
   ownerCreateProperty,
-  ownerDeleteProperty,
   ownerListProperties,
+  ownerUpdateProperty,
   uploadPropertyImage,
 } from "../api";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { getBrowserGps } from "../location";
 import { requestBrowserMediaAccess } from "../permissions";
 import GuestGate from "../components/GuestGate";
@@ -19,6 +20,7 @@ import GuestGate from "../components/GuestGate";
 export default function OwnerAddPage() {
   const s = getSession();
   const isLocked = !s.token;
+  const [sp] = useSearchParams();
   const [title, setTitle] = useState("");
   const [state, setState] = useState<string>(((s.user as any)?.state as string) || localStorage.getItem("pd_state") || "");
   const [district, setDistrict] = useState<string>(((s.user as any)?.district as string) || localStorage.getItem("pd_district") || "");
@@ -40,6 +42,12 @@ export default function OwnerAddPage() {
   const [myAdsMsg, setMyAdsMsg] = useState<string>("");
   const [catalog, setCatalog] = useState<any>(null);
   const [categoryMsg, setCategoryMsg] = useState<string>("");
+
+  const editId = (() => {
+    const raw = String(sp.get("edit") || "").trim();
+    const n = raw && /^\d+$/.test(raw) ? Number(raw) : 0;
+    return Number.isInteger(n) && n > 0 ? n : 0;
+  })();
 
   function validateSelectedMedia(list: FileList | null): { ok: boolean; message: string; images: File[]; videos: File[] } {
     const arr = list ? Array.from(list) : [];
@@ -67,6 +75,34 @@ export default function OwnerAddPage() {
     const existing = (((getSession().user as any)?.company_name as string) || "").trim();
     if (existing) setUseCompanyName(true);
   }, []);
+
+  useEffect(() => {
+    if (!s.token) return;
+    if (!editId) return;
+    (async () => {
+      try {
+        setMsg("");
+        const p: any = await getProperty(editId);
+        setPropertyId(editId);
+        setAdNumber(String(p.adv_number || p.ad_number || p.id || "").trim());
+        setTitle(String(p.title || "").trim());
+        setState(String(p.state || "").trim());
+        setDistrict(String(p.district || "").trim());
+        setArea(String(p.area || "").trim());
+        setPrice(String(p.price || "").trim());
+        setRentSale(String(p.rent_sale || "rent").trim() || "rent");
+        setPropertyType(String(p.property_type || "").trim());
+        setContactPhone(String(p.contact_phone || "").trim());
+        const cName = String(p.company_name || ((s.user as any)?.company_name as string) || "").trim();
+        setCompanyName(cName);
+        setUseCompanyName(Boolean(cName));
+        setMsg(`Editing Ad #${String(p.adv_number || p.ad_number || p.id || "").trim()}`);
+      } catch (e: any) {
+        setMsg(e.message || "Failed to load ad for editing");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId, s.token]);
 
   useEffect(() => {
     (async () => {
@@ -414,7 +450,7 @@ export default function OwnerAddPage() {
                 } catch {
                   gps = null;
                 }
-                const res = await ownerCreateProperty({
+                const payload = {
                   district,
                   state,
                   area,
@@ -432,23 +468,29 @@ export default function OwnerAddPage() {
                   amenities: [],
                   gps_lat: gps ? gps.lat : null,
                   gps_lng: gps ? gps.lon : null,
-                });
+                };
 
-                setPropertyId(res.id);
-                setAdNumber(String((res as any).ad_number || (res as any).adv_number || res.id || "").trim());
+                const res = propertyId ? await ownerUpdateProperty(propertyId, payload) : await ownerCreateProperty(payload);
+
+                const updated = propertyId ? (res as any).property : res;
+                const nextId = propertyId ? propertyId : (updated as any).id;
+                setPropertyId(nextId);
+                setAdNumber(String((updated as any).ad_number || (updated as any).adv_number || nextId || "").trim());
 
                 if (files?.length) {
                   const v = validateSelectedMedia(files);
                   if (!v.ok) throw new Error(v.message);
                   const ordered = [...v.images, ...v.videos];
                   for (let i = 0; i < ordered.length; i++) {
-                    await uploadPropertyImage(res.id, ordered[i], i);
+                    await uploadPropertyImage(nextId, ordered[i], i);
                   }
-                  const label = String((res as any).ad_number || res.id || "").trim();
-                  setMsg(`Submitted Ad #${label} (status: ${res.status}) and uploaded ${ordered.length} file(s).`);
+                  const label = String((updated as any).ad_number || nextId || "").trim();
+                  const status = String((updated as any).status || "").trim();
+                  setMsg(`${propertyId ? "Saved" : "Submitted"} Ad #${label}${status ? ` (status: ${status})` : ""} and uploaded ${ordered.length} file(s).`);
                 } else {
-                  const label = String((res as any).ad_number || res.id || "").trim();
-                  setMsg(`Submitted Ad #${label} (status: ${res.status}).`);
+                  const label = String((updated as any).ad_number || nextId || "").trim();
+                  const status = String((updated as any).status || "").trim();
+                  setMsg(`${propertyId ? "Saved" : "Submitted"} Ad #${label}${status ? ` (status: ${status})` : ""}.`);
                 }
                 loadMyAds();
               } catch (e: any) {
@@ -456,7 +498,7 @@ export default function OwnerAddPage() {
               }
             }}
           >
-            Submit Ad
+            {propertyId ? "Save Changes" : "Submit Ad"}
           </button>
           <span className="muted">{msg}</span>
         </div>
@@ -485,23 +527,6 @@ export default function OwnerAddPage() {
                         </div>
                       </div>
                       <div className="spacer" />
-                      <button
-                        className="danger"
-                        onClick={async () => {
-                          const label = String(p.adv_number || p.ad_number || p.id || "").trim();
-                          const ok = window.confirm(`Delete Ad #${label}? This cannot be undone.`);
-                          if (!ok) return;
-                          try {
-                            await ownerDeleteProperty(Number(p.id));
-                            setMsg(`Deleted Ad #${label}`);
-                            loadMyAds();
-                          } catch (e: any) {
-                            setMsg(e.message || "Delete failed");
-                          }
-                        }}
-                      >
-                        Remove post
-                      </button>
                     </div>
                   </div>
                 </div>

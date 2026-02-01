@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   adminApprove,
   adminDeleteProperty,
+  adminDeleteUser,
   adminImageApprove,
   adminImageReject,
   adminImagesPending,
   adminListProperties,
+  adminListUsers,
   adminLogs,
   adminOwnerApprove,
   adminOwnerReject,
@@ -29,6 +31,8 @@ export default function AdminReviewPage() {
   const [items, setItems] = useState<any[]>([]);
   const [queryItems, setQueryItems] = useState<any[]>([]);
   const [owners, setOwners] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [userQ, setUserQ] = useState<string>("");
   const [images, setImages] = useState<any[]>([]);
   const [violations, setViolations] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
@@ -73,6 +77,16 @@ export default function AdminReviewPage() {
     }
   }
 
+  async function loadUsers() {
+    setMsg("");
+    try {
+      const res = await adminListUsers({ q: String(userQ || "").trim() || undefined, limit: 200 });
+      setUsers(res.items || []);
+    } catch (e: any) {
+      setMsg(e.message || "Failed to load users");
+    }
+  }
+
   async function runQuery() {
     setMsg("");
     try {
@@ -108,6 +122,7 @@ export default function AdminReviewPage() {
     }
     loadQueues();
     runQuery();
+    loadUsers();
   }, []);
 
   const needGroups = useMemo(() => {
@@ -702,6 +717,65 @@ export default function AdminReviewPage() {
             </div>
           ))}
           {!owners.length ? <div className="col-12 muted">No pending owners.</div> : null}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="row">
+          <div>
+            <div className="h2">User Administration</div>
+            <div className="muted" style={{ marginTop: 6 }}>
+              Delete a user and all associated posts.
+            </div>
+          </div>
+          <div className="spacer" />
+          <input
+            placeholder="Search users…"
+            value={userQ}
+            onChange={(e) => setUserQ(e.target.value)}
+            style={{ minWidth: 260 }}
+          />
+          <button onClick={loadUsers}>Search</button>
+          <span className="admin-pill">{users.length}</span>
+        </div>
+        <div className="grid" style={{ marginTop: 10 }}>
+          {users.map((u) => (
+            <div key={u.id} className="col-12">
+              <div className="row">
+                <div>
+                  <div className="h2">
+                    #{u.id} — {u.name || u.username || u.email}
+                  </div>
+                  <div className="muted">
+                    {u.role} • {u.phone || "no phone"} • {u.email} • posts: {u.posts_count ?? 0}
+                  </div>
+                  <div className="muted">
+                    {u.state || ""}{u.district ? ` / ${u.district}` : ""} {u.company_name ? `• ${u.company_name}` : ""}
+                  </div>
+                </div>
+                <div className="spacer" />
+                <button
+                  className="danger"
+                  onClick={async () => {
+                    const ok = window.confirm(`Delete user #${u.id}? This will delete all their posts.`);
+                    if (!ok) return;
+                    try {
+                      await adminDeleteUser(Number(u.id));
+                      setMsg(`Deleted user #${u.id}`);
+                      await loadUsers();
+                      await runQuery();
+                      await loadQueues();
+                    } catch (e: any) {
+                      setMsg(e.message || "Delete user failed");
+                    }
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+          {!users.length ? <div className="col-12 muted">No users.</div> : null}
         </div>
       </div>
 

@@ -321,6 +321,14 @@ export function ownerDeleteProperty(id: number) {
   return api<{ ok: boolean }>(`/owner/properties/${id}`, { method: "DELETE" });
 }
 
+export function ownerUpdateProperty(id: number, input: any) {
+  return api<{ ok: boolean; property: any }>(`/owner/properties/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function uploadPropertyImage(propertyId: number, file: File, sortOrder = 0) {
   const s = getSession();
   const form = new FormData();
@@ -476,6 +484,18 @@ export function adminLogs(params?: { entity_type?: string; entity_id?: number; l
   if (params?.limit != null) sp.set("limit", String(params.limit));
   const qs = sp.toString() ? `?${sp.toString()}` : "";
   return api<{ items: any[] }>(`/admin/logs${qs}`);
+}
+
+export function adminListUsers(params?: { q?: string; limit?: number }) {
+  const sp = new URLSearchParams();
+  if (params?.q) sp.set("q", params.q);
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  const qs = sp.toString() ? `?${sp.toString()}` : "";
+  return api<{ items: any[] }>(`/admin/users${qs}`);
+}
+
+export function adminDeleteUser(id: number) {
+  return api<{ ok: boolean; user_id: number; deleted_posts: number }>(`/admin/users/${id}`, { method: "DELETE" });
 }
 
 export function getCategoryCatalog() {

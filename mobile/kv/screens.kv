@@ -1839,7 +1839,7 @@
                         height: dp(44)
                         spacing: dp(8)
                         AppButton:
-                            text: "Enable GPS"
+                            text: "GPS ENABLED" if (root.home and root.home.gps_enabled) else "Enable GPS"
                             size_hint_x: None
                             width: dp(150)
                             on_release:
