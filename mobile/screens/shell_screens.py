@@ -1481,5 +1481,3 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         if self.manager:
             # Back should return to My Posts when editing, otherwise Home.
             self.manager.current = "my_posts" if self.edit_property_id else "home"
-
-
