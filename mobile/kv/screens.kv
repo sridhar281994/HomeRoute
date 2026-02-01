@@ -1571,15 +1571,18 @@
                             size_hint_x: 1
 
                         AppButton:
-                            text: "Filter"
+                            text: "Nearby (50 km)"
                             size_hint: None, None
-                            width: min(dp(120), root.width * 0.26)
+                            width: min(dp(160), root.width * 0.36)
                             height: dp(40)
-                            on_release: root.open_filters()
+                            on_release:
+                                print("NEARBY CLICKED")
+                                root.enable_gps()
 
                         Widget:
                             size_hint_x: None
                             width: dp(6)
+
 
                 # -------------------------------
                 # STATUS LABEL
