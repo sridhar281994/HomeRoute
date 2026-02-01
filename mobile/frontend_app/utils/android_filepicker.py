@@ -244,24 +244,19 @@ def android_open_gallery(
             )
             return True
 
-        # ---------- Fallback ----------
-        # ACTION_PICK often doesn't support multi-select on many devices.
-        # Use ACTION_GET_CONTENT with EXTRA_ALLOW_MULTIPLE instead.
-        _log("SAF picker missing, falling back to ACTION_GET_CONTENT")
+        # ---------- Gallery fallback ----------
+        _log("SAF picker missing, falling back to gallery")
 
-        pick_intent = Intent(Intent.ACTION_GET_CONTENT)
-        pick_intent.addCategory(Intent.CATEGORY_OPENABLE)
-        pick_intent.setType(mimes[0] if len(mimes) == 1 else "*/*")
-        pick_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        pick_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        pick_intent = Intent(Intent.ACTION_PICK)
+        pick_intent.setType("image/*")
 
         if pick_intent.resolveActivity(pm) is None:
-            _log("No file picker app available")
+            _log("No gallery app available")
             return False
 
         chooser = Intent.createChooser(
             pick_intent,
-            JavaString("Select file"),
+            JavaString("Select image"),
         )
 
         Clock.schedule_once(
