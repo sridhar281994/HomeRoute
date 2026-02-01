@@ -46,14 +46,14 @@ def _looks_like_image(raw: bytes) -> bool:
 
 
 
-def _optimize_image(raw: bytes) -> str:
+def _optimize_image(raw: bytes) -> str | None:
     """
     Validate + optimize image.
-    Rejects non-image blobs returned by Android OEM pickers.
+    Returns temp file path or None if invalid.
     """
 
     if not _looks_like_image(raw):
-        raise RuntimeError("Selected file is not a valid image")
+        return None   # 🔴 skip silently
 
     try:
         img = Image.open(BytesIO(raw))
@@ -74,11 +74,12 @@ def _optimize_image(raw: bytes) -> str:
         return tmp.name
 
     except Exception:
-        # If Pillow fails but signature is valid, let Cloudinary handle it
+        # fallback: raw upload
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         tmp.write(raw)
         tmp.flush()
         return tmp.name
+
 
 
 def upload_bytes(
