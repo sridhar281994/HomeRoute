@@ -249,10 +249,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
         except Exception:
             self.is_logged_in = False
             self.is_guest = False
-    
+
         # ✅ DELAY avatar application (CRITICAL FIX)
         Clock.schedule_once(lambda dt: self._apply_avatar(get_user() or {}), 0)
-    
+
         # Preferred location
         try:
             u = get_user() or {}
@@ -261,24 +261,23 @@ class HomeScreen(GestureNavigationMixin, Screen):
         except Exception:
             self._preferred_state = ""
             self._preferred_district = ""
-    
+
         self.bg_image = ""
-    
+
         self._load_need_categories()
         self._load_states()
-    
+
         Clock.schedule_once(lambda dt: self._render_area_options(), 0)
         Clock.schedule_once(lambda dt: self._render_area_chips(), 0)
-    
+
         if self.is_logged_in:
             self._refresh_profile_from_server()
-    
-        self._ensure_gps_best_effort()
-    
-        Clock.schedule_once(lambda dt: self.refresh(), 0)
-    
-        self.gesture_bind_window()
 
+        self._ensure_gps_best_effort()
+
+        Clock.schedule_once(lambda dt: self.refresh(), 0)
+
+        self.gesture_bind_window()
 
     def on_leave(self, *args):
         # Avoid leaking Window bindings when screen is not visible.
@@ -766,16 +765,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
         ensure_permissions(required_location_permissions(), on_result=after)
 
     def enable_gps(self) -> None:
-        """
-        Manual action from Home screen button.
-        """
+        print("🔥 ENABLE GPS BUTTON CLICKED")
 
         def after(ok: bool) -> None:
-            # Always log so we can debug issues via `adb logcat` / console output.
-            try:
-                print("[GPS] Enable GPS pressed. permission_ok=", bool(ok))
-            except Exception:
-                pass
+            print("🔥 GPS permission result:", ok)
 
             if not ok:
                 self._gps = None
@@ -784,86 +777,60 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 return
 
             loc = get_last_known_location()
-            try:
-                print("[GPS] last_known_location=", loc)
-            except Exception:
-                pass
+            print("🔥 GPS location:", loc)
 
             if self._is_valid_gps(loc):
                 self._gps = (float(loc[0]), float(loc[1]))
                 self.gps_status = "GPS enabled (showing nearby results)."
                 self.gps_msg = ""
-                # Immediately refresh so the user sees nearby results.
                 Clock.schedule_once(lambda *_: self.refresh(), 0)
                 return
 
-            # Permissions are granted, but we have no fix yet (often because Location is OFF).
+            # ✅ ADD THIS UI STATE (WAITING MODE)
             self._gps = None
-            self.gps_status = "GPS is off (showing non-nearby results)."
-            self.gps_msg = "Turn on Location/GPS in settings, then tap Enable GPS again."
+            self.gps_status = "Waiting for GPS signal…"
+            self.gps_msg = "Turn ON Location and wait 10–30 seconds."
             open_location_settings()
 
         ensure_permissions(required_location_permissions(), on_result=after)
 
     def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
-        """
-        Build a feed card roughly matching the web UI:
-        title/meta header, optional media preview, and action buttons.
-        """
         p = raw or {}
-        title = str(p.get("title") or "Property").strip()
+
         adv_no = str(p.get("adv_number") or p.get("ad_number") or p.get("id") or "").strip()
 
         owner_name = str(p.get("owner_name") or p.get("posted_by") or p.get("user_name") or "").strip()
         owner_initial = owner_name[:1].upper() if owner_name else "U"
+
         owner_image_raw = str(
             p.get("owner_image") or p.get("profile_image") or p.get("user_avatar") or ""
         ).strip()
         owner_image_url = to_api_url(owner_image_raw) if owner_image_raw else ""
 
-        distance_txt = ""
-        try:
-            dist_raw = p.get("distance_km")
-            if dist_raw is not None:
-                dist = float(dist_raw)
-                if dist >= 0:
-                    distance_txt = f"{dist:.1f}km from you" if dist < 10 else f"{round(dist)}km from you"
-        except Exception:
-            pass
+        images = self._extract_media_items(p)
+        already_contacted = bool(p.get("contacted"))
+        is_my_posts = bool(p.get("_my_posts"))
 
-        created_txt = ""
-        try:
-            created_raw = str(p.get("created_at") or "").strip()
-            if created_raw:
-                if created_raw.endswith("Z"):
-                    created_raw = created_raw[:-1] + "+00:00"
-                dt = datetime.fromisoformat(created_raw)
-                created_txt = dt.date().isoformat()
-        except Exception:
-            pass
-
+        # -------------------------------------------------
+        # META TEXT ONLY (NO TITLE)
+        # -------------------------------------------------
         meta = " • ".join(
             x for x in [
-                distance_txt,
                 f"Ad #{adv_no}" if adv_no else "",
-                str(p.get("rent_sale") or ""),
-                str(p.get("property_type") or ""),
-                str(p.get("price_display") or ""),
-                str(p.get("location_display") or ""),
-                created_txt,
+                p.get("rent_sale"),
+                p.get("property_type"),
+                p.get("price_display"),
+                p.get("location_display"),
             ] if x
         )
 
-        images = self._extract_media_items(p)
-        already_contacted = bool(p.get("contacted"))
-
-        # =========================================================
+        # =================================================
         # CARD ROOT
-        # =========================================================
+        # =================================================
         card = BoxLayout(
             orientation="vertical",
-            padding=(12, 12),
-            spacing=10,
+            padding=dp(12),
+            spacing=dp(10),
             size_hint_y=None,
         )
         card.bind(minimum_height=lambda *_: setattr(card, "height", card.minimum_height))
@@ -874,7 +841,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
             Color(1, 1, 1, 0.12)
             border = Line(
                 rounded_rectangle=[card.x, card.y, card.width, card.height, 16],
-                width=1.0,
+                width=1,
             )
 
         def _sync_bg(*_):
@@ -884,29 +851,29 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         card.bind(pos=_sync_bg, size=_sync_bg)
 
-
-        # =========================================================
-        # HEADER (Avatar + Title + Meta)
-        # =========================================================
-        header = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None)
+        # =================================================
+        # HEADER (Avatar + Meta ONLY)
+        # =================================================
+        header = BoxLayout(
+            orientation="horizontal",
+            spacing=dp(10),
+            size_hint_y=None,
+        )
         header.bind(minimum_height=header.setter("height"))
 
         try:
             avatar = Factory.AvatarButton(size_hint=(None, None), size=(dp(44), dp(44)))
             avatar.image_source = owner_image_url
-            avatar.fallback_text = owner_initial or "ME"
+            avatar.fallback_text = owner_initial
             header.add_widget(avatar)
         except Exception:
             header.add_widget(
-                Label(text=owner_initial or "ME", size_hint=(None, None), size=(dp(44), dp(44)))
+                Label(text=owner_initial, size_hint=(None, None), size=(dp(44), dp(44)))
             )
 
-        hb = BoxLayout(orientation="vertical", spacing=dp(2))
-        hb.size_hint_x = 1
-
-        # Meta
         meta_lbl = Label(
-            text=str(meta),
+            text=meta,
+            size_hint_x=1,
             size_hint_y=None,
             color=(1, 1, 1, 0.78),
             halign="left",
@@ -914,91 +881,50 @@ class HomeScreen(GestureNavigationMixin, Screen):
         )
 
         def _resize_meta(*_):
-            w = max(1, meta_lbl.width)
-            fs = max(sp(10), min(sp(14), w * 0.040))
-            meta_lbl.font_size = fs
-            meta_lbl.text_size = (w, None)
-            meta_lbl.height = max(meta_lbl.texture_size[1], dp(22))
+            meta_lbl.text_size = (meta_lbl.width, None)
+            meta_lbl.height = meta_lbl.texture_size[1] + dp(4)
 
         meta_lbl.bind(width=_resize_meta, texture_size=_resize_meta)
+        Clock.schedule_once(_resize_meta, 0)
 
-        hb.add_widget(meta_lbl)
-        header.add_widget(hb)
+        header.add_widget(meta_lbl)
         card.add_widget(header)
 
-        # =========================================================
-        # PHOTOS
-        # =========================================================
+        # =================================================
+        # MEDIA
+        # =================================================
         if images:
             grid = GridLayout(cols=2, spacing=dp(6), size_hint_y=None)
 
             def _resize_grid(*_):
                 if grid.width <= 0:
                     return
-                cell_w = (grid.width - dp(6)) / 2
-                cell_h = cell_w * 1.2
+                w = (grid.width - dp(6)) / 2
+                h = w * 1.2
                 rows = (len(images[:4]) + 1) // 2
-                grid.height = rows * cell_h + max(0, rows - 1) * dp(6)
+                grid.height = rows * h + max(0, rows - 1) * dp(6)
                 for c in grid.children:
-                    c.height = cell_h
+                    c.height = h
                     c.size_hint_y = None
 
             grid.bind(width=_resize_grid)
 
             for it in images[:4]:
-                img = AsyncImage(source=to_api_url(it.get("url") or ""), allow_stretch=True, keep_ratio=False)
+                img = AsyncImage(
+                    source=to_api_url(it.get("url") or ""),
+                    allow_stretch=True,
+                    keep_ratio=False,
+                )
                 img.size_hint_y = None
                 grid.add_widget(img)
 
             Clock.schedule_once(_resize_grid, 0)
             card.add_widget(grid)
 
-        # =========================================================
-        # AMENITIES
-        # =========================================================
-        amenities = [str(x).strip() for x in (p.get("amenities") or []) if str(x).strip()]
-        if amenities:
-            card.add_widget(Label(text="[b]Amenities[/b]", markup=True, size_hint_y=None, height=22))
-            card.add_widget(Label(text=", ".join(amenities), size_hint_y=None, height=36))
-
-        # =========================================================
-        # ACTIONS
-        # =========================================================
-        btn_row = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None, height=dp(44))
-
-        is_my_posts = bool(p.get("_my_posts"))
-        if is_my_posts:
-            btn_edit = Factory.AppButton(text="Edit", size_hint=(1, None), height=dp(44))
-            btn_delete = Factory.AppButton(text="Delete", size_hint=(1, None), height=dp(44), color=(0.94, 0.27, 0.27, 1))
-            btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
-            btn_row.add_widget(btn_edit)
-            btn_row.add_widget(btn_delete)
-            btn_row.add_widget(btn_share)
-
-            def _call_cb(key: str) -> None:
-                try:
-                    cb = p.get(key)
-                    if callable(cb):
-                        cb()
-                except Exception:
-                    return
-
-            btn_edit.bind(on_release=lambda *_: _call_cb("_on_edit"))
-            btn_delete.bind(on_release=lambda *_: _call_cb("_on_delete"))
-        else:
-            btn_contact = Factory.AppButton(
-                text="Contacted" if already_contacted else "Contact owner",
-                size_hint=(1, None),
-                height=dp(44),
-                disabled=already_contacted,
-            )
-            btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
-            btn_row.add_widget(btn_contact)
-            btn_row.add_widget(btn_share)
-            btn_contact.bind(on_release=lambda _btn: on_contact(_btn))
-
+        # =================================================
+        # ACTION HANDLERS
+        # =================================================
         def on_contact(_btn):
-            print("CONTACT PRESSED")
             if not self.is_logged_in:
                 _popup("Login required", "Please login to contact the owner.")
                 return
@@ -1032,21 +958,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
             Thread(target=work, daemon=True).start()
 
         def on_share(_btn):
-            print("SHARE PRESSED")
             subject = "Share Property"
             pid = p.get("id")
-            share_url = to_api_url(f"/property/{pid}") if pid else ""
-            meta = " • ".join(
-                x
-                for x in [
-                    str(p.get("rent_sale") or "").strip(),
-                    str(p.get("property_type") or "").strip(),
-                    str(p.get("price_display") or "").strip(),
-                    str(p.get("location_display") or "").strip(),
-                ]
-                if x
-            )
-            body = "\n".join([x for x in [str(title or "").strip(), meta, share_url] if x])
+            url = to_api_url(f"/property/{pid}") if pid else ""
+            body = "\n".join(x for x in [meta, url] if x)
 
             launched = share_text(subject=subject, text=body)
 
@@ -1055,13 +970,47 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 from kivy.core.clipboard import Clipboard
                 Clipboard.copy(body)
                 _popup("Share", "Copied to clipboard")
-                return
-
-            if not launched:
+            elif not launched:
                 _popup("Share", body)
 
-        btn_share.bind(on_release=on_share)
+        # =================================================
+        # ACTION BUTTONS (VISIBLE)
+        # =================================================
+        btn_row = BoxLayout(
+            orientation="horizontal",
+            spacing=dp(10),
+            size_hint_y=None,
+            height=dp(44),
+        )
 
+        if is_my_posts:
+            btn_edit = Factory.AppButton(text="Edit", size_hint=(1, None), height=dp(44))
+            btn_delete = Factory.AppButton(text="Delete", size_hint=(1, None), height=dp(44))
+            btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
+
+            btn_edit.bind(on_release=lambda *_: p.get("_on_edit", lambda: None)())
+            btn_delete.bind(on_release=lambda *_: p.get("_on_delete", lambda: None)())
+            btn_share.bind(on_release=on_share)
+
+            btn_row.add_widget(btn_edit)
+            btn_row.add_widget(btn_delete)
+            btn_row.add_widget(btn_share)
+        else:
+            btn_contact = Factory.AppButton(
+                text="Contacted" if already_contacted else "Contact owner",
+                size_hint=(1, None),
+                height=dp(44),
+                disabled=already_contacted,
+            )
+            btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
+
+            btn_contact.bind(on_release=on_contact)
+            btn_share.bind(on_release=on_share)
+
+            btn_row.add_widget(btn_contact)
+            btn_row.add_widget(btn_share)
+
+        card.add_widget(btn_row)
         return card
 
     def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1166,32 +1115,38 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         def work():
             try:
+                # -----------------------------
+                # Build filters
+                # -----------------------------
                 need = (self.need_category or "").strip()
                 q = need if need and need.lower() != "any" else ""
+
                 rent_sale_norm = self._norm_any(self.rent_sale)
+
                 max_price = (self.max_price or "").strip()
                 if max_price and not max_price.isdigit():
                     max_price = ""
+
                 state = self._norm_any(self.state_value)
                 district = self._norm_any(self.district_value)
+
                 sel = [str(x).strip() for x in (self.selected_areas or []) if str(x).strip()]
                 area = ",".join(sel) if sel else self._norm_any(self.area_value)
 
-                sort_budget = (self.sort_budget or "").strip()
+                sort_budget = (self.sort_budget or "").strip().lower()
                 sort_budget_param = ""
-                if sort_budget.lower().startswith("top"):
+                if sort_budget.startswith("top"):
                     sort_budget_param = "top"
-                elif sort_budget.lower().startswith("bottom"):
+                elif sort_budget.startswith("bottom"):
                     sort_budget_param = "bottom"
 
-                posted_param = ""  # post-date filter removed
-
-                # Nearby endpoint if GPS is available; otherwise fall back to non-GPS listing.
+                # -----------------------------
+                # GPS / Nearby logic
+                # -----------------------------
                 loc = getattr(self, "_gps", None)
-                try:
-                    radius = int(str(self.radius_km or "").strip() or "20")
-                except Exception:
-                    radius = 20
+
+                # 🔒 HARD DEFAULT = 50 KM
+                radius = 50
 
                 if loc:
                     data = api_list_nearby_properties(
@@ -1201,24 +1156,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         q=q,
                         rent_sale=rent_sale_norm,
                         max_price=max_price,
-                        # For "Enable GPS" UX: show nearest posts regardless of state/district/area filters.
-                        state="",
-                        district="",
-                        area="",
+                        state=state,
+                        district=district,
+                        area=area,
                         posted_within_days="",
                         limit=20,
                     )
-                    if not (data.get("items") or []):
-                        data = api_list_properties(
-                            q=q,
-                            rent_sale=rent_sale_norm,
-                            max_price=max_price,
-                            state=state,
-                            district=district,
-                            area=area,
-                            sort_budget=sort_budget_param,
-                            posted_within_days="",
-                        )
                 else:
                     data = api_list_properties(
                         q=q,
@@ -1231,6 +1174,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         posted_within_days="",
                     )
 
+                # -----------------------------
+                # Build cards
+                # -----------------------------
                 cards: list[dict[str, Any]] = []
                 for pp in (data.get("items") or []):
                     cards.append(
@@ -1252,17 +1198,22 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         if container is not None:
                             container.clear_widgets()
                             for c in cards:
-                                raw_inner = c.get("raw") or {}
-                                container.add_widget(self._feed_card(raw_inner))
+                                container.add_widget(self._feed_card(c.get("raw") or {}))
                     except Exception:
                         pass
+
+                    # Show empty-nearby message if GPS is ON but nothing found
+                    if loc and not cards:
+                        self.error_msg = "No properties found within 50 km."
+
                     self.is_loading = False
 
                 Clock.schedule_once(done, 0)
+
             except ApiError as e:
                 err_msg = str(e)
                 Clock.schedule_once(lambda *_: setattr(self, "error_msg", err_msg), 0)
-                Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
+                Clock.schedule_once(lambda *_: _popup("Error", err_msg), 0)
                 Clock.schedule_once(lambda *_: setattr(self, "is_loading", False), 0)
 
         Thread(target=work, daemon=True).start()
