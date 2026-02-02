@@ -30,6 +30,16 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 import requests
 
+try:
+    # Optional: enables HEIC/HEIF decoding in Pillow.
+    import pillow_heif  # type: ignore
+
+    pillow_heif.register_heif_opener()
+except Exception:
+    pillow_heif = None  # type: ignore
+
+from PIL import Image, ImageOps, UnidentifiedImageError
+
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_auth_requests
 
@@ -851,6 +861,40 @@ def _norm_phone(s: str) -> str:
 
 def _image_sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _looks_like_heic(raw: bytes) -> bool:
+    try:
+        if not raw or len(raw) < 16:
+            return False
+        sig = raw[:16]
+        # ISO BMFF 'ftyp' brands
+        return sig[4:12] in {b"ftypheic", b"ftypheif", b"ftypheix", b"ftypmif1"}
+    except Exception:
+        return False
+
+
+def _coerce_image_to_jpeg_bytes(raw: bytes) -> bytes:
+    """
+    Convert any Pillow-readable image to JPEG bytes (RGB, EXIF-transposed).
+    This avoids Cloudinary "Invalid image file" for HEIC/mis-labeled inputs.
+    """
+    img = Image.open(io.BytesIO(raw))
+    img = ImageOps.exif_transpose(img)
+    if img.mode not in {"RGB", "L"}:
+        img = img.convert("RGB")
+    elif img.mode == "L":
+        img = img.convert("RGB")
+
+    # Keep size reasonable (Cloudinary accepts large, but mobile photos can be huge).
+    try:
+        img.thumbnail((1920, 1920), Image.LANCZOS)
+    except Exception:
+        pass
+
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=85, optimize=True, progressive=True)
+    return out.getvalue()
 
 
 _AD_NUMBER_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -3828,6 +3872,21 @@ def upload_property_image(
         stored_bytes = raw
         stored_ext = _safe_upload_ext(filename=(file.filename or ""), content_type=content_type)
         stored_content_type = content_type
+
+        # Normalize image bytes to a real JPEG for Cloudinary compatibility (HEIC/mis-labeled files).
+        try:
+            stored_bytes = _coerce_image_to_jpeg_bytes(stored_bytes)
+            stored_ext = ".jpg"
+            stored_content_type = "image/jpeg"
+        except UnidentifiedImageError:
+            # If this looks like HEIC but pillow-heif isn't available, provide a clear error.
+            if _looks_like_heic(stored_bytes) and pillow_heif is None:
+                raise HTTPException(status_code=400, detail="HEIC image not supported by server. Please convert to JPG/PNG and retry.")
+            # Otherwise, fall back to raw bytes (Cloudinary may still accept it).
+            stored_bytes = raw
+        except Exception:
+            # Non-fatal: keep original bytes.
+            stored_bytes = raw
     else:
         _raise_if_too_large(size_bytes=len(raw), max_bytes=_max_upload_video_bytes())
         # AI moderation (reject before any storage).
@@ -3873,7 +3932,7 @@ def upload_property_image(
                 raw=stored_bytes,
                 resource_type=("image" if is_image else "video"),
                 public_id=f"property_{p.id}_{token}",
-                filename=(file.filename or "").strip() or safe_name,
+                filename=("upload.jpg" if is_image else ((file.filename or "").strip() or safe_name)),
                 content_type=stored_content_type,
             )
         except Exception as e:
@@ -3885,6 +3944,9 @@ def upload_property_image(
                 len(stored_bytes),
             )
             msg = str(e) or "Cloudinary upload failed"
+            # Cloudinary returns BadRequest "Invalid image file" for unsupported/corrupt inputs.
+            if "invalid image file" in msg.lower():
+                raise HTTPException(status_code=400, detail="Invalid image file. Please choose a different image or convert to JPG/PNG.")
             raise HTTPException(status_code=500, detail=f"Failed to upload to Cloudinary: {msg[:200]}")
         stored_path = url
         cloud_pid = pid
