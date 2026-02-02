@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select, update as sa_update
+from sqlalchemy import and_, delete, func, or_, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -205,6 +205,34 @@ def _post_group_property_types(post_group: str | None) -> set[str]:
         if want == "services" and (not is_property_material):
             items.update(group_items)
     return items
+
+
+def _normalize_post_group(value: str | None) -> str:
+    v = (value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if v in {"services", "service"}:
+        return "services"
+    if v in {"property", "material", "materials", "property_material", "property_and_material"}:
+        return "property_material"
+    return ""
+
+
+def _infer_post_group_from_type(property_type: str | None) -> str:
+    """
+    Backward-compatible inference for existing rows or older clients.
+    """
+    pt = (property_type or "").strip()
+    if not pt:
+        return ""
+    try:
+        pm = _post_group_property_types("property_material")
+        if pt in pm:
+            return "property_material"
+        sv = _post_group_property_types("services")
+        if pt in sv:
+            return "services"
+    except Exception:
+        return ""
+    return ""
 
 
 def _uploads_dir() -> str:
@@ -989,6 +1017,9 @@ class PropertyCreateIn(BaseModel):
     title: str
     description: str = ""
     property_type: str = "apartment"
+    # Optional high-level grouping used by UI toggles.
+    # This is intentionally separate from `property_type` so custom categories still filter correctly.
+    post_group: str = ""
     rent_sale: str = "rent"
     price: int = 0
     # Backward compatibility: `location` is still accepted and used as a display string.
@@ -1018,6 +1049,7 @@ class PropertyUpdateIn(BaseModel):
     title: str | None = None
     description: str | None = None
     property_type: str | None = None
+    post_group: str | None = None
     rent_sale: str | None = None
     price: int | None = None
     location: str | None = None
@@ -1917,6 +1949,7 @@ def _property_out(
         "title": p.title,
         "description": p.description,
         "property_type": p.property_type,
+        "post_group": (getattr(p, "post_group", "") or "").strip() or _infer_post_group_from_type(getattr(p, "property_type", "")),
         "rent_sale": p.rent_sale,
         "price": p.price,
         "price_display": f"{p.price:,}",
@@ -2055,9 +2088,19 @@ def list_properties(
         stmt = stmt.where((Property.title.ilike(q_like)) | (Property.location.ilike(q_like)))
     if rent_sale:
         stmt = stmt.where(Property.rent_sale == rent_sale)
-    pg_types = _post_group_property_types(post_group)
-    if pg_types:
-        stmt = stmt.where(Property.property_type.in_(sorted(pg_types)))
+    pg = _normalize_post_group(post_group)
+    if pg:
+        # Prefer explicit DB column when available; fall back to legacy inference for old rows.
+        legacy_types = _post_group_property_types(pg)
+        if legacy_types:
+            stmt = stmt.where(
+                or_(
+                    (Property.post_group == pg),
+                    and_((Property.post_group == ""), Property.property_type.in_(sorted(legacy_types))),
+                )
+            )
+        else:
+            stmt = stmt.where(Property.post_group == pg)
     if property_type:
         stmt = stmt.where(Property.property_type == property_type)
     if max_price is not None:
@@ -2301,9 +2344,18 @@ def list_nearby_properties(
         stmt = stmt.where((Property.title.ilike(q_like)) | (Property.location.ilike(q_like)))
     if rent_sale:
         stmt = stmt.where(Property.rent_sale == rent_sale)
-    pg_types = _post_group_property_types(post_group)
-    if pg_types:
-        stmt = stmt.where(Property.property_type.in_(sorted(pg_types)))
+    pg = _normalize_post_group(post_group)
+    if pg:
+        legacy_types = _post_group_property_types(pg)
+        if legacy_types:
+            stmt = stmt.where(
+                or_(
+                    (Property.post_group == pg),
+                    and_((Property.post_group == ""), Property.property_type.in_(sorted(legacy_types))),
+                )
+            )
+        else:
+            stmt = stmt.where(Property.post_group == pg)
     if property_type:
         stmt = stmt.where(Property.property_type == property_type)
     if max_price is not None:
@@ -2590,6 +2642,11 @@ def owner_create_property(
     company_name = (data.company_name or "").strip()
     company_name_norm = _norm_key(company_name)
 
+    # Post group (services vs property/material). Prefer explicit value from client.
+    post_group = _normalize_post_group(getattr(data, "post_group", "") or "")
+    if not post_group:
+        post_group = _infer_post_group_from_type(str(getattr(data, "property_type", "") or ""))
+
     # Optionally update the owner's company name profile when provided.
     if company_name:
         me.company_name = company_name
@@ -2606,6 +2663,7 @@ def owner_create_property(
         title=(data.title or "").strip() or "Untitled",
         description=(data.description or "").strip(),
         property_type=(data.property_type or "apartment").strip(),
+        post_group=post_group,
         rent_sale=(data.rent_sale or "rent").strip(),
         price=int(data.price or 0),
         location=(data.location or "").strip(),
@@ -2790,6 +2848,11 @@ def owner_update_property(
         p.description = (data.description or "").strip()
     if data.property_type is not None:
         p.property_type = (data.property_type or "").strip() or p.property_type
+        # If post_group isn't explicitly provided, re-infer when property_type changes.
+        if getattr(data, "post_group", None) is None:
+            p.post_group = _infer_post_group_from_type(p.property_type)
+    if getattr(data, "post_group", None) is not None:
+        p.post_group = _normalize_post_group(getattr(data, "post_group", "") or "")
     if data.rent_sale is not None:
         rs = (data.rent_sale or "").strip().lower()
         if rs and rs not in {"rent", "sale"}:

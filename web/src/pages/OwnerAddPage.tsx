@@ -454,6 +454,7 @@ export default function OwnerAddPage() {
                   price: Number(price || 0),
                   rent_sale: rentSale,
                   property_type: propertyType.trim(),
+                  post_group: postGroup,
                   contact_phone: contactPhone,
                   contact_email: "",
                   company_name: useCompanyName ? companyName.trim() : "",

@@ -138,6 +138,9 @@ class Property(Base):
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     property_type: Mapped[str] = mapped_column(String(40), default="apartment")  # apartment/house/...
+    # High-level group used by UI toggles (services vs property/material).
+    # This is intentionally separate from `property_type` so custom categories still filter correctly.
+    post_group: Mapped[str] = mapped_column(String(40), default="", index=True)
     rent_sale: Mapped[str] = mapped_column(String(10), default="rent")  # rent/sale
     price: Mapped[int] = mapped_column(Integer, default=0)
 

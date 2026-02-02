@@ -1457,6 +1457,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     "price": price,
                     "rent_sale": rent_sale if rent_sale in {"rent", "sale"} else "rent",
                     "property_type": category,
+                    "post_group": str(getattr(self, "_publish_post_group", "") or "").strip().lower(),
                     "contact_phone": contact_phone,
                     "contact_email": "",
                     "amenities": [],
