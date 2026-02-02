@@ -100,6 +100,52 @@ app = FastAPI(title="Quickrent4u API")
 # Production hardening: ensure we don't run with dangerous defaults.
 enforce_secure_secrets()
 
+# -----------------------
+# Startup: best-effort auto-migration (Render safety)
+# -----------------------
+def _auto_migrate_on_startup() -> bool:
+    v = (os.environ.get("AUTO_MIGRATE_ON_STARTUP") or "1").strip().lower()
+    return v not in {"0", "false", "no", "off"}
+
+
+def _run_alembic_upgrade_head() -> None:
+    """
+    Run `alembic upgrade head` programmatically.
+    This prevents production outages when code is deployed before DB migrations.
+    """
+    from alembic import command  # imported lazily
+    from alembic.config import Config  # imported lazily
+
+    backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    ini_path = os.path.join(backend_dir, "alembic.ini")
+    cfg = Config(ini_path)
+    # Ensure DB URL is set (Render provides DATABASE_URL).
+    db_url = (os.environ.get("DATABASE_URL") or "").strip()
+    if db_url:
+        cfg.set_main_option("sqlalchemy.url", db_url)
+    command.upgrade(cfg, "head")
+
+
+@app.on_event("startup")
+def _startup_db_migrate_best_effort() -> None:
+    if not _auto_migrate_on_startup():
+        return
+    try:
+        with session_scope() as db:
+            # If schema is already migrated, skip.
+            if _has_properties_post_group(db):
+                return
+        # Try to upgrade DB schema.
+        _run_alembic_upgrade_head()
+        # Re-check and fail fast if still missing (prevents broken runtime).
+        with session_scope() as db:
+            if not _has_properties_post_group(db):
+                raise RuntimeError("DB migration not applied (missing properties.post_group)")
+    except Exception:
+        logger.exception("Startup auto-migration failed")
+        # Fail fast so Render restarts and we don't serve a broken API.
+        raise
+
 # Optional host protection (recommend configuring ALLOWED_HOSTS in prod).
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
 
