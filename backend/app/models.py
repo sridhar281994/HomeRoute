@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, deferred, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -140,7 +140,9 @@ class Property(Base):
     property_type: Mapped[str] = mapped_column(String(40), default="apartment")  # apartment/house/...
     # High-level group used by UI toggles (services vs property/material).
     # This is intentionally separate from `property_type` so custom categories still filter correctly.
-    post_group: Mapped[str] = mapped_column(String(40), default="", index=True)
+    # NOTE: deferred so older DBs without the column won't crash on SELECT.
+    # We conditionally write/filter on this column only when it exists.
+    post_group: Mapped[str] = deferred(mapped_column(String(40), default="", index=True))
     rent_sale: Mapped[str] = mapped_column(String(10), default="rent")  # rent/sale
     price: Mapped[int] = mapped_column(Integer, default=0)
 

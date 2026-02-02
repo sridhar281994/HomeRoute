@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, func, or_, select, update as sa_update
+from sqlalchemy import and_, delete, func, or_, select, text, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -58,6 +58,42 @@ from app.utils.cloudinary_storage import cloudinary_enabled, destroy as cloudina
 
 
 logger = logging.getLogger(__name__)
+
+# Cache to avoid repeated schema introspection per-request.
+_HAS_PROPERTIES_POST_GROUP: bool | None = None
+
+
+def _has_properties_post_group(db: Session) -> bool:
+    """
+    Return True if the connected DB has the `properties.post_group` column.
+    This allows rolling deploys (code ahead of migrations) without crashing.
+    """
+    global _HAS_PROPERTIES_POST_GROUP
+    if _HAS_PROPERTIES_POST_GROUP is not None:
+        return bool(_HAS_PROPERTIES_POST_GROUP)
+    try:
+        dname = (db.bind.dialect.name if db.bind is not None else "").lower()  # type: ignore[union-attr]
+    except Exception:
+        dname = ""
+    try:
+        if "sqlite" in dname:
+            rows = db.execute(text("PRAGMA table_info(properties)")).all()
+            cols = {str(r[1] or "").strip().lower() for r in rows}
+            _HAS_PROPERTIES_POST_GROUP = "post_group" in cols
+            return bool(_HAS_PROPERTIES_POST_GROUP)
+        # Postgres / others with information_schema
+        r = db.execute(
+            text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='properties' AND column_name='post_group' LIMIT 1"
+            )
+        ).first()
+        _HAS_PROPERTIES_POST_GROUP = r is not None
+        return bool(_HAS_PROPERTIES_POST_GROUP)
+    except Exception:
+        # Be conservative: assume missing, so we fall back to legacy behavior.
+        _HAS_PROPERTIES_POST_GROUP = False
+        return False
 
 app = FastAPI(title="Quickrent4u API")
 
@@ -1943,13 +1979,17 @@ def _property_out(
     owner_email = (getattr(o, "email", "") or "").strip() if o else ""
     owner_phone = (getattr(o, "phone", "") or "").strip() if o else ""
     adv_number = (getattr(p, "ad_number", "") or "").strip() or str(p.id)
+    try:
+        pg_val = str(getattr(p, "post_group", "") or "").strip()
+    except Exception:
+        pg_val = ""
     out: dict[str, Any] = {
         "id": p.id,
         "adv_number": adv_number,
         "title": p.title,
         "description": p.description,
         "property_type": p.property_type,
-        "post_group": (getattr(p, "post_group", "") or "").strip() or _infer_post_group_from_type(getattr(p, "property_type", "")),
+        "post_group": pg_val or _infer_post_group_from_type(getattr(p, "property_type", "")),
         "rent_sale": p.rent_sale,
         "price": p.price,
         "price_display": f"{p.price:,}",
@@ -2090,17 +2130,22 @@ def list_properties(
         stmt = stmt.where(Property.rent_sale == rent_sale)
     pg = _normalize_post_group(post_group)
     if pg:
-        # Prefer explicit DB column when available; fall back to legacy inference for old rows.
         legacy_types = _post_group_property_types(pg)
-        if legacy_types:
-            stmt = stmt.where(
-                or_(
-                    (Property.post_group == pg),
-                    and_((Property.post_group == ""), Property.property_type.in_(sorted(legacy_types))),
+        if _has_properties_post_group(db):
+            # Prefer explicit DB column when available; fall back to legacy inference for old rows.
+            if legacy_types:
+                stmt = stmt.where(
+                    or_(
+                        (Property.post_group == pg),
+                        and_((Property.post_group == ""), Property.property_type.in_(sorted(legacy_types))),
+                    )
                 )
-            )
+            else:
+                stmt = stmt.where(Property.post_group == pg)
         else:
-            stmt = stmt.where(Property.post_group == pg)
+            # Old DB schema: only legacy property_type mapping is available.
+            if legacy_types:
+                stmt = stmt.where(Property.property_type.in_(sorted(legacy_types)))
     if property_type:
         stmt = stmt.where(Property.property_type == property_type)
     if max_price is not None:
@@ -2347,15 +2392,19 @@ def list_nearby_properties(
     pg = _normalize_post_group(post_group)
     if pg:
         legacy_types = _post_group_property_types(pg)
-        if legacy_types:
-            stmt = stmt.where(
-                or_(
-                    (Property.post_group == pg),
-                    and_((Property.post_group == ""), Property.property_type.in_(sorted(legacy_types))),
+        if _has_properties_post_group(db):
+            if legacy_types:
+                stmt = stmt.where(
+                    or_(
+                        (Property.post_group == pg),
+                        and_((Property.post_group == ""), Property.property_type.in_(sorted(legacy_types))),
+                    )
                 )
-            )
+            else:
+                stmt = stmt.where(Property.post_group == pg)
         else:
-            stmt = stmt.where(Property.post_group == pg)
+            if legacy_types:
+                stmt = stmt.where(Property.property_type.in_(sorted(legacy_types)))
     if property_type:
         stmt = stmt.where(Property.property_type == property_type)
     if max_price is not None:
@@ -2657,13 +2706,17 @@ def owner_create_property(
     # - Address duplicates are allowed (user requested).
     # - Phone number is enforced to be the user's registered phone; do not block multiple ads by same phone.
 
+    p_kwargs: dict[str, Any] = {}
+    if _has_properties_post_group(db):
+        p_kwargs["post_group"] = post_group
+
     p = Property(
         owner_id=me.id,
         ad_number=_ensure_property_ad_number(db),
         title=(data.title or "").strip() or "Untitled",
         description=(data.description or "").strip(),
         property_type=(data.property_type or "apartment").strip(),
-        post_group=post_group,
+        **p_kwargs,
         rent_sale=(data.rent_sale or "rent").strip(),
         price=int(data.price or 0),
         location=(data.location or "").strip(),
@@ -2850,9 +2903,11 @@ def owner_update_property(
         p.property_type = (data.property_type or "").strip() or p.property_type
         # If post_group isn't explicitly provided, re-infer when property_type changes.
         if getattr(data, "post_group", None) is None:
-            p.post_group = _infer_post_group_from_type(p.property_type)
+            if _has_properties_post_group(db):
+                p.post_group = _infer_post_group_from_type(p.property_type)
     if getattr(data, "post_group", None) is not None:
-        p.post_group = _normalize_post_group(getattr(data, "post_group", "") or "")
+        if _has_properties_post_group(db):
+            p.post_group = _normalize_post_group(getattr(data, "post_group", "") or "")
     if data.rent_sale is not None:
         rs = (data.rent_sale or "").strip().lower()
         if rs and rs not in {"rent", "sale"}:
