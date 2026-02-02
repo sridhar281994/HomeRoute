@@ -9,6 +9,7 @@ import {
   ownerCreateProperty,
   ownerDeleteProperty,
   ownerListProperties,
+  ownerPublishProperty,
   uploadPropertyImage,
 } from "../api";
 import { Link } from "react-router-dom";
@@ -441,7 +442,7 @@ export default function OwnerAddPage() {
                 } catch {
                   gps = null;
                 }
-                const res = await ownerCreateProperty({
+                const payloadObj = {
                   district,
                   state,
                   area,
@@ -459,21 +460,23 @@ export default function OwnerAddPage() {
                   amenities: [],
                   gps_lat: gps ? gps.lat : null,
                   gps_lng: gps ? gps.lon : null,
-                });
+                };
 
-                setPropertyId(res.id);
-                setAdNumber(String((res as any).ad_number || (res as any).adv_number || res.id || "").trim());
-
+                // If files are selected, publish atomically (create + upload in one request).
+                // This avoids leaving orphan posts when an upload fails.
                 if (files?.length) {
                   const v = validateSelectedMedia(files);
                   if (!v.ok) throw new Error(v.message);
                   const ordered = [...v.images, ...v.videos];
-                  for (let i = 0; i < ordered.length; i++) {
-                    await uploadPropertyImage(res.id, ordered[i], i);
-                  }
-                  const label = String((res as any).ad_number || res.id || "").trim();
-                  setMsg(`Submitted Ad #${label} (status: ${res.status}) and uploaded ${ordered.length} file(s).`);
+                  const published = await ownerPublishProperty(payloadObj, ordered);
+                  setPropertyId(Number(published.id));
+                  setAdNumber(String(published.ad_number || published.adv_number || published.id || "").trim());
+                  const label = String(published.ad_number || published.id || "").trim();
+                  setMsg(`Submitted Ad #${label} (status: ${published.status}) and uploaded ${ordered.length} file(s).`);
                 } else {
+                  const res = await ownerCreateProperty(payloadObj);
+                  setPropertyId(res.id);
+                  setAdNumber(String((res as any).ad_number || (res as any).adv_number || res.id || "").trim());
                   const label = String((res as any).ad_number || res.id || "").trim();
                   setMsg(`Submitted Ad #${label} (status: ${res.status}).`);
                 }

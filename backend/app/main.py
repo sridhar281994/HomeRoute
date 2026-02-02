@@ -17,7 +17,7 @@ from functools import lru_cache
 import math
 import logging
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -1929,6 +1929,10 @@ def _property_out(
         "availability": p.availability,
         "status": p.status,
         "images": images,
+        # Compatibility aliases (some clients historically used these keys).
+        "media": images,
+        "image_urls": [str(x.get("url") or "").strip() for x in images if str(x.get("url") or "").strip()],
+        "primary_image_url": (str(images[0].get("url") or "").strip() if images else ""),
         "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else "",
         "owner_name": owner_name,
         "owner_company_name": owner_company_name,
@@ -2655,6 +2659,104 @@ def owner_create_property(
         raise HTTPException(status_code=409, detail="Duplicate data detected. Please change your input and try again.")
     _log_moderation(db, actor_user_id=me.id, entity_type="property", entity_id=p.id, action="create", reason="")
     return {"id": p.id, "ad_number": (p.ad_number or "").strip() or str(p.id), "status": p.status}
+
+
+@app.post("/owner/properties/publish")
+def owner_publish_property(
+    payload: str = Form(...),
+    files: list[UploadFile] = File(default=[]),
+    me: Annotated[User, Depends(get_current_user)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """
+    Atomic publish:
+    - Create property row
+    - Upload media (0..N)
+
+    If any upload fails, the request fails and the DB transaction rolls back
+    (so the property record is NOT created). Best-effort cleanup is performed
+    for any already-uploaded Cloudinary assets in the same request.
+    """
+    if me is None or db is None:
+        # Should never happen (FastAPI injects these), but keeps type-checkers happy.
+        raise HTTPException(status_code=500, detail="Server misconfiguration")
+
+    try:
+        data_dict = json.loads(payload or "{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid payload (expected JSON)")
+    try:
+        data = PropertyCreateIn(**(data_dict or {}))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid payload: {str(e)[:200]}")
+
+    created = owner_create_property(data=data, me=me, db=db)
+    pid = int((created or {}).get("id") or 0)
+    if pid <= 0:
+        raise HTTPException(status_code=500, detail="Failed to create property")
+
+    uploaded_cloud: list[tuple[str, str]] = []  # (public_id, content_type)
+    uploaded_disk: list[str] = []  # absolute paths
+    try:
+        for idx, f in enumerate(list(files or [])):
+            up = upload_property_image(property_id=pid, me=me, db=db, file=f, sort_order=int(idx))
+            img_id = int((up or {}).get("id") or 0)
+            if img_id > 0:
+                img = db.get(PropertyImage, int(img_id))
+                if img:
+                    if (img.cloudinary_public_id or "").strip():
+                        uploaded_cloud.append((str(img.cloudinary_public_id or "").strip(), str(img.content_type or "").strip()))
+                    fp = (img.file_path or "").strip().lstrip("/")
+                    if fp and not fp.startswith("http"):
+                        uploaded_disk.append(os.path.join(_uploads_dir(), fp))
+    except HTTPException:
+        # Best-effort cleanup of already uploaded external artifacts.
+        try:
+            for (pub_id, ct) in uploaded_cloud:
+                rt = "video" if str(ct).lower().startswith("video/") else "image"
+                cloudinary_destroy(public_id=pub_id, resource_type=rt)
+        except Exception:
+            pass
+        try:
+            for pth in uploaded_disk:
+                try:
+                    if os.path.exists(pth):
+                        os.remove(pth)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        raise
+    except Exception:
+        # Unknown error: same best-effort cleanup, then return 500.
+        try:
+            for (pub_id, ct) in uploaded_cloud:
+                rt = "video" if str(ct).lower().startswith("video/") else "image"
+                cloudinary_destroy(public_id=pub_id, resource_type=rt)
+        except Exception:
+            pass
+        try:
+            for pth in uploaded_disk:
+                try:
+                    if os.path.exists(pth):
+                        os.remove(pth)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Publish failed")
+
+    # Re-load with images eagerly so response includes the media consistently.
+    p2 = db.execute(select(Property).options(selectinload(Property.images)).where(Property.id == int(pid))).scalar_one_or_none()
+    if not p2:
+        raise HTTPException(status_code=500, detail="Publish failed")
+    owner = me if int(p2.owner_id) == int(me.id) else db.get(User, int(p2.owner_id))
+    return {
+        "id": p2.id,
+        "ad_number": (p2.ad_number or "").strip() or str(p2.id),
+        "status": p2.status,
+        "property": _property_out(p2, owner=owner or me, include_unapproved_images=True, include_internal=True),
+    }
 
 
 @app.patch("/owner/properties/{property_id:int}")

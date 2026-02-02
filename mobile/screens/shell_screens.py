@@ -35,6 +35,7 @@ from frontend_app.utils.api import (
     api_owner_create_property,
     api_owner_delete_property,
     api_owner_list_properties,
+    api_owner_publish_property,
     api_owner_update_property,
     api_subscription_status,
     api_upload_property_media,
@@ -1444,6 +1445,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
 
         def _start_submit(gps_lat: float | None, gps_lng: float | None) -> None:
             try:
+                used_atomic = False
                 payload = {
                     "state": state,
                     "district": district,
@@ -1467,13 +1469,21 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     pid = self.edit_property_id
                     status = ((res.get("property") or {}).get("status") or "updated").strip() if isinstance(res, dict) else "updated"
                 else:
-                    res = api_owner_create_property(payload=payload)
-                    pid = res.get("id")
-                    status = res.get("status") or "pending"
+                    selected = list(getattr(self, "_selected_media", []) or [])
+                    if selected:
+                        # Atomic publish (create + upload). If upload fails, the ad is NOT created.
+                        res = api_owner_publish_property(payload=payload, file_paths=[str(x) for x in selected])
+                        pid = res.get("id")
+                        status = res.get("status") or "created"
+                        used_atomic = True
+                    else:
+                        res = api_owner_create_property(payload=payload)
+                        pid = res.get("id")
+                        status = res.get("status") or "pending"
 
-                # Upload selected media (best-effort).
+                # Upload selected media (best-effort) only for the legacy (non-atomic) path.
                 selected = list(getattr(self, "_selected_media", []) or [])
-                if (not self.edit_property_id) and pid and selected:
+                if (not self.edit_property_id) and pid and selected and (not used_atomic):
                     for i, fp in enumerate(selected):
                         api_upload_property_media(property_id=int(pid), file_path=str(fp), sort_order=i)
 

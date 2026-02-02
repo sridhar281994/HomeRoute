@@ -325,6 +325,23 @@ export function ownerDeleteProperty(id: number) {
   return api<{ ok: boolean }>(`/owner/properties/${id}`, { method: "DELETE" });
 }
 
+export async function ownerPublishProperty(input: any, files: File[]) {
+  const s = getSession();
+  const form = new FormData();
+  form.append("payload", JSON.stringify(input || {}));
+  for (const f of files || []) {
+    form.append("files", f);
+  }
+  const resp = await fetch(`${API_BASE}/owner/properties/publish`, {
+    method: "POST",
+    headers: s.token ? { Authorization: `Bearer ${s.token}` } : undefined,
+    body: form,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data?.detail || `HTTP ${resp.status}`);
+  return data;
+}
+
 export async function uploadPropertyImage(propertyId: number, file: File, sortOrder = 0) {
   const s = getSession();
   const form = new FormData();

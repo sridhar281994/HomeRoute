@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import os
 import time
+import json
+import mimetypes
+from contextlib import ExitStack
 from typing import Any
 
 import certifi
@@ -308,6 +311,37 @@ def api_owner_create_property(*, payload: dict[str, Any]) -> dict[str, Any]:
     """
     url = f"{_base_url()}/owner/properties"
     resp = _request("POST", url, json=payload, headers=_headers(), timeout=20, verify=_verify_ca_bundle())
+    return _handle(resp)
+
+
+def api_owner_publish_property(*, payload: dict[str, Any], file_paths: list[str]) -> dict[str, Any]:
+    """
+    Atomic publish (create + upload media).
+    Backend endpoint: POST /owner/properties/publish
+    """
+    url = f"{_base_url()}/owner/properties/publish"
+    # Server expects multipart:
+    # - payload: JSON string
+    # - files: repeated file parts
+    form = {"payload": json.dumps(payload or {}, ensure_ascii=False)}
+
+    paths = list(file_paths or [])
+    with ExitStack() as stack:
+        files: list[tuple[str, tuple[str, Any, str]]] = []
+        for fp in paths:
+            f = stack.enter_context(open(fp, "rb"))
+            fname = os.path.basename(fp)
+            ctype = (mimetypes.guess_type(fname)[0] or "application/octet-stream").strip()
+            files.append(("files", (fname, f, ctype)))
+        resp = _request(
+            "POST",
+            url,
+            data=form,
+            files=files,
+            headers=_headers(),
+            timeout=120,
+            verify=_verify_ca_bundle(),
+        )
     return _handle(resp)
 
 
