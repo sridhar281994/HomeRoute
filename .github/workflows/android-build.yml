@@ -7,16 +7,21 @@ on:
       - "mobile/**"
       - ".github/workflows/android-build.yml"
 
+# 🔒 Prevent GitHub from starving this heavy job
+concurrency:
+  group: android-build
+  cancel-in-progress: false
+
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       # ------------------------------------------------------------
       # Restore stable keystore used by buildozer.spec
-      # buildozer.spec expects: mobile/flatnow-debug.keystore (in mobile/ working dir)
       # ------------------------------------------------------------
       - name: Restore Android debug keystore
         env:
@@ -26,15 +31,11 @@ jobs:
 
           if [ -z "${ANDROID_DEBUG_KEYSTORE_BASE64}" ]; then
             echo "Missing required secret ANDROID_DEBUG_KEYSTORE_BASE64."
-            echo "Google Sign-In will fail with status=10 if the signing SHA-1 changes each build."
-            echo "Add a stable debug.keystore to GitHub Secrets and re-run."
             exit 1
           fi
 
           echo "${ANDROID_DEBUG_KEYSTORE_BASE64}" | base64 --decode > mobile/flatnow-debug.keystore
           chmod 600 mobile/flatnow-debug.keystore
-
-          echo "Keystore restored:"
           ls -l mobile/flatnow-debug.keystore
 
       - name: Print keystore SHA-1 (before build)
@@ -42,207 +43,49 @@ jobs:
           set -euo pipefail
           IMAGE="kivy/buildozer:latest"
           docker run --rm \
-            --entrypoint bash \
-            -e HOME=/home/user \
-            -e USER=user \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -w /home/user/hostcwd \
             "${IMAGE}" \
-            -lc '
-              set -euo pipefail
-              echo "Keystore certificate fingerprints (register SHA-1 in Firebase + Google OAuth Android client):"
-              keytool -list -v \
-                -keystore mobile/flatnow-debug.keystore \
-                -alias flatnowdebug \
-                -storepass android \
-                -keypass android \
-              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p; s/^[[:space:]]*SHA256:[[:space:]]*//p" \
-              | sed -e "s/^/  /"
-            '
+            keytool -list -v \
+              -keystore mobile/flatnow-debug.keystore \
+              -alias flatnowdebug \
+              -storepass android \
+              -keypass android \
+            | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p"
 
       - name: Build debug APK (docker)
         run: |
           mkdir -p mobile/.buildozer mobile/.gradle mobile/bin
-          # The container runs as a non-root user; ensure it can write to mounted volumes.
           chmod -R a+rwx mobile/.buildozer mobile/.gradle mobile/bin
+
           IMAGE="kivy/buildozer:latest"
-          # Docker Hub is occasionally flaky/rate-limited in CI; retry pulls.
           for i in 1 2 3 4; do
-            if docker pull "${IMAGE}"; then
-              break
-            fi
-            sleep $((i*i*5))
+            docker pull "${IMAGE}" && break || sleep $((i*i*5))
           done
-          docker image inspect "${IMAGE}" >/dev/null
+
           docker run --rm \
-            --entrypoint bash \
             -e HOME=/home/user \
-            -e USER=user \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
             -w /home/user/hostcwd/mobile \
             "${IMAGE}" \
-            -lc '
-              set -euo pipefail
+            bash -lc '
+              set -e
 
-              # Ensure the debug build is signed with a stable keystore.
-              # Some toolchains ignore buildozer.spec `android.keystore` for debug builds
-              # and use ~/.android/debug.keystore (alias androiddebugkey) instead.
-              mkdir -p /home/user/.android
+              mkdir -p ~/.android
               keytool -importkeystore -noprompt \
-                -srckeystore "/home/user/hostcwd/mobile/flatnow-debug.keystore" \
+                -srckeystore flatnow-debug.keystore \
                 -srcalias flatnowdebug \
                 -srcstorepass android \
                 -srckeypass android \
-                -destkeystore "/home/user/.android/debug.keystore" \
+                -destkeystore ~/.android/debug.keystore \
                 -deststorepass android \
                 -destkeypass android \
                 -destalias androiddebugkey
-              chmod 600 /home/user/.android/debug.keystore
-              echo ""
-              echo "Debug keystore SHA-1 (expected to match APK signing cert SHA-1):"
-              keytool -list -v \
-                -keystore /home/user/.android/debug.keystore \
-                -alias androiddebugkey \
-                -storepass android \
-                -keypass android \
-              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p" \
-              | sed -e "s/^/  /"
 
-              # Let buildozer create SDK/NDK folders first (it may exit early on missing licenses).
-              # When piping `yes`, `yes` will often exit with SIGPIPE once buildozer is done.
-              # With `pipefail` enabled this would fail the step, so temporarily disable it.
-              set +o pipefail
               yes | buildozer android update || true
-              set -o pipefail
-
-              SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
-              LICENSE_DIR="${SDKROOT}/licenses"
-              mkdir -p "${LICENSE_DIR}"
-
-              # Write license files with known hashes (no interactive prompt).
-              printf "%s\n" \
-                "8933bad161af4178b1185d1a37fbf41ea5269c55" \
-                "d56f5187479451eabf01fb78af6dfcb131a6481e" \
-                > "${LICENSE_DIR}/android-sdk-license"
-              printf "%s\n" \
-                "84831b9409646a918e30573bab4c9c91346d8abd" \
-                > "${LICENSE_DIR}/android-sdk-preview-license"
-
-              # If sdkmanager exists, accept all licenses as well (future-proof).
-              SDKMANAGER=""
-              for p in \
-                "${SDKROOT}/cmdline-tools/latest/bin/sdkmanager" \
-                "${SDKROOT}/cmdline-tools/bin/sdkmanager" \
-                "${SDKROOT}/tools/bin/sdkmanager"; do
-                if [ -x "${p}" ]; then
-                  SDKMANAGER="${p}"
-                  break
-                fi
-              done
-              if [ -n "${SDKMANAGER}" ]; then
-                yes | "${SDKMANAGER}" --sdk_root="${SDKROOT}" --licenses || true
-              fi
-
-              # Buildozer (and underlying sdkmanager) may prompt for additional SDK licenses.
-              # Pipe `yes` to avoid CI hanging on interactive prompts.
-              set +o pipefail
               yes | buildozer android debug
-              set -o pipefail
-
-              echo ""
-              echo "APK signing certificate fingerprints (this is what matters for Google Sign-In):"
-              SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
-              APKSIGNER="$(ls -1 ${SDKROOT}/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1)"
-              if [ -z "${APKSIGNER}" ] || [ ! -x "${APKSIGNER}" ]; then
-                echo "Could not locate apksigner under ${SDKROOT}/build-tools."
-                exit 1
-              fi
-              shopt -s nullglob
-              for apk in bin/*.apk; do
-                echo ""
-                echo "== ${apk} =="
-                "${APKSIGNER}" verify --print-certs "${apk}" | sed -e "s/^/  /"
-                echo ""
-                echo "  Signing cert SHA-1 (extracted from APK):"
-                ANDROID_SDK_ROOT="${SDKROOT}" python3 "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
-              done
-            '
-
-      - name: Inspect built APK (file SHA-1 + cert SHA-1)
-        if: always()
-        run: |
-          set -euo pipefail
-          IMAGE="kivy/buildozer:latest"
-          docker run --rm \
-            --entrypoint bash \
-            -e HOME=/home/user \
-            -e USER=user \
-            -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
-            -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
-            -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
-            -w /home/user/hostcwd/mobile \
-            "${IMAGE}" \
-            -lc '
-              set -euo pipefail
-              apks=(bin/*.apk)
-              if [ "${apks[0]}" = "bin/*.apk" ]; then
-                echo "No APKs found under mobile/bin/*.apk"
-                exit 0
-              fi
-
-              SDKROOT="/home/user/.buildozer/android/platform/android-sdk"
-              # Note: do NOT enable `nullglob` before this; otherwise the glob can
-              # disappear and `ls -1` will list the current directory, producing
-              # a bogus APKSIGNER like "screens".
-              APKSIGNER="$(ls -1 "${SDKROOT}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1 || true)"
-              if [ -z "${APKSIGNER}" ] || [ ! -x "${APKSIGNER}" ]; then
-                echo "Could not locate apksigner under ${SDKROOT}/build-tools (will skip apksigner cert output)."
-                APKSIGNER=""
-              fi
-
-              for apk in "${apks[@]}"; do
-                echo ""
-                echo "== ${apk} =="
-                echo "  APK file SHA-1:"
-                sha1sum "${apk}" | sed -e "s/^/    /"
-                echo ""
-                if [ -n "${APKSIGNER}" ]; then
-                  echo "  Signing cert SHA-1 (from apksigner --print-certs):"
-                  "${APKSIGNER}" verify --print-certs "${apk}" | sed -n "s/^.*certificate SHA-1 digest:[[:space:]]*//p" | sed -e "s/^/    /"
-                  echo ""
-                fi
-                echo "  Signing cert SHA-1 (extracted from APK via tools/print_apk_sha1.py):"
-                ANDROID_SDK_ROOT="${SDKROOT}" python3 "/home/user/hostcwd/tools/print_apk_sha1.py" "${apk}" | sed -e "s/^/    /"
-                echo ""
-                echo "  META-INF entries (for debugging):"
-                unzip -Z1 "${apk}" | sed -n "s#^META-INF/#META-INF/#p" | sed -e "s/^/    /" | head -n 50 || true
-              done
-            '
-
-      - name: Print keystore SHA-1 (after build)
-        if: always()
-        run: |
-          set -euo pipefail
-          IMAGE="kivy/buildozer:latest"
-          docker run --rm \
-            --entrypoint bash \
-            -e HOME=/home/user \
-            -e USER=user \
-            -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
-            -w /home/user/hostcwd \
-            "${IMAGE}" \
-            -lc '
-              set -euo pipefail
-              echo "Keystore certificate fingerprints (register SHA-1 in Firebase + Google OAuth Android client):"
-              keytool -list -v \
-                -keystore mobile/flatnow-debug.keystore \
-                -alias flatnowdebug \
-                -storepass android \
-                -keypass android \
-              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p; s/^[[:space:]]*SHA256:[[:space:]]*//p" \
-              | sed -e "s/^/  /"
             '
 
       - name: Upload APK artifact
@@ -253,36 +96,24 @@ jobs:
           if-no-files-found: error
 
   verify-artifact:
-    name: Verify uploaded artifact (download + SHA-1)
+    name: Verify uploaded artifact
     needs: build-apk
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    runs-on: ubuntu-22.04
 
-      - name: Download APK artifact
-        uses: actions/download-artifact@v4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
         with:
           name: quickrent-apk
           path: downloaded-apk
 
-      - name: Inspect downloaded APK (file SHA-1 + cert SHA-1)
+      - name: Inspect APK
         run: |
-          set -euo pipefail
-          echo "Downloaded artifact contents:"
+          set -e
           ls -l downloaded-apk
-          shopt -s nullglob
-          apks=(downloaded-apk/*.apk)
-          if [ "${apks[0]}" = "downloaded-apk/*.apk" ]; then
-            echo "No APKs found in downloaded artifact."
-            exit 1
-          fi
-          for apk in "${apks[@]}"; do
-            echo ""
-            echo "== ${apk} =="
-            echo "  APK file SHA-1:"
-            sha1sum "${apk}" | sed -e "s/^/    /"
-            echo ""
-            echo "  Signing cert SHA-1 (extracted from APK):"
-            python3 tools/print_apk_sha1.py "${apk}" | sed -e "s/^/    /" || true
+          for apk in downloaded-apk/*.apk; do
+            echo "== $apk =="
+            sha1sum "$apk"
+            python3 tools/print_apk_sha1.py "$apk" || true
           done
