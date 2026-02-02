@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import os
 import tempfile
+from io import BytesIO
 from typing import Literal
 
+from PIL import Image
 import cloudinary.uploader
+
 from app.utils.cloudinary_config import cloudinary_is_configured
 
 ResourceType = Literal["image", "video"]
 
 
 def _cloudinary_folder() -> str:
-    return (os.getenv("CLOUDINARY_FOLDER") or "quickrent4u").strip() or "quickrent4u"
+    return (os.getenv("CLOUDINARY_FOLDER") or "quickrent4u").strip()
 
 
 def cloudinary_enabled() -> bool:
@@ -29,38 +32,50 @@ def upload_bytes(
 
     if not raw:
         raise RuntimeError("Empty upload")
+
     if not cloudinary_enabled():
-        raise RuntimeError("Cloudinary is not configured")
+        raise RuntimeError("Cloudinary not configured")
 
     tmp_path = None
 
     try:
-        # -------- write to temp file (MANDATORY) --------
-        ext = os.path.splitext(filename or "")[1].lower()
-        if not ext:
-            ext = ".jpg" if resource_type == "image" else ".mp4"
+        # ✅ STRICT IMAGE VALIDATION
+        if resource_type == "image":
+            try:
+                img = Image.open(BytesIO(raw))
+                img.verify()          # validates structure
+                img = Image.open(BytesIO(raw))
+                img = img.convert("RGB")
+            except Exception:
+                raise RuntimeError(
+                    "Invalid image file. Please upload from Camera or Gallery."
+                )
 
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-        tmp.write(raw)
-        tmp.flush()
-        tmp_path = tmp.name
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                img.save(tmp, format="JPEG", quality=85, optimize=True)
+                tmp.flush()
+                tmp_path = tmp.name
+        else:
+            ext = os.path.splitext(filename or "")[1] or ".mp4"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                tmp.write(raw)
+                tmp.flush()
+                tmp_path = tmp.name
 
-        # -------- Cloudinary upload --------
         res = cloudinary.uploader.upload(
             tmp_path,
             resource_type=resource_type,
             folder=_cloudinary_folder(),
             public_id=public_id,
             overwrite=False,
-            type="upload",
             invalidate=False,
         )
 
-        url = str(res.get("secure_url") or "").strip()
-        pid = str(res.get("public_id") or "").strip()
+        url = res.get("secure_url")
+        pid = res.get("public_id")
 
         if not url or not pid:
-            raise RuntimeError("Cloudinary upload returned empty response")
+            raise RuntimeError("Cloudinary returned empty response")
 
         return url, pid
 
@@ -71,17 +86,13 @@ def upload_bytes(
             except Exception:
                 pass
 
+
 def destroy(*, public_id: str, resource_type: ResourceType) -> None:
-    pid = (public_id or "").strip()
-    if not pid:
-        return
     try:
         cloudinary.uploader.destroy(
-            pid,
+            public_id,
             resource_type=resource_type,
             invalidate=False,
         )
     except Exception:
-        # best-effort cleanup
         pass
-
