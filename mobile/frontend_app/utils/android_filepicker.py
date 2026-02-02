@@ -6,7 +6,6 @@ from typing import Iterable
 
 from kivy.utils import platform
 
-
 LOG_TAG = "ANDROID_PICKER"
 
 
@@ -26,12 +25,9 @@ def _strip_file_scheme(p: str) -> str:
 
 def _android_copy_content_uri_to_cache(uri: str) -> str:
     """
-    Copy Android content:// URI into a REAL local cache file
-    and HARD-VALIDATE the result.
+    Copy Android content:// URI into app cache and return local file path.
+    SAFE for multi-select and OEM ROMs.
     """
-
-    _log(f"Copying content URI → cache: {uri}")
-
     from jnius import autoclass
 
     PythonActivity = autoclass("org.kivy.android.PythonActivity")
@@ -47,7 +43,7 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     resolver = ctx.getContentResolver()
     uri_obj = Uri.parse(str(uri))
 
-    # ---------- filename ----------
+    # ---- filename ----
     display_name = ""
     cursor = None
     try:
@@ -66,11 +62,7 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     if not display_name:
         display_name = f"picked_{int(time.time())}"
 
-    display_name = (
-        display_name.replace("/", "_")
-        .replace("\\", "_")
-        .replace(":", "_")
-    )
+    display_name = display_name.replace("/", "_").replace("\\", "_").replace(":", "_")
 
     if "." not in display_name:
         try:
@@ -83,20 +75,18 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
             pass
 
     cache_dir = ctx.getCacheDir()
+    out_file = File(cache_dir, display_name)
 
-    root, ext = os.path.splitext(display_name)
-    stamp = int(time.time() * 1000)
-    tag = abs(hash(str(uri))) % 100000
-    final_name = f"{root}_{stamp}_{tag}{ext}"
-
-    out_file = File(cache_dir, final_name)
+    if out_file.exists():
+        root, ext = os.path.splitext(display_name)
+        stamp = int(time.time() * 1000)
+        out_file = File(cache_dir, f"{root}_{stamp}{ext}")
 
     ins = resolver.openInputStream(uri_obj)
     if ins is None:
-        raise RuntimeError("Unable to open input stream")
+        raise OSError("Unable to open input stream")
 
     outs = FileOutputStream(out_file)
-
     buf = Array.newInstance(ByteClass.TYPE, 8192)
 
     try:
@@ -117,66 +107,35 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
             pass
 
     path = str(out_file.getAbsolutePath())
-
-    # 🔴 HARD VALIDATION (MANDATORY)
-    if not os.path.exists(path):
-        raise RuntimeError("Copied file does not exist")
-
-    size = os.path.getsize(path)
-    if size < 1024:
-        raise RuntimeError(f"Invalid file copied ({size} bytes)")
-
-    _log(f"Copied OK → {path} ({size} bytes)")
+    _log(f"Copied to cache: {path}")
     return path
 
 
 def ensure_local_path(p: str) -> str:
-    p = str(p or "").strip()
-    if not p:
-        raise ValueError("Empty path")
-
     p = _strip_file_scheme(p)
-
-    if platform != "android":
-        return p
-
-    if p.startswith("content://"):
+    if platform == "android" and p.startswith("content://"):
         return _android_copy_content_uri_to_cache(p)
-
     return p
 
 
 def ensure_local_paths(paths: Iterable[str]) -> list[str]:
     out: list[str] = []
-    for p in list(paths or []):
+    for p in paths or []:
         try:
-            lp = ensure_local_path(str(p))
+            lp = ensure_local_path(p)
             if lp and lp not in out:
                 out.append(lp)
         except Exception as e:
-            _log(f"Path normalize failed: {p} → {e}")
+            _log(f"Normalize failed: {p} → {e}")
     return out
 
 
 def is_image_path(p: str) -> bool:
-    return os.path.splitext(str(p).lower())[1] in {
-        ".png", ".jpg", ".jpeg", ".webp", ".gif"
-    }
+    return os.path.splitext(p.lower())[1] in {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
 def is_video_path(p: str) -> bool:
-    return os.path.splitext(str(p).lower())[1] in {
-        ".mp4", ".mov", ".m4v", ".avi", ".mkv"
-    }
-
-
-def validate_image_file(path: str) -> None:
-    from PIL import Image
-    try:
-        with Image.open(path) as img:
-            img.verify()
-    except Exception as e:
-        raise RuntimeError(f"Invalid image file: {e}")
+    return os.path.splitext(p.lower())[1] in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 
 
 def android_open_gallery(
@@ -185,6 +144,10 @@ def android_open_gallery(
     multiple: bool = False,
     mime_types: list[str] | None = None,
 ) -> bool:
+    """
+    Opens Android gallery picker (SAF).
+    MUST be called from UI event (button press).
+    """
 
     if platform != "android":
         return False
@@ -204,13 +167,13 @@ def android_open_gallery(
         pm = act.getPackageManager()
         resolver = act.getContentResolver()
 
-        req_code = 13579
+        REQ_CODE = 13579
 
         def _deliver(sel):
             Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
 
         def _on_activity_result(requestCode, resultCode, data):
-            if requestCode != req_code:
+            if requestCode != REQ_CODE:
                 return
 
             try:
@@ -223,12 +186,18 @@ def android_open_gallery(
                 return
 
             out = []
-
             clip = data.getClipData()
+
             if clip:
                 for i in range(clip.getItemCount()):
                     uri = clip.getItemAt(i).getUri()
                     if uri:
+                        try:
+                            resolver.takePersistableUriPermission(
+                                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                        except Exception:
+                            pass
                         out.append(str(uri.toString()))
             else:
                 uri = data.getData()
@@ -239,38 +208,34 @@ def android_open_gallery(
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
-        if not mimes:
-            mimes = ["image/*"]
+        mimes = [m for m in (mime_types or []) if m] or ["image/*"]
 
-        saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
 
         if len(mimes) == 1:
-            saf_intent.setType(mimes[0])
+            intent.setType(mimes[0])
         else:
-            saf_intent.setType("*/*")
+            intent.setType("*/*")
             arr = Array.newInstance(JavaString, len(mimes))
             for i, m in enumerate(mimes):
                 Array.set(arr, i, JavaString(m))
-            saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
-        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        saf_intent.addFlags(
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        intent.addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION
             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
         )
 
-        if saf_intent.resolveActivity(pm) is None:
+        if intent.resolveActivity(pm) is None:
+            _log("No gallery picker available")
             return False
 
-        chooser = Intent.createChooser(
-            saf_intent,
-            JavaString("Select file(s)"),
-        )
+        chooser = Intent.createChooser(intent, JavaString("Select file(s)"))
 
         Clock.schedule_once(
-            lambda *_: act.startActivityForResult(chooser, req_code),
+            lambda *_: act.startActivityForResult(chooser, REQ_CODE),
             0.15,
         )
         return True
