@@ -119,6 +119,10 @@ def _run_alembic_upgrade_head() -> None:
     backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     ini_path = os.path.join(backend_dir, "alembic.ini")
     cfg = Config(ini_path)
+    # Render runs from repo root; alembic.ini uses `script_location = alembic`
+    # which would incorrectly resolve to `<repo-root>/alembic`.
+    # Force it to the actual folder: `<repo-root>/backend/alembic`.
+    cfg.set_main_option("script_location", os.path.join(backend_dir, "alembic"))
     # Ensure DB URL is set (Render provides DATABASE_URL).
     db_url = (os.environ.get("DATABASE_URL") or "").strip()
     if db_url:
