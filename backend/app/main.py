@@ -1979,8 +1979,11 @@ def _property_out(
     owner_email = (getattr(o, "email", "") or "").strip() if o else ""
     owner_phone = (getattr(o, "phone", "") or "").strip() if o else ""
     adv_number = (getattr(p, "ad_number", "") or "").strip() or str(p.id)
+    # IMPORTANT: `Property.post_group` is deferred to support rolling deploys where DB isn't migrated yet.
+    # Never access it via getattr/attribute access here, because that can trigger a lazy SQL load and
+    # abort the transaction on older DBs (then subsequent queries fail with InFailedSqlTransaction).
     try:
-        pg_val = str(getattr(p, "post_group", "") or "").strip()
+        pg_val = str((getattr(p, "__dict__", {}) or {}).get("post_group") or "").strip()
     except Exception:
         pg_val = ""
     out: dict[str, Any] = {
