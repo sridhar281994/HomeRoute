@@ -138,18 +138,9 @@ def is_video_path(p: str) -> bool:
     return os.path.splitext(p.lower())[1] in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 
 
-def android_open_gallery(
-    *,
-    on_selection,
-    multiple: bool = False,
-    mime_types: list[str] | None = None,
-) -> bool:
-    """
-    Opens Android gallery picker (SAF).
-    MUST be called from UI event (button press).
-    """
-
+def android_open_gallery(*, on_selection, multiple=False, mime_types=None) -> bool:
     if platform != "android":
+        _log("Platform is not Android → abort")
         return False
 
     try:
@@ -167,21 +158,29 @@ def android_open_gallery(
         pm = act.getPackageManager()
         resolver = act.getContentResolver()
 
-        REQ_CODE = 13579
+        _log(f"Device activity = {act}")
+        _log(f"PackageManager = {pm}")
+
+        req_code = 13579
 
         def _deliver(sel):
+            _log(f"Delivering selection → count={len(sel or [])}")
             Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
 
         def _on_activity_result(requestCode, resultCode, data):
-            if requestCode != REQ_CODE:
+            _log(f"onActivityResult rc={requestCode} result={resultCode} data={data}")
+
+            if requestCode != req_code:
+                _log("Request code mismatch → ignored")
                 return
 
             try:
                 activity.unbind(on_activity_result=_on_activity_result)
-            except Exception:
-                pass
+            except Exception as e:
+                _log(f"Unbind failed: {e}")
 
             if resultCode != Activity.RESULT_OK or data is None:
+                _log("Picker cancelled or no data returned")
                 _deliver([])
                 return
 
@@ -189,18 +188,15 @@ def android_open_gallery(
             clip = data.getClipData()
 
             if clip:
+                _log(f"ClipData count = {clip.getItemCount()}")
                 for i in range(clip.getItemCount()):
                     uri = clip.getItemAt(i).getUri()
+                    _log(f"Clip uri[{i}] = {uri}")
                     if uri:
-                        try:
-                            resolver.takePersistableUriPermission(
-                                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            )
-                        except Exception:
-                            pass
                         out.append(str(uri.toString()))
             else:
                 uri = data.getData()
+                _log(f"Single uri = {uri}")
                 if uri:
                     out.append(str(uri.toString()))
 
@@ -208,10 +204,17 @@ def android_open_gallery(
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        mimes = [m for m in (mime_types or []) if m] or ["image/*"]
+        mimes = [m for m in (mime_types or []) if m]
+        if not mimes:
+            mimes = ["image/*"]
 
+        _log(f"Requested mimes = {mimes}")
+        _log(f"Multiple selection = {multiple}")
+
+        # ---------------- 1️⃣ ACTION_OPEN_DOCUMENT ----------------
         intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
 
         if len(mimes) == 1:
             intent.setType(mimes[0])
@@ -222,26 +225,48 @@ def android_open_gallery(
                 Array.set(arr, i, JavaString(m))
             intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
         intent.addFlags(
-            Intent.FLAG_GRANT_READ_URI_PERMISSION
-            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            Intent.FLAG_GRANT_READ_URI_PERMISSION |
+            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
         )
 
-        if intent.resolveActivity(pm) is None:
-            _log("No gallery picker available")
-            return False
+        if intent.resolveActivity(pm) is not None:
+            _log("Using ACTION_OPEN_DOCUMENT")
+        else:
+            _log("ACTION_OPEN_DOCUMENT not available")
 
-        chooser = Intent.createChooser(intent, JavaString("Select file(s)"))
+            # ---------------- 2️⃣ ACTION_GET_CONTENT ----------------
+            intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+            intent.setType(mimes[0])
 
+            if intent.resolveActivity(pm) is not None:
+                _log("Using ACTION_GET_CONTENT")
+            else:
+                _log("ACTION_GET_CONTENT not available")
+
+                # ---------------- 3️⃣ ACTION_PICK ----------------
+                intent = Intent(Intent.ACTION_PICK)
+                intent.setType("image/*")
+
+                if intent.resolveActivity(pm) is not None:
+                    _log("Using ACTION_PICK (gallery)")
+                else:
+                    _log("❌ NO picker intent available on device")
+                    return False
+
+        chooser = Intent.createChooser(intent, JavaString("Select image(s)"))
+
+        _log(f"Starting picker intent → {intent}")
         Clock.schedule_once(
-            lambda *_: act.startActivityForResult(chooser, REQ_CODE),
-            0.15,
+            lambda *_: act.startActivityForResult(chooser, req_code),
+            0
         )
         return True
 
     except Exception as e:
-        _log(f"Picker failed: {e}")
+        _log(f"Picker crashed: {e}")
         import traceback
         traceback.print_exc()
         return False
