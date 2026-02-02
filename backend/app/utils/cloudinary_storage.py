@@ -70,3 +70,18 @@ def upload_bytes(
                 os.unlink(tmp_path)
             except Exception:
                 pass
+
+def destroy(*, public_id: str, resource_type: ResourceType) -> None:
+    pid = (public_id or "").strip()
+    if not pid:
+        return
+    try:
+        cloudinary.uploader.destroy(
+            pid,
+            resource_type=resource_type,
+            invalidate=False,
+        )
+    except Exception:
+        # best-effort cleanup
+        pass
+
