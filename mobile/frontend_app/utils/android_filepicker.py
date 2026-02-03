@@ -354,3 +354,25 @@ def android_open_gallery(
         import traceback
         traceback.print_exc()
         return False
+
+def _on_images_selected(self, uris):
+    print("RAW URIS:", uris)
+
+    if not uris:
+        self.show_toast("No image selected")
+        return
+
+    # 🔥 CRITICAL STEP (YOU WERE MISSING THIS)
+    local_files = ensure_local_paths(uris)
+
+    print("LOCAL FILES:", local_files)
+
+    if not local_files:
+        self.show_toast("Invalid image")
+        return
+
+    # Store for upload
+    self.selected_images = local_files
+
+    # ✅ THIS IS WHY YOU NEVER SAW THE MESSAGE
+    self.show_toast(f"{len(local_files)} file uploaded")
