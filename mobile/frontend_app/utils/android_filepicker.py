@@ -34,25 +34,39 @@ def _strip_file_scheme(p: str) -> str:
 # ------------------------------------------------------------
 def _normalize_image_to_jpeg(path: str) -> str:
     """
-    Converts ANY Android image (HEIC / AVIF / Google Photos proxy)
-    into a REAL JPEG so PIL + Cloudinary always succeed.
+    Android-safe normalization using Bitmap (not PIL).
+    This converts Google Photos / AVIF / HEIC proxy streams
+    into REAL JPEG bytes.
     """
     try:
-        from PIL import Image
+        _log(f"Android bitmap normalize → JPEG: {path}")
 
-        _log(f"Normalizing image → JPEG: {path}")
+        from jnius import autoclass
 
-        img = Image.open(path)
-        img = img.convert("RGB")
+        BitmapFactory = autoclass("android.graphics.BitmapFactory")
+        Bitmap = autoclass("android.graphics.Bitmap")
+        FileOutputStream = autoclass("java.io.FileOutputStream")
 
-        out = path.rsplit(".", 1)[0] + "_normalized.jpg"
-        img.save(out, "JPEG", quality=90, optimize=True)
+        bmp = BitmapFactory.decodeFile(path)
 
-        _log(f"Normalized image saved: {out}")
+        if bmp is None:
+            raise RuntimeError("Bitmap decode failed")
+
+        out = path.rsplit(".", 1)[0] + "_final.jpg"
+        fos = FileOutputStream(out)
+
+        bmp.compress(Bitmap.CompressFormat.JPEG, 90, fos)
+        fos.flush()
+        fos.close()
+        bmp.recycle()
+
+        _log(f"Bitmap normalized OK: {out}")
         return out
+
     except Exception as e:
-        _log(f"Image normalization failed: {e}")
-        raise RuntimeError("Invalid image file. Please choose another image.")
+        _log(f"Bitmap normalization failed: {e}")
+        raise RuntimeError("Invalid image file")
+
 
 
 # ------------------------------------------------------------
@@ -171,17 +185,17 @@ def ensure_local_path(p: str) -> str:
     if p.startswith("content://"):
         local_path = _android_copy_content_uri_to_cache(p)
 
-        # ✅ NEVER break picker flow
         if is_image_path(local_path):
             try:
                 return _normalize_image_to_jpeg(local_path)
             except Exception as e:
-                _log(f"Normalization skipped (safe): {e}")
-                return local_path
+                _log(f"Normalization hard-failed: {e}")
+                raise   # ❗ DO NOT SKIP HERE ANYMORE
 
         return local_path
 
     return p
+
 
 def ensure_local_paths(paths: Iterable[str]) -> list[str]:
     out = []
