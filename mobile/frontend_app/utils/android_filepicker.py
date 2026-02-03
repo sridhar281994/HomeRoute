@@ -9,6 +9,9 @@ from kivy.utils import platform
 LOG_TAG = "ANDROID_PICKER"
 
 
+# ------------------------------------------------------------
+# LOGGING
+# ------------------------------------------------------------
 def _log(msg: str) -> None:
     try:
         print(f"[{LOG_TAG}] {msg}")
@@ -16,17 +19,49 @@ def _log(msg: str) -> None:
         pass
 
 
+# ------------------------------------------------------------
+# FILE:// STRIPPER
+# ------------------------------------------------------------
 def _strip_file_scheme(p: str) -> str:
     p = str(p or "").strip()
     if p.startswith("file://"):
-        return p[len("file://") :]
+        return p[len("file://"):]
     return p
 
 
+# ------------------------------------------------------------
+# 🔥 IMAGE NORMALIZATION (CRITICAL FIX)
+# ------------------------------------------------------------
+def _normalize_image_to_jpeg(path: str) -> str:
+    """
+    Converts ANY Android image (HEIC / AVIF / Google Photos proxy)
+    into a REAL JPEG so PIL + Cloudinary always succeed.
+    """
+    try:
+        from PIL import Image
+
+        _log(f"Normalizing image → JPEG: {path}")
+
+        img = Image.open(path)
+        img = img.convert("RGB")
+
+        out = path.rsplit(".", 1)[0] + "_normalized.jpg"
+        img.save(out, "JPEG", quality=90, optimize=True)
+
+        _log(f"Normalized image saved: {out}")
+        return out
+    except Exception as e:
+        _log(f"Image normalization failed: {e}")
+        raise RuntimeError("Invalid image file. Please choose another image.")
+
+
+# ------------------------------------------------------------
+# ANDROID content:// → LOCAL CACHE
+# ------------------------------------------------------------
 def _android_copy_content_uri_to_cache(uri: str) -> str:
     """
-    Copy Android content:// URI into app cache file.
-    Fully PyJNIus-safe.
+    Copy Android content:// URI into app cache.
+    PyJNIus-safe and OEM-safe.
     """
     _log(f"Copying content URI → cache: {uri}")
 
@@ -45,14 +80,13 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     resolver = ctx.getContentResolver()
     uri_obj = Uri.parse(str(uri))
 
-    # Try to read the real MIME type early (needed to preserve correct extension).
-    mime = ""
+    # MIME (used only for extension hint)
     try:
         mime = str(resolver.getType(uri_obj) or "").strip()
     except Exception:
         mime = ""
 
-    # -------- filename --------
+    # ---------- filename ----------
     display_name = ""
     cursor = None
     try:
@@ -71,87 +105,32 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     if not display_name:
         display_name = f"picked_{int(time.time())}"
 
-    display_name = display_name.replace("/", "_").replace("\\", "_").replace(":", "_")
-
-    # Ensure extension (important for is_image_path logic + correct multipart content-type).
-    # Also fix wrong/misleading extensions (Android Photo Picker can return AVIF/HEIC
-    # while DISPLAY_NAME still ends with .jpg).
-    def _preferred_ext_for_mime(m: str) -> str:
-        m = (m or "").lower().strip()
-        if m in {"image/heic", "image/heif"}:
-            return ".heic"
-        if m == "image/avif":
-            return ".avif"
-        if m in {"image/jpeg", "image/jpg"}:
-            return ".jpg"
-        if m == "image/png":
-            return ".png"
-        if m == "image/webp":
-            return ".webp"
-        if m == "image/gif":
-            return ".gif"
-        if m == "video/mp4":
-            return ".mp4"
-        if m == "video/quicktime":
-            return ".mov"
-        return ""
-
-    preferred_ext = _preferred_ext_for_mime(mime)
+    display_name = (
+        display_name.replace("/", "_")
+        .replace("\\", "_")
+        .replace(":", "_")
+    )
 
     if "." not in display_name:
-        try:
-            if preferred_ext:
-                display_name += preferred_ext
-            elif (mime or "").startswith("image/"):
-                # Default to jpg for unknown images (most compatible).
-                display_name += ".jpg"
-            elif (mime or "").startswith("video/"):
-                display_name += ".mp4"
-        except Exception:
-            pass
-    else:
-        # If a MIME type is known and doesn't match the current extension, rename.
-        # This prevents uploading AVIF/HEIC bytes as "image/jpeg" which Cloudinary rejects.
-        try:
-            if preferred_ext:
-                root, ext = os.path.splitext(display_name)
-                ext_l = (ext or "").lower()
-                # allow .jpeg as equivalent to .jpg
-                if preferred_ext == ".jpg" and ext_l in {".jpg", ".jpeg"}:
-                    pass
-                elif ext_l != preferred_ext:
-                    display_name = f"{root}{preferred_ext}"
-        except Exception:
-            pass
+        if mime.startswith("image/"):
+            display_name += ".jpg"
+        elif mime.startswith("video/"):
+            display_name += ".mp4"
+        else:
+            display_name += ".bin"
 
     cache_dir = ctx.getCacheDir()
-    # Ensure unique filename in cache (avoid overwriting when multiple selected share same DISPLAY_NAME).
-    base = display_name
-    name = base
-    out_file = File(cache_dir, name)
-    try:
-        if out_file.exists():
-            # Keep extension if any.
-            root = name
-            ext = ""
-            if "." in name:
-                root, ext = name.rsplit(".", 1)
-                ext = "." + ext
-            # Use URI hash + timestamp for uniqueness.
-            stamp = int(time.time() * 1000)
-            tag = abs(hash(str(uri))) % 100000
-            name = f"{root}_{stamp}_{tag}{ext}"
-            out_file = File(cache_dir, name)
-    except Exception:
-        # Best-effort: proceed with original name.
-        out_file = File(cache_dir, base)
+    out_file = File(cache_dir, display_name)
+
+    if out_file.exists():
+        root, ext = os.path.splitext(display_name)
+        out_file = File(cache_dir, f"{root}_{int(time.time()*1000)}{ext}")
 
     ins = resolver.openInputStream(uri_obj)
     if ins is None:
         raise OSError("Unable to open input stream")
 
     outs = FileOutputStream(out_file)
-    # ✅ SAFE byte[] buffer creation
     buf = Array.newInstance(ByteClass.TYPE, 8192)
 
     try:
@@ -172,10 +151,13 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
             pass
 
     path = str(out_file.getAbsolutePath())
-    _log(f"Copied file path: {path}")
+    _log(f"Copied to cache: {path}")
     return path
 
 
+# ------------------------------------------------------------
+# PATH NORMALIZER (🔥 FIX WIRED HERE 🔥)
+# ------------------------------------------------------------
 def ensure_local_path(p: str) -> str:
     p = str(p or "").strip()
     if not p:
@@ -187,7 +169,13 @@ def ensure_local_path(p: str) -> str:
         return p
 
     if p.startswith("content://"):
-        return _android_copy_content_uri_to_cache(p)
+        local_path = _android_copy_content_uri_to_cache(p)
+
+        # 🔥 ALWAYS normalize images before upload
+        if is_image_path(local_path):
+            return _normalize_image_to_jpeg(local_path)
+
+        return local_path
 
     return p
 
@@ -204,6 +192,9 @@ def ensure_local_paths(paths: Iterable[str]) -> list[str]:
     return out
 
 
+# ------------------------------------------------------------
+# FILE TYPE HELPERS
+# ------------------------------------------------------------
 def is_image_path(p: str) -> bool:
     return os.path.splitext(p.lower())[1] in {
         ".png",
@@ -218,9 +209,18 @@ def is_image_path(p: str) -> bool:
 
 
 def is_video_path(p: str) -> bool:
-    return os.path.splitext(p.lower())[1] in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
+    return os.path.splitext(p.lower())[1] in {
+        ".mp4",
+        ".mov",
+        ".m4v",
+        ".avi",
+        ".mkv",
+    }
 
 
+# ------------------------------------------------------------
+# ANDROID SYSTEM PICKER
+# ------------------------------------------------------------
 def android_open_gallery(
     *,
     on_selection,
@@ -228,7 +228,7 @@ def android_open_gallery(
     mime_types: list[str] | None = None,
 ) -> bool:
     """
-    Open Android system picker (SAF preferred; fallback to ACTION_GET_CONTENT).
+    Android SAF picker with OEM fallback.
     """
 
     if platform != "android":
@@ -296,14 +296,13 @@ def android_open_gallery(
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        # ---------- MIME handling ----------
         mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
         if not mimes:
             mimes = ["image/*"]
 
-        # ---------- 1️⃣ TRY SAF (best) ----------
         saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
+        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
 
         if len(mimes) == 1:
             saf_intent.setType(mimes[0])
@@ -314,7 +313,6 @@ def android_open_gallery(
                 Array.set(arr, i, JavaString(m))
             saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
-        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
         saf_intent.addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION
             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
@@ -331,22 +329,10 @@ def android_open_gallery(
             )
             return True
 
-        # ---------- 2️⃣ FALLBACK: ACTION_GET_CONTENT (OEM-safe) ----------
-        _log("SAF not available, falling back to ACTION_GET_CONTENT")
-
         get_intent = Intent(Intent.ACTION_GET_CONTENT)
         get_intent.addCategory(Intent.CATEGORY_OPENABLE)
-
-        if len(mimes) == 1:
-            get_intent.setType(mimes[0])
-        else:
-            get_intent.setType("*/*")
-            arr = Array.newInstance(JavaString, len(mimes))
-            for i, m in enumerate(mimes):
-                Array.set(arr, i, JavaString(m))
-            get_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
-
         get_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        get_intent.setType(mimes[0])
         get_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
         if get_intent.resolveActivity(pm) is None:
@@ -357,17 +343,14 @@ def android_open_gallery(
             get_intent,
             JavaString("Select file(s)"),
         )
-
         Clock.schedule_once(
             lambda *_: act.startActivityForResult(chooser, req_code),
             0.15,
         )
-
         return True
 
     except Exception as e:
         _log(f"Picker failed: {e}")
         import traceback
-
         traceback.print_exc()
         return False
