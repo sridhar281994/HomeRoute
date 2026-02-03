@@ -75,29 +75,38 @@ def upload_bytes(
 
     try:
         if resource_type == "image":
-            # 🔥 HARD GUARD — NO FALLBACK
             try:
+                # ✅ Best case: Pillow can decode → normalize to JPEG
                 img = Image.open(BytesIO(raw))
-                img.verify()  # validate structure
+                img.verify()  # structural validation
 
                 img = Image.open(BytesIO(raw))
                 img = img.convert("RGB")
 
-            except Exception:
-                # 🚫 STOP HERE — do not let Cloudinary see garbage
-                raise RuntimeError(
-                    "Invalid image uploaded. "
-                    "Please upload from Camera or choose another image."
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                    img.save(tmp, format="JPEG", quality=85, optimize=True)
+                    tmp.flush()
+                    tmp_path = tmp.name
+
+            except Exception as e:
+                # 🔥 CRITICAL FIX
+                # Pillow failure ≠ invalid image (very common on Android)
+                # Fall back to raw upload and let Cloudinary decode
+                print("Pillow decode skipped, uploading raw image:", e)
+
+                suffix = _suffix_from_upload(
+                    filename=filename,
+                    content_type=content_type,
+                    resource_type=resource_type,
                 )
 
-            # ✅ Safe, real JPEG
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                img.save(tmp, format="JPEG", quality=85, optimize=True)
-                tmp.flush()
-                tmp_path = tmp.name
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(raw)
+                    tmp.flush()
+                    tmp_path = tmp.name
 
         else:
-            # video or others
+            # video / other files → always raw upload
             ext = _suffix_from_upload(
                 filename=filename,
                 content_type=content_type,
@@ -108,7 +117,7 @@ def upload_bytes(
                 tmp.flush()
                 tmp_path = tmp.name
 
-        # 🚀 Cloudinary only sees valid files now
+        # 🚀 Upload to Cloudinary
         res = cloudinary.uploader.upload(
             tmp_path,
             resource_type=resource_type,
@@ -132,7 +141,6 @@ def upload_bytes(
                 os.unlink(tmp_path)
             except Exception:
                 pass
-
 
 
 def destroy(*, public_id: str, resource_type: ResourceType) -> None:
