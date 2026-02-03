@@ -171,41 +171,29 @@ def ensure_local_path(p: str) -> str:
     if p.startswith("content://"):
         local_path = _android_copy_content_uri_to_cache(p)
 
-        # 🔥 ALWAYS normalize images before upload
-        if is_image_path(local_path):
-            return _normalize_image_to_jpeg(local_path)
-
-        return local_path
-
-    return p
-
-
-def ensure_local_path(p: str) -> str:
-    p = str(p or "").strip()
-    if not p:
-        raise ValueError("Empty path")
-
-    p = _strip_file_scheme(p)
-
-    # Non-Android → return as-is
-    if platform != "android":
-        return p
-
-    # Android content:// URI
-    if p.startswith("content://"):
-        local_path = _android_copy_content_uri_to_cache(p)
-
-        # 🔥 TRY normalization, but DO NOT BREAK UI if Pillow missing
+        # ✅ NEVER break picker flow
         if is_image_path(local_path):
             try:
                 return _normalize_image_to_jpeg(local_path)
             except Exception as e:
-                _log(f"Normalization skipped, using original file: {e}")
+                _log(f"Normalization skipped (safe): {e}")
                 return local_path
 
         return local_path
 
     return p
+
+def ensure_local_paths(paths: Iterable[str]) -> list[str]:
+    out = []
+    for p in paths or []:
+        try:
+            lp = ensure_local_path(p)
+            if lp and lp not in out:
+                out.append(lp)
+        except Exception as e:
+            _log(f"Path normalize failed: {p} → {e}")
+    return out
+
 
 
 # ------------------------------------------------------------
@@ -378,7 +366,6 @@ def _on_images_selected(self, uris):
         self.show_toast("No image selected")
         return
 
-    # 🔥 CRITICAL: convert content:// → real files
     local_files = ensure_local_paths(uris)
 
     print("LOCAL FILES:", local_files)
@@ -387,9 +374,8 @@ def _on_images_selected(self, uris):
         self.show_toast("Invalid image selected")
         return
 
-    # Store files for upload
     self.selected_images = local_files
 
-    # ✅ THIS MESSAGE WAS NEVER SHOWN BEFORE BECAUSE local_files WAS EMPTY
+    # ✅ THIS WILL NOW SHOW
     self.show_toast(f"{len(local_files)} image selected")
 
