@@ -106,6 +106,10 @@ jobs:
 
               KS="flatnow-debug.keystore"
               PASS="android"
+              BUILD_CMD="buildozer"
+              if [ -x "/home/user/.venv/bin/buildozer" ]; then
+                BUILD_CMD="/home/user/.venv/bin/buildozer"
+              fi
 
               if [ ! -f "${KS}" ]; then
                 echo "Keystore missing inside container: ${KS}"
@@ -148,8 +152,8 @@ jobs:
               # IMPORTANT: disable pipefail so the SIGPIPE exit code from `yes`
               # (141) doesn't fail the CI job after a successful build.
               set +o pipefail
-              yes | buildozer android update || true
-              yes | buildozer android debug
+              yes | "${BUILD_CMD}" android update || true
+              yes | "${BUILD_CMD}" android debug
             '
 
       - name: Upload APK artifact
