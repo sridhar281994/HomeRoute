@@ -25,9 +25,11 @@ def _strip_file_scheme(p: str) -> str:
 
 def _android_copy_content_uri_to_cache(uri: str) -> str:
     """
-    Copy Android content:// URI into app cache and return local file path.
-    SAFE for multi-select and OEM ROMs.
+    Copy Android content:// URI into app cache file.
+    Fully PyJNIus-safe.
     """
+    _log(f"Copying content URI → cache: {uri}")
+
     from jnius import autoclass
 
     PythonActivity = autoclass("org.kivy.android.PythonActivity")
@@ -43,7 +45,7 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     resolver = ctx.getContentResolver()
     uri_obj = Uri.parse(str(uri))
 
-    # ---- filename ----
+    # -------- filename --------
     display_name = ""
     cursor = None
     try:
@@ -64,6 +66,7 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
 
     display_name = display_name.replace("/", "_").replace("\\", "_").replace(":", "_")
 
+    # ensure extension (important for your is_image_path logic)
     if "." not in display_name:
         try:
             mime = resolver.getType(uri_obj) or ""
@@ -75,18 +78,33 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
             pass
 
     cache_dir = ctx.getCacheDir()
-    out_file = File(cache_dir, display_name)
-
-    if out_file.exists():
-        root, ext = os.path.splitext(display_name)
-        stamp = int(time.time() * 1000)
-        out_file = File(cache_dir, f"{root}_{stamp}{ext}")
+    # Ensure unique filename in cache (avoid overwriting when multiple selected share same DISPLAY_NAME).
+    base = display_name
+    name = base
+    out_file = File(cache_dir, name)
+    try:
+        if out_file.exists():
+            # Keep extension if any.
+            root = name
+            ext = ""
+            if "." in name:
+                root, ext = name.rsplit(".", 1)
+                ext = "." + ext
+            # Use URI hash + timestamp for uniqueness.
+            stamp = int(time.time() * 1000)
+            tag = abs(hash(str(uri))) % 100000
+            name = f"{root}_{stamp}_{tag}{ext}"
+            out_file = File(cache_dir, name)
+    except Exception:
+        # Best-effort: proceed with original name.
+        out_file = File(cache_dir, base)
 
     ins = resolver.openInputStream(uri_obj)
     if ins is None:
         raise OSError("Unable to open input stream")
 
     outs = FileOutputStream(out_file)
+    # ✅ SAFE byte[] buffer creation
     buf = Array.newInstance(ByteClass.TYPE, 8192)
 
     try:
@@ -107,14 +125,23 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
             pass
 
     path = str(out_file.getAbsolutePath())
-    _log(f"Copied to cache: {path}")
+    _log(f"Copied file path: {path}")
     return path
 
 
 def ensure_local_path(p: str) -> str:
+    p = str(p or "").strip()
+    if not p:
+        raise ValueError("Empty path")
+
     p = _strip_file_scheme(p)
-    if platform == "android" and p.startswith("content://"):
+
+    if platform != "android":
+        return p
+
+    if p.startswith("content://"):
         return _android_copy_content_uri_to_cache(p)
+
     return p
 
 
@@ -122,7 +149,7 @@ def ensure_local_paths(paths: Iterable[str]) -> list[str]:
     out: list[str] = []
     for p in paths or []:
         try:
-            lp = ensure_local_path(p)
+            lp = ensure_local_path(str(p))
             if lp and lp not in out:
                 out.append(lp)
         except Exception as e:
@@ -145,8 +172,7 @@ def android_open_gallery(
     mime_types: list[str] | None = None,
 ) -> bool:
     """
-    Opens Android gallery picker (SAF).
-    MUST be called from UI event (button press).
+    Open Android system picker (SAF preferred; fallback to ACTION_GET_CONTENT).
     """
 
     if platform != "android":
@@ -167,13 +193,13 @@ def android_open_gallery(
         pm = act.getPackageManager()
         resolver = act.getContentResolver()
 
-        REQ_CODE = 13579
+        req_code = 13579
 
         def _deliver(sel):
             Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
 
         def _on_activity_result(requestCode, resultCode, data):
-            if requestCode != REQ_CODE:
+            if requestCode != req_code:
                 return
 
             try:
@@ -202,46 +228,90 @@ def android_open_gallery(
             else:
                 uri = data.getData()
                 if uri:
+                    try:
+                        resolver.takePersistableUriPermission(
+                            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    except Exception:
+                        pass
                     out.append(str(uri.toString()))
 
             _deliver(out)
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        mimes = [m for m in (mime_types or []) if m] or ["image/*"]
+        # ---------- MIME handling ----------
+        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
+        if not mimes:
+            mimes = ["image/*"]
 
-        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        # ---------- 1️⃣ TRY SAF (best) ----------
+        saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
 
         if len(mimes) == 1:
-            intent.setType(mimes[0])
+            saf_intent.setType(mimes[0])
         else:
-            intent.setType("*/*")
+            saf_intent.setType("*/*")
             arr = Array.newInstance(JavaString, len(mimes))
             for i, m in enumerate(mimes):
                 Array.set(arr, i, JavaString(m))
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+            saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        intent.addFlags(
+        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        saf_intent.addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION
             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
         )
 
-        if intent.resolveActivity(pm) is None:
-            _log("No gallery picker available")
+        if saf_intent.resolveActivity(pm) is not None:
+            chooser = Intent.createChooser(
+                saf_intent,
+                JavaString("Select file(s)"),
+            )
+            Clock.schedule_once(
+                lambda *_: act.startActivityForResult(chooser, req_code),
+                0.15,
+            )
+            return True
+
+        # ---------- 2️⃣ FALLBACK: ACTION_GET_CONTENT (OEM-safe) ----------
+        _log("SAF not available, falling back to ACTION_GET_CONTENT")
+
+        get_intent = Intent(Intent.ACTION_GET_CONTENT)
+        get_intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+        if len(mimes) == 1:
+            get_intent.setType(mimes[0])
+        else:
+            get_intent.setType("*/*")
+            arr = Array.newInstance(JavaString, len(mimes))
+            for i, m in enumerate(mimes):
+                Array.set(arr, i, JavaString(m))
+            get_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+
+        get_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        get_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        if get_intent.resolveActivity(pm) is None:
+            _log("No picker available on this device")
             return False
 
-        chooser = Intent.createChooser(intent, JavaString("Select file(s)"))
+        chooser = Intent.createChooser(
+            get_intent,
+            JavaString("Select file(s)"),
+        )
 
         Clock.schedule_once(
-            lambda *_: act.startActivityForResult(chooser, REQ_CODE),
+            lambda *_: act.startActivityForResult(chooser, req_code),
             0.15,
         )
+
         return True
 
     except Exception as e:
         _log(f"Picker failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
