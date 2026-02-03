@@ -150,7 +150,7 @@ jobs:
 
               # buildozer can be interactive; piping "yes" prevents stalls.
               # IMPORTANT: disable pipefail so the SIGPIPE exit code from `yes`
-              # (141) doesn't fail the CI job after a successful build.
+              # (141) does not fail the CI job after a successful build.
               set +o pipefail
               yes | "${BUILD_CMD}" android update || true
               yes | "${BUILD_CMD}" android debug
