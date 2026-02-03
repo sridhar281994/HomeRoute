@@ -30,52 +30,12 @@ def _strip_file_scheme(p: str) -> str:
 
 
 # ------------------------------------------------------------
-# 🔥 IMAGE NORMALIZATION (CRITICAL FIX)
-# ------------------------------------------------------------
-def _normalize_image_to_jpeg(path: str) -> str:
-    """
-    Android-safe normalization using Bitmap (not PIL).
-    This converts Google Photos / AVIF / HEIC proxy streams
-    into REAL JPEG bytes.
-    """
-    try:
-        _log(f"Android bitmap normalize → JPEG: {path}")
-
-        from jnius import autoclass
-
-        BitmapFactory = autoclass("android.graphics.BitmapFactory")
-        Bitmap = autoclass("android.graphics.Bitmap")
-        FileOutputStream = autoclass("java.io.FileOutputStream")
-
-        bmp = BitmapFactory.decodeFile(path)
-
-        if bmp is None:
-            raise RuntimeError("Bitmap decode failed")
-
-        out = path.rsplit(".", 1)[0] + "_final.jpg"
-        fos = FileOutputStream(out)
-
-        bmp.compress(Bitmap.CompressFormat.JPEG, 90, fos)
-        fos.flush()
-        fos.close()
-        bmp.recycle()
-
-        _log(f"Bitmap normalized OK: {out}")
-        return out
-
-    except Exception as e:
-        _log(f"Bitmap normalization failed: {e}")
-        raise RuntimeError("Invalid image file")
-
-
-
-# ------------------------------------------------------------
-# ANDROID content:// → LOCAL CACHE
+# ANDROID content:// → LOCAL CACHE (BYTES ONLY)
 # ------------------------------------------------------------
 def _android_copy_content_uri_to_cache(uri: str) -> str:
     """
-    Copy Android content:// URI into app cache.
-    PyJNIus-safe and OEM-safe.
+    Copies content:// URI into app cache as REAL BYTES.
+    No decoding. No normalization. No assumptions.
     """
     _log(f"Copying content URI → cache: {uri}")
 
@@ -100,7 +60,7 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     except Exception:
         mime = ""
 
-    # ---------- filename ----------
+    # -------- filename --------
     display_name = ""
     cursor = None
     try:
@@ -138,11 +98,13 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
 
     if out_file.exists():
         root, ext = os.path.splitext(display_name)
-        out_file = File(cache_dir, f"{root}_{int(time.time()*1000)}{ext}")
+        out_file = File(
+            cache_dir, f"{root}_{int(time.time() * 1000)}{ext}"
+        )
 
     ins = resolver.openInputStream(uri_obj)
     if ins is None:
-        raise OSError("Unable to open input stream")
+        raise RuntimeError("Unable to open input stream")
 
     outs = FileOutputStream(out_file)
     buf = Array.newInstance(ByteClass.TYPE, 8192)
@@ -170,9 +132,13 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
 
 
 # ------------------------------------------------------------
-# PATH NORMALIZER (🔥 FIX WIRED HERE 🔥)
+# PATH NORMALIZER (PRODUCTION-SAFE)
 # ------------------------------------------------------------
 def ensure_local_path(p: str) -> str:
+    """
+    Guarantees a REAL local file path with REAL bytes.
+    Rejects cloud / preview / zero-byte images.
+    """
     p = str(p or "").strip()
     if not p:
         raise ValueError("Empty path")
@@ -185,29 +151,39 @@ def ensure_local_path(p: str) -> str:
     if p.startswith("content://"):
         local_path = _android_copy_content_uri_to_cache(p)
 
-        if is_image_path(local_path):
-            try:
-                return _normalize_image_to_jpeg(local_path)
-            except Exception as e:
-                _log(f"Normalization hard-failed: {e}")
-                raise   # ❗ DO NOT SKIP HERE ANYMORE
+        # HARD GUARDS — DO NOT REMOVE
+        if not os.path.exists(local_path):
+            raise RuntimeError("File copy failed")
+
+        size = os.path.getsize(local_path)
+        if size < 1024:
+            raise RuntimeError(
+                "Selected image is not stored on device. "
+                "Please download it or select from Files."
+            )
 
         return local_path
+
+    # file:///storage/... case
+    if not os.path.exists(p):
+        raise RuntimeError("Selected file does not exist")
+
+    if os.path.getsize(p) < 1024:
+        raise RuntimeError("Invalid or empty file")
 
     return p
 
 
 def ensure_local_paths(paths: Iterable[str]) -> list[str]:
-    out = []
+    out: list[str] = []
     for p in paths or []:
         try:
             lp = ensure_local_path(p)
             if lp and lp not in out:
                 out.append(lp)
         except Exception as e:
-            _log(f"Path normalize failed: {p} → {e}")
+            _log(f"Path rejected: {p} → {e}")
     return out
-
 
 
 # ------------------------------------------------------------
@@ -220,9 +196,6 @@ def is_image_path(p: str) -> bool:
         ".jpeg",
         ".webp",
         ".gif",
-        ".avif",
-        ".heic",
-        ".heif",
     }
 
 
@@ -237,7 +210,7 @@ def is_video_path(p: str) -> bool:
 
 
 # ------------------------------------------------------------
-# ANDROID SYSTEM PICKER
+# ANDROID FILE-SYSTEM PICKER (NO GALLERY)
 # ------------------------------------------------------------
 def android_open_gallery(
     *,
@@ -246,7 +219,10 @@ def android_open_gallery(
     mime_types: list[str] | None = None,
 ) -> bool:
     """
-    Android SAF picker with OEM fallback.
+    FILE-SYSTEM picker only.
+    No Google Photos.
+    No cloud providers.
+    Stable on Android 11–14.
     """
 
     if platform != "android":
@@ -261,11 +237,9 @@ def android_open_gallery(
         Intent = autoclass("android.content.Intent")
         Activity = autoclass("android.app.Activity")
         JavaString = autoclass("java.lang.String")
-        Array = autoclass("java.lang.reflect.Array")
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
-        resolver = act.getContentResolver()
 
         req_code = 13579
 
@@ -292,22 +266,10 @@ def android_open_gallery(
                 for i in range(clip.getItemCount()):
                     uri = clip.getItemAt(i).getUri()
                     if uri:
-                        try:
-                            resolver.takePersistableUriPermission(
-                                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            )
-                        except Exception:
-                            pass
                         out.append(str(uri.toString()))
             else:
                 uri = data.getData()
                 if uri:
-                    try:
-                        resolver.takePersistableUriPermission(
-                            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                    except Exception:
-                        pass
                     out.append(str(uri.toString()))
 
             _deliver(out)
@@ -318,49 +280,21 @@ def android_open_gallery(
         if not mimes:
             mimes = ["image/*"]
 
-        saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
-        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        intent = Intent(Intent.ACTION_GET_CONTENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.setType(mimes[0])
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-        if len(mimes) == 1:
-            saf_intent.setType(mimes[0])
-        else:
-            saf_intent.setType("*/*")
-            arr = Array.newInstance(JavaString, len(mimes))
-            for i, m in enumerate(mimes):
-                Array.set(arr, i, JavaString(m))
-            saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
-
-        saf_intent.addFlags(
-            Intent.FLAG_GRANT_READ_URI_PERMISSION
-            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-        )
-
-        if saf_intent.resolveActivity(pm) is not None:
-            chooser = Intent.createChooser(
-                saf_intent,
-                JavaString("Select file(s)"),
-            )
-            Clock.schedule_once(
-                lambda *_: act.startActivityForResult(chooser, req_code),
-                0.15,
-            )
-            return True
-
-        get_intent = Intent(Intent.ACTION_GET_CONTENT)
-        get_intent.addCategory(Intent.CATEGORY_OPENABLE)
-        get_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        get_intent.setType(mimes[0])
-        get_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
-        if get_intent.resolveActivity(pm) is None:
-            _log("No picker available on this device")
+        if intent.resolveActivity(pm) is None:
+            _log("No file picker available")
             return False
 
         chooser = Intent.createChooser(
-            get_intent,
+            intent,
             JavaString("Select file(s)"),
         )
+
         Clock.schedule_once(
             lambda *_: act.startActivityForResult(chooser, req_code),
             0.15,
@@ -373,8 +307,12 @@ def android_open_gallery(
         traceback.print_exc()
         return False
 
+
+# ------------------------------------------------------------
+# OPTIONAL CALLBACK EXAMPLE
+# ------------------------------------------------------------
 def _on_images_selected(self, uris):
-    print("RAW URIS:", uris)
+    _log(f"RAW URIS: {uris}")
 
     if not uris:
         self.show_toast("No image selected")
@@ -382,14 +320,14 @@ def _on_images_selected(self, uris):
 
     local_files = ensure_local_paths(uris)
 
-    print("LOCAL FILES:", local_files)
+    _log(f"LOCAL FILES: {local_files}")
 
     if not local_files:
-        self.show_toast("Invalid image selected")
+        self.show_toast(
+            "Please select images stored on your device "
+            "(not Google Photos cloud images)."
+        )
         return
 
     self.selected_images = local_files
-
-    # ✅ THIS WILL NOW SHOW
     self.show_toast(f"{len(local_files)} image selected")
-
