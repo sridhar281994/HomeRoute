@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import os
-import time
-from typing import Iterable
+from typing import Iterable, List
 
 from kivy.utils import platform
 
@@ -20,209 +18,79 @@ def _log(msg: str) -> None:
 
 
 # ------------------------------------------------------------
-# FILE:// STRIPPER
+# ANDROID URI → JPEG BYTES (THE CORE FIX)
 # ------------------------------------------------------------
-def _strip_file_scheme(p: str) -> str:
-    p = str(p or "").strip()
-    if p.startswith("file://"):
-        return p[len("file://"):]
-    return p
-
-
-# ------------------------------------------------------------
-# ANDROID content:// → LOCAL CACHE (BYTES ONLY)
-# ------------------------------------------------------------
-def _android_copy_content_uri_to_cache(uri: str) -> str:
+def android_uri_to_jpeg_bytes(uri: str) -> bytes:
     """
-    Copies content:// URI into app cache as REAL BYTES.
-    No decoding. No normalization. No assumptions.
+    Android-native decode:
+    content:// URI
+        → ContentResolver.openInputStream
+        → BitmapFactory.decodeStream
+        → Bitmap.compress(JPEG)
+        → bytes
+
+    Works for:
+    - Camera
+    - Gallery
+    - Google Photos
+    - Android Photo Picker
+    - HEIC / AVIF / WEBP
     """
-    _log(f"Copying content URI → cache: {uri}")
+
+    if platform != "android":
+        raise RuntimeError("android_uri_to_jpeg_bytes called on non-Android")
 
     from jnius import autoclass
 
     PythonActivity = autoclass("org.kivy.android.PythonActivity")
     Uri = autoclass("android.net.Uri")
-    OpenableColumns = autoclass("android.provider.OpenableColumns")
-    File = autoclass("java.io.File")
-    FileOutputStream = autoclass("java.io.FileOutputStream")
-    ByteClass = autoclass("java.lang.Byte")
-    Array = autoclass("java.lang.reflect.Array")
+    BitmapFactory = autoclass("android.graphics.BitmapFactory")
+    Bitmap = autoclass("android.graphics.Bitmap")
+    ByteArrayOutputStream = autoclass("java.io.ByteArrayOutputStream")
 
     act = PythonActivity.mActivity
-    ctx = act.getApplicationContext()
-    resolver = ctx.getContentResolver()
-    uri_obj = Uri.parse(str(uri))
+    resolver = act.getContentResolver()
 
-    # MIME (used only for extension hint)
-    try:
-        mime = str(resolver.getType(uri_obj) or "").strip()
-    except Exception:
-        mime = ""
-
-    # -------- filename --------
-    display_name = ""
-    cursor = None
-    try:
-        cursor = resolver.query(uri_obj, None, None, None, None)
-        if cursor and cursor.moveToFirst():
-            idx = int(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME))
-            if idx >= 0:
-                display_name = str(cursor.getString(idx) or "")
-    finally:
-        try:
-            if cursor:
-                cursor.close()
-        except Exception:
-            pass
-
-    if not display_name:
-        display_name = f"picked_{int(time.time())}"
-
-    display_name = (
-        display_name.replace("/", "_")
-        .replace("\\", "_")
-        .replace(":", "_")
-    )
-
-    if "." not in display_name:
-        if mime.startswith("image/"):
-            display_name += ".jpg"
-        elif mime.startswith("video/"):
-            display_name += ".mp4"
-        else:
-            display_name += ".bin"
-
-    cache_dir = ctx.getCacheDir()
-    out_file = File(cache_dir, display_name)
-
-    if out_file.exists():
-        root, ext = os.path.splitext(display_name)
-        out_file = File(
-            cache_dir, f"{root}_{int(time.time() * 1000)}{ext}"
-        )
-
+    uri_obj = Uri.parse(uri)
     ins = resolver.openInputStream(uri_obj)
-    if ins is None:
-        raise RuntimeError("Unable to open input stream")
 
-    outs = FileOutputStream(out_file)
-    buf = Array.newInstance(ByteClass.TYPE, 8192)
+    if ins is None:
+        raise RuntimeError("Unable to open image stream")
 
     try:
-        while True:
-            n = ins.read(buf)
-            if n == -1:
-                break
-            outs.write(buf, 0, n)
-        outs.flush()
+        bmp = BitmapFactory.decodeStream(ins)
     finally:
-        try:
-            ins.close()
-        except Exception:
-            pass
-        try:
-            outs.close()
-        except Exception:
-            pass
+        ins.close()
 
-    path = str(out_file.getAbsolutePath())
-    _log(f"Copied to cache: {path}")
-    return path
+    if bmp is None:
+        raise RuntimeError("Bitmap decode failed")
 
+    baos = ByteArrayOutputStream()
+    ok = bmp.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+    bmp.recycle()
 
-# ------------------------------------------------------------
-# PATH NORMALIZER (PRODUCTION-SAFE)
-# ------------------------------------------------------------
-def ensure_local_path(p: str) -> str:
-    """
-    Guarantees a REAL local file path with REAL bytes.
-    Rejects cloud / preview / zero-byte images.
-    """
-    p = str(p or "").strip()
-    if not p:
-        raise ValueError("Empty path")
+    if not ok:
+        raise RuntimeError("Bitmap compress failed")
 
-    p = _strip_file_scheme(p)
+    jpeg_bytes = bytes(baos.toByteArray())
+    if len(jpeg_bytes) < 1024:
+        raise RuntimeError("Decoded image too small")
 
-    if platform != "android":
-        return p
-
-    if p.startswith("content://"):
-        local_path = _android_copy_content_uri_to_cache(p)
-
-        # HARD GUARDS — DO NOT REMOVE
-        if not os.path.exists(local_path):
-            raise RuntimeError("File copy failed")
-
-        size = os.path.getsize(local_path)
-        if size < 1024:
-            raise RuntimeError(
-                "Selected image is not stored on device. "
-                "Please download it or select from Files."
-            )
-
-        return local_path
-
-    # file:///storage/... case
-    if not os.path.exists(p):
-        raise RuntimeError("Selected file does not exist")
-
-    if os.path.getsize(p) < 1024:
-        raise RuntimeError("Invalid or empty file")
-
-    return p
-
-
-def ensure_local_paths(paths: Iterable[str]) -> list[str]:
-    out: list[str] = []
-    for p in paths or []:
-        try:
-            lp = ensure_local_path(p)
-            if lp and lp not in out:
-                out.append(lp)
-        except Exception as e:
-            _log(f"Path rejected: {p} → {e}")
-    return out
+    return jpeg_bytes
 
 
 # ------------------------------------------------------------
-# FILE TYPE HELPERS
-# ------------------------------------------------------------
-def is_image_path(p: str) -> bool:
-    return os.path.splitext(p.lower())[1] in {
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".webp",
-        ".gif",
-    }
-
-
-def is_video_path(p: str) -> bool:
-    return os.path.splitext(p.lower())[1] in {
-        ".mp4",
-        ".mov",
-        ".m4v",
-        ".avi",
-        ".mkv",
-    }
-
-
-# ------------------------------------------------------------
-# ANDROID FILE-SYSTEM PICKER (NO GALLERY)
+# ANDROID SYSTEM PICKER (SAFE, MODERN)
 # ------------------------------------------------------------
 def android_open_gallery(
     *,
     on_selection,
     multiple: bool = False,
-    mime_types: list[str] | None = None,
+    mime_types: List[str] | None = None,
 ) -> bool:
     """
-    FILE-SYSTEM picker only.
-    No Google Photos.
-    No cloud providers.
-    Stable on Android 11–14.
+    Opens Android system picker.
+    Returns ONLY content:// URIs.
     """
 
     if platform != "android":
@@ -237,17 +105,18 @@ def android_open_gallery(
         Intent = autoclass("android.content.Intent")
         Activity = autoclass("android.app.Activity")
         JavaString = autoclass("java.lang.String")
+        Array = autoclass("java.lang.reflect.Array")
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
 
-        req_code = 13579
+        REQ_CODE = 13579
 
-        def _deliver(sel):
-            Clock.schedule_once(lambda *_: on_selection(list(sel or [])), 0)
+        def _deliver(items):
+            Clock.schedule_once(lambda *_: on_selection(list(items or [])), 0)
 
         def _on_activity_result(requestCode, resultCode, data):
-            if requestCode != req_code:
+            if requestCode != REQ_CODE:
                 return
 
             try:
@@ -276,27 +145,39 @@ def android_open_gallery(
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        mimes = [str(x).strip() for x in (mime_types or []) if str(x).strip()]
+        mimes = [m.strip() for m in (mime_types or []) if m.strip()]
         if not mimes:
             mimes = ["image/*"]
 
-        intent = Intent(Intent.ACTION_GET_CONTENT)
+        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         intent.addCategory(Intent.CATEGORY_OPENABLE)
-        intent.setType(mimes[0])
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        if len(mimes) == 1:
+            intent.setType(mimes[0])
+        else:
+            intent.setType("*/*")
+            arr = Array.newInstance(JavaString, len(mimes))
+            for i, m in enumerate(mimes):
+                Array.set(arr, i, JavaString(m))
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+
+        intent.addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION
+            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+        )
 
         if intent.resolveActivity(pm) is None:
-            _log("No file picker available")
+            _log("No picker available")
             return False
 
         chooser = Intent.createChooser(
             intent,
-            JavaString("Select file(s)"),
+            JavaString("Select image(s)"),
         )
 
         Clock.schedule_once(
-            lambda *_: act.startActivityForResult(chooser, req_code),
+            lambda *_: act.startActivityForResult(chooser, REQ_CODE),
             0.15,
         )
         return True
@@ -309,25 +190,28 @@ def android_open_gallery(
 
 
 # ------------------------------------------------------------
-# OPTIONAL CALLBACK EXAMPLE
+# EXAMPLE CALLBACK (CLIENT SIDE)
 # ------------------------------------------------------------
-def _on_images_selected(self, uris):
+def _on_images_selected(self, uris: Iterable[str]):
     _log(f"RAW URIS: {uris}")
 
     if not uris:
         self.show_toast("No image selected")
         return
 
-    local_files = ensure_local_paths(uris)
+    images: list[bytes] = []
 
-    _log(f"LOCAL FILES: {local_files}")
+    for uri in uris:
+        try:
+            jpeg_bytes = android_uri_to_jpeg_bytes(uri)
+            images.append(jpeg_bytes)
+        except Exception as e:
+            _log(f"Image rejected: {e}")
 
-    if not local_files:
-        self.show_toast(
-            "Please select images stored on your device "
-            "(not Google Photos cloud images)."
-        )
+    if not images:
+        self.show_toast("Invalid image selected")
         return
 
-    self.selected_images = local_files
-    self.show_toast(f"{len(local_files)} image selected")
+    # STORE BYTES — NOT PATHS
+    self.selected_images = images
+    self.show_toast(f"{len(images)} image selected")
