@@ -46,6 +46,7 @@ from frontend_app.utils.storage import clear_session, get_session, get_user, set
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
 from frontend_app.utils.android_filepicker import android_open_gallery, ensure_local_paths, is_image_path, is_video_path
+from frontend_app.utils.android_filepicker import android_open_gallery, ensure_local_paths
 
 
 def _sync_app_badge_best_effort() -> None:
@@ -234,7 +235,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
             self.gesture_bind_window()
         except Exception:
             pass
-
+        
     def on_leave(self, *args):
         try:
             self.gesture_unbind_window()
