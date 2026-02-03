@@ -43,10 +43,11 @@ jobs:
           set -euo pipefail
           IMAGE="kivy/buildozer:latest"
           docker run --rm \
+            --entrypoint bash \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -w /home/user/hostcwd \
             "${IMAGE}" \
-            bash -lc '
+            -lc '
               set -euo pipefail
 
               KS="mobile/flatnow-debug.keystore"
@@ -91,13 +92,14 @@ jobs:
           done
 
           docker run --rm \
+            --entrypoint bash \
             -e HOME=/home/user \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
             -w /home/user/hostcwd/mobile \
             "${IMAGE}" \
-            bash -lc '
+            -lc '
               set -euo pipefail
 
               mkdir -p ~/.android
