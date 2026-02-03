@@ -73,6 +73,31 @@ def _verify_ca_bundle() -> str:
     return certifi.where()
 
 
+def _guess_content_type(filename: str) -> str:
+    """
+    Mobile uploads often include modern formats (AVIF/HEIC) that Python's
+    `mimetypes` may not know by default. Ensure we send a correct part
+    content-type so the backend can process and Cloudinary can detect format.
+    """
+    name = (filename or "").strip()
+    ct = mimetypes.guess_type(name)[0]
+    if ct:
+        return ct.strip()
+    ext = os.path.splitext(name.lower())[1]
+    return {
+        ".heic": "image/heic",
+        ".heif": "image/heif",
+        ".avif": "image/avif",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".mp4": "video/mp4",
+        ".mov": "video/quicktime",
+    }.get(ext, "application/octet-stream")
+
+
 def _request(method: str, url: str, **kwargs) -> requests.Response:
     timeout = kwargs.pop("timeout", DEFAULT_TIMEOUT)
     verify = kwargs.pop("verify", _verify_ca_bundle())
@@ -331,7 +356,7 @@ def api_owner_publish_property(*, payload: dict[str, Any], file_paths: list[str]
         for fp in paths:
             f = stack.enter_context(open(fp, "rb"))
             fname = os.path.basename(fp)
-            ctype = (mimetypes.guess_type(fname)[0] or "application/octet-stream").strip()
+            ctype = _guess_content_type(fname)
             files.append(("files", (fname, f, ctype)))
         resp = _request(
             "POST",
@@ -372,7 +397,8 @@ def api_upload_property_media(*, property_id: int, file_path: str, sort_order: i
     """
     url = f"{_base_url()}/properties/{int(property_id)}/images"
     with open(file_path, "rb") as f:
-        files = {"file": (os.path.basename(file_path), f)}
+        fname = os.path.basename(file_path)
+        files = {"file": (fname, f, _guess_content_type(fname))}
         resp = _request(
             "POST",
             url,
@@ -411,7 +437,8 @@ def api_me_update(*, name: str) -> dict[str, Any]:
 def api_me_upload_profile_image(*, file_path: str) -> dict[str, Any]:
     url = f"{_base_url()}/me/profile-image"
     with open(file_path, "rb") as f:
-        files = {"file": (os.path.basename(file_path), f)}
+        fname = os.path.basename(file_path)
+        files = {"file": (fname, f, _guess_content_type(fname))}
         resp = _request("POST", url, files=files, headers=_headers(), timeout=30, verify=_verify_ca_bundle())
     return _handle(resp)
 

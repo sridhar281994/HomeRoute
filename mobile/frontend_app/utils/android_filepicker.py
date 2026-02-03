@@ -45,6 +45,13 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
     resolver = ctx.getContentResolver()
     uri_obj = Uri.parse(str(uri))
 
+    # Try to read the real MIME type early (needed to preserve correct extension).
+    mime = ""
+    try:
+        mime = str(resolver.getType(uri_obj) or "").strip()
+    except Exception:
+        mime = ""
+
     # -------- filename --------
     display_name = ""
     cursor = None
@@ -66,14 +73,54 @@ def _android_copy_content_uri_to_cache(uri: str) -> str:
 
     display_name = display_name.replace("/", "_").replace("\\", "_").replace(":", "_")
 
-    # ensure extension (important for your is_image_path logic)
+    # Ensure extension (important for is_image_path logic + correct multipart content-type).
+    # Also fix wrong/misleading extensions (Android Photo Picker can return AVIF/HEIC
+    # while DISPLAY_NAME still ends with .jpg).
+    def _preferred_ext_for_mime(m: str) -> str:
+        m = (m or "").lower().strip()
+        if m in {"image/heic", "image/heif"}:
+            return ".heic"
+        if m == "image/avif":
+            return ".avif"
+        if m in {"image/jpeg", "image/jpg"}:
+            return ".jpg"
+        if m == "image/png":
+            return ".png"
+        if m == "image/webp":
+            return ".webp"
+        if m == "image/gif":
+            return ".gif"
+        if m == "video/mp4":
+            return ".mp4"
+        if m == "video/quicktime":
+            return ".mov"
+        return ""
+
+    preferred_ext = _preferred_ext_for_mime(mime)
+
     if "." not in display_name:
         try:
-            mime = resolver.getType(uri_obj) or ""
-            if mime.startswith("image/"):
+            if preferred_ext:
+                display_name += preferred_ext
+            elif (mime or "").startswith("image/"):
+                # Default to jpg for unknown images (most compatible).
                 display_name += ".jpg"
-            elif mime.startswith("video/"):
+            elif (mime or "").startswith("video/"):
                 display_name += ".mp4"
+        except Exception:
+            pass
+    else:
+        # If a MIME type is known and doesn't match the current extension, rename.
+        # This prevents uploading AVIF/HEIC bytes as "image/jpeg" which Cloudinary rejects.
+        try:
+            if preferred_ext:
+                root, ext = os.path.splitext(display_name)
+                ext_l = (ext or "").lower()
+                # allow .jpeg as equivalent to .jpg
+                if preferred_ext == ".jpg" and ext_l in {".jpg", ".jpeg"}:
+                    pass
+                elif ext_l != preferred_ext:
+                    display_name = f"{root}{preferred_ext}"
         except Exception:
             pass
 
@@ -158,7 +205,16 @@ def ensure_local_paths(paths: Iterable[str]) -> list[str]:
 
 
 def is_image_path(p: str) -> bool:
-    return os.path.splitext(p.lower())[1] in {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+    return os.path.splitext(p.lower())[1] in {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+        ".gif",
+        ".avif",
+        ".heic",
+        ".heif",
+    }
 
 
 def is_video_path(p: str) -> bool:
