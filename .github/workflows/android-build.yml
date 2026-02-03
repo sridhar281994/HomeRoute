@@ -144,6 +144,10 @@ jobs:
                 -keypass "${PASS}" \
               | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p"
 
+              # buildozer can be interactive; piping "yes" prevents stalls.
+              # IMPORTANT: disable pipefail so the SIGPIPE exit code from `yes`
+              # (141) doesn't fail the CI job after a successful build.
+              set +o pipefail
               yes | buildozer android update || true
               yes | buildozer android debug
             '
