@@ -3932,7 +3932,10 @@ def upload_property_image(
                 raw=stored_bytes,
                 resource_type=("image" if is_image else "video"),
                 public_id=f"property_{p.id}_{token}",
-                filename=("upload.jpg" if is_image else ((file.filename or "").strip() or safe_name)),
+                # Preserve extension so Cloudinary can detect format when Pillow cannot
+                # (e.g. AVIF/HEIC/unknown-but-valid inputs). `safe_name` already
+                # contains `_safe_upload_ext(...)` output.
+                filename=(((file.filename or "").strip() or safe_name)),
                 content_type=stored_content_type,
             )
         except Exception as e:
