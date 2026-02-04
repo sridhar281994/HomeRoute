@@ -55,8 +55,8 @@ def android_uri_to_jpeg_bytes(uri: str) -> bytes:
         if w > max_side or h > max_side:
             scale = float(max_side) / max(w, h)
             bmp = Bitmap.createScaledBitmap(bmp, int(w * scale), int(h * scale), True)
-    except Exception:
-        pass
+    except Exception as e:
+        _log(f"Downscale skipped: {e}")
 
     baos = ByteArrayOutputStream()
     ok = bmp.compress(Bitmap.CompressFormat.JPEG, 90, baos)
@@ -69,7 +69,25 @@ def android_uri_to_jpeg_bytes(uri: str) -> bytes:
     if len(data) < 1024:
         raise RuntimeError("Decoded image too small")
 
+    _log(f"JPEG bytes ready: {len(data)} bytes")
     return data
+
+
+# ------------------------------------------------------------
+# BATCH CONVERTER (URIS → JPEG BYTES LIST)
+# ------------------------------------------------------------
+def android_uris_to_jpeg_bytes(uris: Iterable[str]) -> List[bytes]:
+    if platform != "android":
+        raise RuntimeError("android_uris_to_jpeg_bytes called on non-Android")
+
+    out: List[bytes] = []
+    for u in uris or []:
+        try:
+            b = android_uri_to_jpeg_bytes(u)
+            out.append(b)
+        except Exception as e:
+            _log(f"URI rejected: {u} → {e}")
+    return out
 
 
 # ------------------------------------------------------------
@@ -129,6 +147,7 @@ def android_open_gallery(
                 if uri:
                     out.append(str(uri.toString()))
 
+            _log(f"URIs selected: {out}")
             _deliver(out)
 
         activity.bind(on_activity_result=_on_activity_result)
@@ -137,7 +156,6 @@ def android_open_gallery(
         if not mimes:
             mimes = ["image/*"]
 
-        # ---------- Try modern SAF picker ----------
         saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
         saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
@@ -161,7 +179,6 @@ def android_open_gallery(
             Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.15)
             return True
 
-        # ---------- Fallback: legacy picker ----------
         legacy_intent = Intent(Intent.ACTION_GET_CONTENT)
         legacy_intent.addCategory(Intent.CATEGORY_OPENABLE)
         legacy_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
