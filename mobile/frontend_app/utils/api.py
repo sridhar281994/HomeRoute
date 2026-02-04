@@ -369,23 +369,17 @@ def api_owner_publish_property(*, payload: dict[str, Any], file_paths: list[str]
         )
     return _handle(resp)
 
-def api_owner_publish_property_bytes(payload: dict, files_bytes: list[bytes]) -> dict:
+def api_owner_publish_property_bytes(*, payload: dict[str, Any], files_bytes: list[bytes]) -> dict[str, Any]:
     """
     Atomic publish (create + upload) using in-memory bytes (Android-safe).
+    Backend endpoint: POST /owner/properties/publish
     """
-    import requests
-    from frontend_app.utils.storage import get_session
-    from frontend_app.utils.api import API_BASE_URL, _headers  # adjust if your names differ
+    url = f"{_base_url()}/owner/properties/publish"
 
-    url = f"{API_BASE_URL}/owner/properties/publish"
+    form = {"payload": json.dumps(payload or {}, ensure_ascii=False)}
 
-    sess = get_session() or {}
-    token = sess.get("token")
-
-    headers = _headers(token)
-
-    files = []
-    for i, b in enumerate(files_bytes):
+    files: list[tuple[str, tuple[str, Any, str]]] = []
+    for i, b in enumerate(files_bytes or []):
         files.append(
             (
                 "files",
@@ -393,13 +387,16 @@ def api_owner_publish_property_bytes(payload: dict, files_bytes: list[bytes]) ->
             )
         )
 
-    data = {
-        "payload": json.dumps(payload),
-    }
-
-    resp = requests.post(url, headers=headers, data=data, files=files, timeout=60)
-    resp.raise_for_status()
-    return resp.json()
+    resp = _request(
+        "POST",
+        url,
+        data=form,
+        files=files,
+        headers=_headers(),
+        timeout=120,
+        verify=_verify_ca_bundle(),
+    )
+    return _handle(resp)
 
 def api_owner_update_property(*, property_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     """
