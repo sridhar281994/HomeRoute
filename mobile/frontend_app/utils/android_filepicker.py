@@ -118,16 +118,12 @@ def android_open_gallery(
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
         Activity = autoclass("android.app.Activity")
-        JavaString = autoclass("java.lang.String")
-        Array = autoclass("java.lang.reflect.Array")
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
-        REQ_CODE = 13579
+        REQ_CODE = 9911
 
-        def _deliver(items):
-            Clock.schedule_once(lambda *_: on_selection(list(items or [])), 0)
-
+        # Hold reference so GC doesn't kill it
         def _on_activity_result(requestCode, resultCode, data):
             if requestCode != REQ_CODE:
                 return
@@ -138,55 +134,43 @@ def android_open_gallery(
                 pass
 
             if resultCode != Activity.RESULT_OK or data is None:
-                _deliver([])
+                Clock.schedule_once(lambda *_: on_selection([]), 0)
                 return
 
             out = []
-            clip = data.getClipData()
-            if clip:
-                for i in range(clip.getItemCount()):
-                    uri = clip.getItemAt(i).getUri()
+
+            try:
+                clip = data.getClipData()
+                if clip:
+                    for i in range(clip.getItemCount()):
+                        uri = clip.getItemAt(i).getUri()
+                        if uri:
+                            out.append(str(uri.toString()))
+                else:
+                    uri = data.getData()
                     if uri:
                         out.append(str(uri.toString()))
-            else:
-                uri = data.getData()
-                if uri:
-                    out.append(str(uri.toString()))
+            except Exception as e:
+                print("[ANDROID_PICKER] URI parse failed:", e)
 
-            _deliver(out)
+            Clock.schedule_once(lambda *_: on_selection(out), 0)
 
         activity.bind(on_activity_result=_on_activity_result)
 
-        mimes = [m.strip() for m in (mime_types or []) if m.strip()]
-        if not mimes:
-            mimes = ["image/*"]
-
-        # ✅ PRIMARY: Android native gallery
         intent = Intent(Intent.ACTION_PICK)
         intent.setType("image/*")
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-        if intent.resolveActivity(pm) is not None:
-            Clock.schedule_once(lambda *_: act.startActivityForResult(intent, REQ_CODE), 0.1)
-            return True
+        if intent.resolveActivity(pm) is None:
+            print("[ANDROID_PICKER] ❌ No gallery app found")
+            return False
 
-        # ✅ FALLBACK: System file picker
-        intent2 = Intent(Intent.ACTION_GET_CONTENT)
-        intent2.addCategory(Intent.CATEGORY_OPENABLE)
-        intent2.setType("image/*")
-        intent2.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        intent2.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
-        if intent2.resolveActivity(pm) is not None:
-            Clock.schedule_once(lambda *_: act.startActivityForResult(intent2, REQ_CODE), 0.1)
-            return True
-
-        print("[ANDROID_PICKER] ❌ No activity can handle picker intent")
-        return False
+        Clock.schedule_once(lambda *_: act.startActivityForResult(intent, REQ_CODE), 0.1)
+        return True
 
     except Exception as e:
-        print(f"[ANDROID_PICKER] ❌ Picker crashed: {e}")
+        print(f"[ANDROID_PICKER] ❌ Picker crash: {e}")
         import traceback
         traceback.print_exc()
         return False
