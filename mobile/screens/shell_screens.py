@@ -46,6 +46,8 @@ from frontend_app.utils.storage import clear_session, get_session, get_user, set
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
 from frontend_app.utils.android_filepicker import android_open_gallery, android_uri_to_jpeg_bytes
+from frontend_app.utils.api import api_owner_publish_property_bytes
+
 def _sync_app_badge_best_effort() -> None:
     """
     Keep the shared MobileTopBar avatar in sync with session changes.
