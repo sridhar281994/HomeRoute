@@ -470,6 +470,29 @@ def api_me_upload_profile_image(*, file_path: str) -> dict[str, Any]:
         resp = _request("POST", url, files=files, headers=_headers(), timeout=30, verify=_verify_ca_bundle())
     return _handle(resp)
 
+def api_me_upload_profile_image_bytes(*, raw: bytes) -> dict[str, Any]:
+    """
+    Upload profile image using in-memory JPEG bytes (Android-safe).
+    Backend endpoint: POST /me/profile-image
+    """
+    url = f"{_base_url()}/me/profile-image"
+
+    files = {
+        "file": ("profile.jpg", raw, "image/jpeg"),
+    }
+
+    resp = _request(
+        "POST",
+        url,
+        files=files,
+        headers=_headers(),
+        timeout=60,
+        verify=_verify_ca_bundle(),
+    )
+    return _handle(resp)
+
+
+
 
 def api_me_change_email_request_otp(*, new_email: str) -> dict[str, Any]:
     url = f"{_base_url()}/me/change-email/request-otp"
