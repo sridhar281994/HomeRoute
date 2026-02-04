@@ -106,10 +106,6 @@ def android_open_gallery(
     multiple: bool = False,
     mime_types: list[str] | None = None,
 ) -> bool:
-    """
-    Opens native Android gallery / document picker.
-    Returns content:// URIs.
-    """
     if platform != "android":
         return False
 
@@ -127,7 +123,7 @@ def android_open_gallery(
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
 
-        REQ_CODE = 4242
+        REQ_CODE = 13579
 
         def _deliver(items):
             Clock.schedule_once(lambda *_: on_selection(list(items or [])), 0)
@@ -158,7 +154,6 @@ def android_open_gallery(
                 if uri:
                     out.append(str(uri.toString()))
 
-            _log(f"URIs selected: {out}")
             _deliver(out)
 
         activity.bind(on_activity_result=_on_activity_result)
@@ -167,40 +162,34 @@ def android_open_gallery(
         if not mimes:
             mimes = ["image/*"]
 
-        # ---------- Native SAF Picker ----------
-        saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
-        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        # ✅ Always use SAF (this fixes "No picker available")
+        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.setType(mimes[0])
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
 
-        if len(mimes) == 1:
-            saf_intent.setType(mimes[0])
-        else:
-            saf_intent.setType("*/*")
+        if len(mimes) > 1:
             arr = Array.newInstance(JavaString, len(mimes))
             for i, m in enumerate(mimes):
                 Array.set(arr, i, JavaString(m))
-            saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
-        saf_intent.addFlags(
+        intent.addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION
             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
         )
 
-        if saf_intent.resolveActivity(pm) is not None:
-            chooser = Intent.createChooser(
-                saf_intent, JavaString("Select image(s)")
-            )
-            Clock.schedule_once(
-                lambda *_: act.startActivityForResult(chooser, REQ_CODE),
-                0.15,
-            )
-            return True
+        if intent.resolveActivity(pm) is None:
+            print("[ANDROID_PICKER] ❌ No activity can handle picker intent")
+            return False
 
-        _log("No native picker available on this device")
-        return False
+        chooser = Intent.createChooser(intent, JavaString("Select image(s)"))
+
+        Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.2)
+        return True
 
     except Exception as e:
-        _log(f"Picker failed: {e}")
+        print("[ANDROID_PICKER] ❌ Picker crash:", e)
         import traceback
         traceback.print_exc()
         return False
