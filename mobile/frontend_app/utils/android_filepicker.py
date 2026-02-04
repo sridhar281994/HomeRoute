@@ -123,7 +123,6 @@ def android_open_gallery(
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
-
         REQ_CODE = 13579
 
         def _deliver(items):
@@ -144,7 +143,6 @@ def android_open_gallery(
 
             out = []
             clip = data.getClipData()
-
             if clip:
                 for i in range(clip.getItemCount()):
                     uri = clip.getItemAt(i).getUri()
@@ -163,34 +161,32 @@ def android_open_gallery(
         if not mimes:
             mimes = ["image/*"]
 
-        # SAF – this ALWAYS works on modern Android
-        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        intent.addCategory(Intent.CATEGORY_OPENABLE)
-        intent.setType(mimes[0])
+        # ✅ PRIMARY: Android native gallery
+        intent = Intent(Intent.ACTION_PICK)
+        intent.setType("image/*")
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-        if len(mimes) > 1:
-            arr = Array.newInstance(JavaString, len(mimes))
-            for i, m in enumerate(mimes):
-                Array.set(arr, i, JavaString(m))
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+        if intent.resolveActivity(pm) is not None:
+            Clock.schedule_once(lambda *_: act.startActivityForResult(intent, REQ_CODE), 0.1)
+            return True
 
-        intent.addFlags(
-            Intent.FLAG_GRANT_READ_URI_PERMISSION
-            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-        )
+        # ✅ FALLBACK: System file picker
+        intent2 = Intent(Intent.ACTION_GET_CONTENT)
+        intent2.addCategory(Intent.CATEGORY_OPENABLE)
+        intent2.setType("image/*")
+        intent2.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        intent2.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-        if intent.resolveActivity(pm) is None:
-            print("[ANDROID_PICKER] ❌ No activity can handle picker intent")
-            return False
+        if intent2.resolveActivity(pm) is not None:
+            Clock.schedule_once(lambda *_: act.startActivityForResult(intent2, REQ_CODE), 0.1)
+            return True
 
-        chooser = Intent.createChooser(intent, JavaString("Select image(s)"))
-
-        Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.2)
-        return True
+        print("[ANDROID_PICKER] ❌ No activity can handle picker intent")
+        return False
 
     except Exception as e:
-        print("[ANDROID_PICKER] ❌ Picker crash:", e)
+        print(f"[ANDROID_PICKER] ❌ Picker crashed: {e}")
         import traceback
         traceback.print_exc()
         return False
