@@ -14,9 +14,13 @@ def _log(msg: str) -> None:
 
 
 # ------------------------------------------------------------
-# ANDROID URI → JPEG BYTES (CORE FIX)
+# ANDROID URI → JPEG BYTES (NATIVE BITMAP PIPELINE)
 # ------------------------------------------------------------
 def android_uri_to_jpeg_bytes(uri: str) -> bytes:
+    """
+    Decode content:// URI using Android Bitmap and re-encode to JPEG bytes.
+    Works on Android 10–14 (Scoped Storage safe).
+    """
     if platform != "android":
         raise RuntimeError("android_uri_to_jpeg_bytes called on non-Android")
 
@@ -27,6 +31,7 @@ def android_uri_to_jpeg_bytes(uri: str) -> bytes:
     BitmapFactory = autoclass("android.graphics.BitmapFactory")
     Bitmap = autoclass("android.graphics.Bitmap")
     ByteArrayOutputStream = autoclass("java.io.ByteArrayOutputStream")
+    CompressFormat = autoclass("android.graphics.Bitmap$CompressFormat")
 
     act = PythonActivity.mActivity
     resolver = act.getContentResolver()
@@ -47,19 +52,21 @@ def android_uri_to_jpeg_bytes(uri: str) -> bytes:
     if bmp is None:
         raise RuntimeError("Bitmap decode failed")
 
-    # Optional downscale to avoid OOM
+    # Optional downscale to avoid OOM on very large images
     try:
         w = bmp.getWidth()
         h = bmp.getHeight()
         max_side = 2048
         if w > max_side or h > max_side:
             scale = float(max_side) / max(w, h)
-            bmp = Bitmap.createScaledBitmap(bmp, int(w * scale), int(h * scale), True)
+            bmp = Bitmap.createScaledBitmap(
+                bmp, int(w * scale), int(h * scale), True
+            )
     except Exception as e:
         _log(f"Downscale skipped: {e}")
 
     baos = ByteArrayOutputStream()
-    ok = bmp.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+    ok = bmp.compress(CompressFormat.JPEG, 90, baos)
     bmp.recycle()
 
     if not ok:
@@ -91,7 +98,7 @@ def android_uris_to_jpeg_bytes(uris: Iterable[str]) -> List[bytes]:
 
 
 # ------------------------------------------------------------
-# ANDROID SYSTEM PICKER
+# NATIVE ANDROID GALLERY PICKER (INTENT / SAF)
 # ------------------------------------------------------------
 def android_open_gallery(
     *,
@@ -99,6 +106,10 @@ def android_open_gallery(
     multiple: bool = False,
     mime_types: list[str] | None = None,
 ) -> bool:
+    """
+    Opens native Android gallery / document picker.
+    Returns content:// URIs.
+    """
     if platform != "android":
         return False
 
@@ -116,7 +127,7 @@ def android_open_gallery(
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
 
-        REQ_CODE = 13579
+        REQ_CODE = 4242
 
         def _deliver(items):
             Clock.schedule_once(lambda *_: on_selection(list(items or [])), 0)
@@ -156,6 +167,7 @@ def android_open_gallery(
         if not mimes:
             mimes = ["image/*"]
 
+        # ---------- Native SAF Picker ----------
         saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
         saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
@@ -175,22 +187,16 @@ def android_open_gallery(
         )
 
         if saf_intent.resolveActivity(pm) is not None:
-            chooser = Intent.createChooser(saf_intent, JavaString("Select image(s)"))
-            Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.15)
+            chooser = Intent.createChooser(
+                saf_intent, JavaString("Select image(s)")
+            )
+            Clock.schedule_once(
+                lambda *_: act.startActivityForResult(chooser, REQ_CODE),
+                0.15,
+            )
             return True
 
-        legacy_intent = Intent(Intent.ACTION_GET_CONTENT)
-        legacy_intent.addCategory(Intent.CATEGORY_OPENABLE)
-        legacy_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        legacy_intent.setType(mimes[0])
-        legacy_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
-        if legacy_intent.resolveActivity(pm) is not None:
-            chooser = Intent.createChooser(legacy_intent, JavaString("Select image(s)"))
-            Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.15)
-            return True
-
-        _log("No picker available on this device")
+        _log("No native picker available on this device")
         return False
 
     except Exception as e:
