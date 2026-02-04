@@ -106,6 +106,7 @@ def android_open_gallery(
     multiple: bool = False,
     mime_types: list[str] | None = None,
 ) -> bool:
+    from kivy.utils import platform
     if platform != "android":
         return False
 
@@ -162,7 +163,7 @@ def android_open_gallery(
         if not mimes:
             mimes = ["image/*"]
 
-        # ✅ Always use SAF (this fixes "No picker available")
+        # SAF – this ALWAYS works on modern Android
         intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
         intent.addCategory(Intent.CATEGORY_OPENABLE)
         intent.setType(mimes[0])
