@@ -79,9 +79,8 @@ def android_open_gallery(
     *,
     on_selection,
     multiple: bool = False,
-    mime_types: List[str] | None = None,
+    mime_types: list[str] | None = None,
 ) -> bool:
-
     if platform != "android":
         return False
 
@@ -98,6 +97,7 @@ def android_open_gallery(
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
+
         REQ_CODE = 13579
 
         def _deliver(items):
@@ -137,31 +137,44 @@ def android_open_gallery(
         if not mimes:
             mimes = ["image/*"]
 
-        intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        intent.addCategory(Intent.CATEGORY_OPENABLE)
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        # ---------- Try modern SAF picker ----------
+        saf_intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        saf_intent.addCategory(Intent.CATEGORY_OPENABLE)
+        saf_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
 
         if len(mimes) == 1:
-            intent.setType(mimes[0])
+            saf_intent.setType(mimes[0])
         else:
-            intent.setType("*/*")
+            saf_intent.setType("*/*")
             arr = Array.newInstance(JavaString, len(mimes))
             for i, m in enumerate(mimes):
                 Array.set(arr, i, JavaString(m))
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
+            saf_intent.putExtra(Intent.EXTRA_MIME_TYPES, arr)
 
-        intent.addFlags(
+        saf_intent.addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION
             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
         )
 
-        if intent.resolveActivity(pm) is None:
-            _log("No picker available")
-            return False
+        if saf_intent.resolveActivity(pm) is not None:
+            chooser = Intent.createChooser(saf_intent, JavaString("Select image(s)"))
+            Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.15)
+            return True
 
-        chooser = Intent.createChooser(intent, JavaString("Select image(s)"))
-        Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.15)
-        return True
+        # ---------- Fallback: legacy picker ----------
+        legacy_intent = Intent(Intent.ACTION_GET_CONTENT)
+        legacy_intent.addCategory(Intent.CATEGORY_OPENABLE)
+        legacy_intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
+        legacy_intent.setType(mimes[0])
+        legacy_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        if legacy_intent.resolveActivity(pm) is not None:
+            chooser = Intent.createChooser(legacy_intent, JavaString("Select image(s)"))
+            Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.15)
+            return True
+
+        _log("No picker available on this device")
+        return False
 
     except Exception as e:
         _log(f"Picker failed: {e}")
