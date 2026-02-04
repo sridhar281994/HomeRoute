@@ -100,12 +100,7 @@ def android_uris_to_jpeg_bytes(uris: Iterable[str]) -> List[bytes]:
 # ------------------------------------------------------------
 # NATIVE ANDROID GALLERY PICKER (INTENT / SAF)
 # ------------------------------------------------------------
-def android_open_gallery(
-    *,
-    on_selection,
-    multiple: bool = False,
-    mime_types: list[str] | None = None,
-) -> bool:
+def android_open_gallery(*, on_selection, multiple: bool = False, mime_types: list[str] | None = None) -> bool:
     from kivy.utils import platform
     if platform != "android":
         return False
@@ -118,59 +113,58 @@ def android_open_gallery(
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
         Activity = autoclass("android.app.Activity")
+        JavaString = autoclass("java.lang.String")
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
-        REQ_CODE = 9911
 
-        # Hold reference so GC doesn't kill it
+        REQ_CODE = 13579
+
+        def _deliver(items):
+            Clock.schedule_once(lambda *_: on_selection(list(items or [])), 0)
+
         def _on_activity_result(requestCode, resultCode, data):
             if requestCode != REQ_CODE:
                 return
-
             try:
                 activity.unbind(on_activity_result=_on_activity_result)
             except Exception:
                 pass
 
             if resultCode != Activity.RESULT_OK or data is None:
-                Clock.schedule_once(lambda *_: on_selection([]), 0)
+                _deliver([])
                 return
 
             out = []
-
-            try:
-                clip = data.getClipData()
-                if clip:
-                    for i in range(clip.getItemCount()):
-                        uri = clip.getItemAt(i).getUri()
-                        if uri:
-                            out.append(str(uri.toString()))
-                else:
-                    uri = data.getData()
+            clip = data.getClipData()
+            if clip:
+                for i in range(clip.getItemCount()):
+                    uri = clip.getItemAt(i).getUri()
                     if uri:
                         out.append(str(uri.toString()))
-            except Exception as e:
-                print("[ANDROID_PICKER] URI parse failed:", e)
+            else:
+                uri = data.getData()
+                if uri:
+                    out.append(str(uri.toString()))
 
-            Clock.schedule_once(lambda *_: on_selection(out), 0)
+            _deliver(out)
 
         activity.bind(on_activity_result=_on_activity_result)
 
         intent = Intent(Intent.ACTION_PICK)
         intent.setType("image/*")
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, bool(multiple))
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
         if intent.resolveActivity(pm) is None:
-            print("[ANDROID_PICKER] ❌ No gallery app found")
+            _log("❌ No activity can handle native gallery intent")
             return False
 
-        Clock.schedule_once(lambda *_: act.startActivityForResult(intent, REQ_CODE), 0.1)
+        chooser = Intent.createChooser(intent, JavaString("Select image(s)"))
+        Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.15)
         return True
 
     except Exception as e:
-        print(f"[ANDROID_PICKER] ❌ Picker crash: {e}")
+        _log(f"Picker failed: {e}")
         import traceback
         traceback.print_exc()
         return False
