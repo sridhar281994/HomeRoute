@@ -369,6 +369,37 @@ def api_owner_publish_property(*, payload: dict[str, Any], file_paths: list[str]
         )
     return _handle(resp)
 
+def api_owner_publish_property_bytes(payload: dict, files_bytes: list[bytes]) -> dict:
+    """
+    Atomic publish (create + upload) using in-memory bytes (Android-safe).
+    """
+    import requests
+    from frontend_app.utils.storage import get_session
+    from frontend_app.utils.api import API_BASE_URL, _headers  # adjust if your names differ
+
+    url = f"{API_BASE_URL}/owner/properties/publish"
+
+    sess = get_session() or {}
+    token = sess.get("token")
+
+    headers = _headers(token)
+
+    files = []
+    for i, b in enumerate(files_bytes):
+        files.append(
+            (
+                "files",
+                (f"image_{i}.jpg", b, "image/jpeg"),
+            )
+        )
+
+    data = {
+        "payload": json.dumps(payload),
+    }
+
+    resp = requests.post(url, headers=headers, data=data, files=files, timeout=60)
+    resp.raise_for_status()
+    return resp.json()
 
 def api_owner_update_property(*, property_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     """
