@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 from typing import Iterable, List
-
 from kivy.utils import platform
 
 LOG_TAG = "ANDROID_PICKER"
 
 
-# ------------------------------------------------------------
-# LOGGING
-# ------------------------------------------------------------
 def _log(msg: str) -> None:
     try:
         print(f"[{LOG_TAG}] {msg}")
@@ -18,25 +14,9 @@ def _log(msg: str) -> None:
 
 
 # ------------------------------------------------------------
-# ANDROID URI → JPEG BYTES (THE CORE FIX)
+# ANDROID URI → JPEG BYTES (CORE FIX)
 # ------------------------------------------------------------
 def android_uri_to_jpeg_bytes(uri: str) -> bytes:
-    """
-    Android-native decode:
-    content:// URI
-        → ContentResolver.openInputStream
-        → BitmapFactory.decodeStream
-        → Bitmap.compress(JPEG)
-        → bytes
-
-    Works for:
-    - Camera
-    - Gallery
-    - Google Photos
-    - Android Photo Picker
-    - HEIC / AVIF / WEBP
-    """
-
     if platform != "android":
         raise RuntimeError("android_uri_to_jpeg_bytes called on non-Android")
 
@@ -51,19 +31,32 @@ def android_uri_to_jpeg_bytes(uri: str) -> bytes:
     act = PythonActivity.mActivity
     resolver = act.getContentResolver()
 
-    uri_obj = Uri.parse(uri)
+    uri_obj = Uri.parse(str(uri))
     ins = resolver.openInputStream(uri_obj)
-
     if ins is None:
         raise RuntimeError("Unable to open image stream")
 
     try:
         bmp = BitmapFactory.decodeStream(ins)
     finally:
-        ins.close()
+        try:
+            ins.close()
+        except Exception:
+            pass
 
     if bmp is None:
         raise RuntimeError("Bitmap decode failed")
+
+    # Optional downscale to avoid OOM
+    try:
+        w = bmp.getWidth()
+        h = bmp.getHeight()
+        max_side = 2048
+        if w > max_side or h > max_side:
+            scale = float(max_side) / max(w, h)
+            bmp = Bitmap.createScaledBitmap(bmp, int(w * scale), int(h * scale), True)
+    except Exception:
+        pass
 
     baos = ByteArrayOutputStream()
     ok = bmp.compress(Bitmap.CompressFormat.JPEG, 90, baos)
@@ -72,15 +65,15 @@ def android_uri_to_jpeg_bytes(uri: str) -> bytes:
     if not ok:
         raise RuntimeError("Bitmap compress failed")
 
-    jpeg_bytes = bytes(baos.toByteArray())
-    if len(jpeg_bytes) < 1024:
+    data = bytes(baos.toByteArray())
+    if len(data) < 1024:
         raise RuntimeError("Decoded image too small")
 
-    return jpeg_bytes
+    return data
 
 
 # ------------------------------------------------------------
-# ANDROID SYSTEM PICKER (SAFE, MODERN)
+# ANDROID SYSTEM PICKER
 # ------------------------------------------------------------
 def android_open_gallery(
     *,
@@ -88,10 +81,6 @@ def android_open_gallery(
     multiple: bool = False,
     mime_types: List[str] | None = None,
 ) -> bool:
-    """
-    Opens Android system picker.
-    Returns ONLY content:// URIs.
-    """
 
     if platform != "android":
         return False
@@ -109,7 +98,6 @@ def android_open_gallery(
 
         act = PythonActivity.mActivity
         pm = act.getPackageManager()
-
         REQ_CODE = 13579
 
         def _deliver(items):
@@ -171,15 +159,8 @@ def android_open_gallery(
             _log("No picker available")
             return False
 
-        chooser = Intent.createChooser(
-            intent,
-            JavaString("Select image(s)"),
-        )
-
-        Clock.schedule_once(
-            lambda *_: act.startActivityForResult(chooser, REQ_CODE),
-            0.15,
-        )
+        chooser = Intent.createChooser(intent, JavaString("Select image(s)"))
+        Clock.schedule_once(lambda *_: act.startActivityForResult(chooser, REQ_CODE), 0.15)
         return True
 
     except Exception as e:
@@ -187,31 +168,3 @@ def android_open_gallery(
         import traceback
         traceback.print_exc()
         return False
-
-
-# ------------------------------------------------------------
-# EXAMPLE CALLBACK (CLIENT SIDE)
-# ------------------------------------------------------------
-def _on_images_selected(self, uris: Iterable[str]):
-    _log(f"RAW URIS: {uris}")
-
-    if not uris:
-        self.show_toast("No image selected")
-        return
-
-    images: list[bytes] = []
-
-    for uri in uris:
-        try:
-            jpeg_bytes = android_uri_to_jpeg_bytes(uri)
-            images.append(jpeg_bytes)
-        except Exception as e:
-            _log(f"Image rejected: {e}")
-
-    if not images:
-        self.show_toast("Invalid image selected")
-        return
-
-    # STORE BYTES — NOT PATHS
-    self.selected_images = images
-    self.show_toast(f"{len(images)} image selected")
