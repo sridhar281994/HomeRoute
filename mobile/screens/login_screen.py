@@ -40,6 +40,7 @@ class LoginScreen(GestureNavigationMixin, Screen):
     font_scale = NumericProperty(1.0)
     remember_me = BooleanProperty(False)
     is_processing = BooleanProperty(False)
+    keyboard_padding = NumericProperty(0)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -85,6 +86,36 @@ class LoginScreen(GestureNavigationMixin, Screen):
 
     def on_size(self, *args):
         self._update_font_scale()
+
+    def _on_keyboard_height(self, _window, height):
+        try:
+            h = float(height or 0)
+        except Exception:
+            return
+
+        if h <= 0:
+            self.keyboard_padding = 0
+            return
+
+        # Push content above keyboard
+        self.keyboard_padding = h + dp(20)
+
+        w = self._focused_input()
+        if w:
+            self.scroll_to_field(w)
+
+    def scroll_to_verify(self, *_):
+        def _do(*_dt):
+            try:
+                sv = self.ids.get("login_scroll")
+                btn = self.ids.get("verify_login_btn")
+                if sv and btn:
+                    sv.scroll_to(btn, padding=dp(200), animate=True)
+            except Exception:
+                pass
+
+        Clock.schedule_once(_do, 0.1)
+        Clock.schedule_once(_do, 0.3)
 
     def _update_font_scale(self, *_):
         width = self.width or Window.width or 1
