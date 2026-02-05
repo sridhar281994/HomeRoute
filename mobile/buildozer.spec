@@ -30,6 +30,7 @@ fullscreen = 1
 # Android specific
 android.enable_androidx = True
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_COARSE_LOCATION,ACCESS_FINE_LOCATION,READ_EXTERNAL_STORAGE,READ_MEDIA_IMAGES,READ_MEDIA_VIDEO
+android.softinput_mode = resize
 
 # IMPORTANT: Keep this on a single line. Buildozer does not treat "\" as a line
 # continuation here; it will be passed literally to Gradle as "\n..." and break
