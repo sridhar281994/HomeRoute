@@ -594,10 +594,11 @@
                 scroll_type: ["content"]
 
                 BoxLayout:
+                    id: login_content
                     orientation: "vertical"
                     size_hint_y: None
                     height: self.minimum_height
-                    padding: dp(14)
+                    padding: dp(14), dp(14), dp(14), root.keyboard_padding
                     spacing: dp(16)
 
                     AuthHeader:
@@ -676,19 +677,14 @@
                                 background_color: 0, 0, 0, 0
 
                                 canvas.after:
-                                    # Eye outline
                                     Color:
                                         rgba: (1, 1, 1, 0.9)
                                     Line:
                                         width: 1.4
                                         ellipse: (self.center_x - dp(12), self.center_y - dp(6), dp(24), dp(12))
-
-                                    # Pupil
                                     Ellipse:
                                         size: dp(6), dp(6)
                                         pos: (self.center_x - dp(3), self.center_y - dp(3))
-
-                                    # Slash when password hidden
                                     Color:
                                         rgba: (1, 1, 1, 0.9) if self.state == "normal" else (0, 0, 0, 0)
                                     Line:
@@ -736,8 +732,7 @@
                             font_size: sp(16)
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
-                            on_focus:
-                                if self.focus: root.scroll_to_field(self)
+                            on_focus: self.focus and (root.scroll_to_field(self) or root.scroll_to_verify())
 
 
                         AppButton:
