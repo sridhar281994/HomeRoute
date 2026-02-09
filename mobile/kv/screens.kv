@@ -16,8 +16,6 @@
 #:set ACCENT_PURPLE_MUTED (0.66, 0.33, 0.97, 0.82)
 #:set ACCENT_BLUE (0.38, 0.65, 0.98, 1)
 #:set BTN_BG (1, 1, 1, 0.96)
-#:import Animation kivy.animation.Animation
-
 
 # Global typography (bold-ish via markup)
 <Label>:
@@ -60,45 +58,17 @@
 
 <AppButton@HoverButton>:
     markup: True
+    font_size: sp(16)
     bold: True
     font_name: "AppFont"
-
-    # -------------------------------
-    # Text (safe + responsive)
-    # -------------------------------
-    font_size: min(sp(15), self.height * 0.30)
-    text_size: self.width - dp(24), None
-    halign: "center"
-    valign: "middle"
-    line_height: 1.15
-    shorten: False
-    padding: dp(12), dp(8)
-
-    # -------------------------------
-    # Disable native backgrounds
-    # -------------------------------
     background_normal: ""
     background_down: ""
     background_disabled_normal: ""
-    background_color: 0, 0, 0, 0
-
-    # -------------------------------
-    # Colors
-    # -------------------------------
+    background_color: BTN_BG
     color: ACCENT_PURPLE
     disabled_color: ACCENT_PURPLE_MUTED
-
-    # -------------------------------
-    # UX animation properties
-    # -------------------------------
-    ux_scale: 1.0
-    shadow_alpha: 0.18
-    shadow_offset_y: 2
-    is_active: False
-
-    # -------------------------------
-    # Custom skin
-    # -------------------------------
+    # Use the existing `background_color` set by screens as the base color.
+    # Hover/pressed is computed automatically (desktop hover; press everywhere).
     canvas.before:
         PushMatrix:
         Scale:
@@ -107,41 +77,60 @@
             z: 1
             origin: self.center
 
-        # Shadow
+        # Soft shadow (skip for transparent buttons / disabled).
         Color:
-            rgba: (0, 0, 0, self.shadow_alpha) if not self.disabled else (0, 0, 0, 0)
+            rgba: (0, 0, 0, 0) if (self.disabled or self.background_color[3] < 0.05) else (0, 0, 0, self.shadow_alpha)
         RoundedRectangle:
             pos: self.x, self.y - dp(self.shadow_offset_y)
             size: self.size
-            radius: [dp(14)]
+            radius: [14]
 
-        # Fill
         Color:
             rgba:
-                (0.55, 0.30, 0.95, 0.95) if self.is_active else (0.92, 0.92, 0.92, 1)
+                (0, 0, 0, 0) if self.background_color[3] == 0 else (
+                (
+                max(0.0, self.background_color[0] - 0.10),
+                max(0.0, self.background_color[1] - 0.10),
+                max(0.0, self.background_color[2] - 0.10),
+                self.background_color[3]
+                ) if self.state == "down" else (
+                min(1.0, self.background_color[0] + 0.08),
+                min(1.0, self.background_color[1] + 0.08),
+                min(1.0, self.background_color[2] + 0.08),
+                self.background_color[3]
+                ) if self.hovered else self.background_color
+                )
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [dp(14)]
+            radius: [14]
 
-        # Border
+        # Ripple (clipped to rounded rectangle).
+        StencilPush:
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14]
+        StencilUse:
         Color:
-            rgba: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
-        Line:
-            width: 1.2
-            rounded_rectangle: [self.x, self.y, self.width, self.height, dp(14)]
+            rgba: (1, 1, 1, 0) if self.disabled else (1, 1, 1, self.ripple_alpha)
+        Ellipse:
+            size: (self.ripple_radius * 2.0), (self.ripple_radius * 2.0)
+            pos: (self.ripple_pos[0] - self.ripple_radius), (self.ripple_pos[1] - self.ripple_radius)
+        StencilUnUse:
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [14]
+        StencilPop:
 
+        Color:
+            rgba: (1, 1, 1, 0) if self.background_color[3] == 0 else (1, 1, 1, 0.90)
+        Line:
+            width: 1.1
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 14]
     canvas.after:
         PopMatrix:
-
-    # -------------------------------
-    # Smooth activation animation
-    # -------------------------------
-    on_is_active:
-        Animation.stop_all(self)
-        Animation(ux_scale=(1.06 if self.is_active else 1.0), shadow_alpha=(0.35 if self.is_active else 0.18), shadow_offset_y=(4 if self.is_active else 2), duration=0.18, t="out_quad").start(self)
-
-
 
 <NavButton@AppButton>:
     size_hint_x: None
@@ -379,44 +368,16 @@
             pos: self.x + dp(12), self.center_y - dp(10)
             size: self.width - dp(24), dp(2)
 
-
-<AvatarButton@ButtonBehavior+FloatLayout>:
-    image_source: ""
-    fallback_text: ""
-
-    size_hint: None, None
-
-    canvas.before:
-        # Circular background
-        Color:
-            rgba: (1, 1, 1, 0.18)
-        Ellipse:
-            pos: self.pos
-            size: self.size
-
-    Label:
-        text: root.fallback_text[0].upper() if root.fallback_text else "U"
-        bold: True
-        font_size: sp(18)
-        halign: "center"
-        valign: "middle"
-        size: root.size
-        pos: root.pos
-        text_size: self.size
-        color: 1, 1, 1, 1
-
-
 <MobileTopBar@BoxLayout>:
-    # Default: always show the logged-in user's initial + avatar (Home overrides explicitly).
-    avatar_text: (app.user_initial if app else "")
-    avatar_image: (app.user_avatar_url if app else "")
-    avatar_cb: None
+    avatar_text: ""
+    avatar_image: ""
+    on_avatar_press: lambda: None
 
     orientation: "horizontal"
     size_hint_y: None
     height: dp(52)
-    padding: dp(6), 0
-    spacing: dp(8)
+    padding: [dp(6), 0, dp(6), 0]
+    spacing: dp(10)
 
     HamburgerButton:
         on_release:
@@ -426,13 +387,61 @@
     Widget:
 
     AvatarButton:
-        size_hint: None, None
-        size: dp(44), dp(44)
         image_source: root.avatar_image
         fallback_text: root.avatar_text
-        on_release:
-            root.avatar_cb() if root.avatar_cb else None
+        on_release: root.on_avatar_press()
 
+<AvatarButton@ButtonBehavior+FloatLayout>:
+    image_source: ""
+    fallback_text: "ME"
+    has_image: bool(root.image_source)
+
+    size_hint: None, None
+    size: dp(44), dp(44)
+
+    canvas.before:
+        Color:
+            rgba: (1, 1, 1, 1)
+        Ellipse:
+            pos: self.pos
+            size: self.size
+
+        Color:
+            rgba: (0.85, 0.85, 0.85, 1)
+        Line:
+            width: 1.0
+            ellipse: (self.x, self.y, self.width, self.height)
+
+        StencilPush
+        Ellipse:
+            pos: self.pos
+            size: self.size
+        StencilUse
+
+    canvas.after:
+        StencilUnUse
+        Ellipse:
+            pos: self.pos
+            size: self.size
+        StencilPop
+
+    AsyncImage:
+        source: root.image_source
+        allow_stretch: True
+        keep_ratio: False
+        size_hint: 1, 1
+        opacity: 1 if root.has_image else 0
+        on_error: root.image_source = ""
+
+    Label:
+        text: root.fallback_text if root.fallback_text else "ME"
+        font_size: sp(16)
+        color: (0.2, 0.2, 0.2, 1)
+        halign: "center"
+        valign: "middle"
+        text_size: self.size
+        size_hint: 1, 1
+        opacity: 0 if root.has_image else 1
 
 
 <AuthHeader@BoxLayout>:
@@ -469,13 +478,34 @@
             Rectangle:
                 pos: self.pos
                 size: self.size
+            Color:
+                rgba: SHINE_PURPLE
+            Ellipse:
+                size: self.width * 1.25, self.height * 0.9
+                pos: self.x - self.width * 0.25, self.top - self.height * 0.65
+            Color:
+                rgba: (1.0, 0.72, 0.25, 0.16)
+            Ellipse:
+                size: self.width * 0.9, self.height * 0.6
+                pos: self.center_x - self.width * 0.45, self.center_y - self.height * 0.25
+            Color:
+                rgba: SHINE_WHITE
+            Ellipse:
+                size: self.width * 0.75, self.height * 0.5
+                pos: self.right - self.width * 0.65, self.y - self.height * 0.12
+
+        Image:
+            source: "assets/flatnow_all.png"
+            fit_mode: "contain"
+            size_hint: None, None
+            size: min(root.width * 0.7, dp(320)), min(root.width * 0.7, dp(320))
+            pos_hint: {"center_x": 0.5, "center_y": 0.55}
 
         Label:
             text: "Loading..."
             font_size: sp(16)
             color: 1, 1, 1, 0.7
-            pos_hint: {"center_x": 0.5, "center_y": 0.5}
-
+            pos_hint: {"center_x": 0.5, "center_y": 0.38}
 
 <WelcomeScreen>:
     name: 'welcome'
@@ -562,7 +592,6 @@
 
 <LoginScreen>:
     name: "login"
-
     FloatLayout:
         canvas.before:
             Color:
@@ -585,44 +614,41 @@
             orientation: "vertical"
             size_hint: 0.95, 0.95
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            spacing: dp(12)
 
             ScrollView:
                 id: login_scroll
                 do_scroll_x: False
-                do_scroll_y: True
-                bar_width: 0
+                bar_width: dp(6)
                 scroll_type: ["content"]
+                scroll_timeout: 150
+                padding: 0, 0, 0, root.keyboard_padding
 
-                BoxLayout:
-                    id: login_content
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: self.minimum_height
-                    padding: dp(14), dp(14), dp(14), root.keyboard_padding
-                    spacing: dp(16)
+
+                WebPanel:
+                    size_hint_x: None
+                    width: min(root.width * 0.95, dp(980))
+                    x: (root.width - self.width) / 2
+                    spacing: dp(15)
 
                     AuthHeader:
 
                     Label:
                         text: "[b]Secure Login[/b]  [font=EmojiFont]🔐[/font]"
-                        markup: True
                         font_size: sp(24)
                         halign: "center"
                         valign: "middle"
                         size_hint_y: None
                         text_size: (self.width, None)
-                        height: self.texture_size[1] + dp(12)
+                        height: self.texture_size[1] + dp(10)
 
-                    # ========================
-                    # ACCOUNT DETAILS
-                    # ========================
+                    # Account Details Box
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: self.minimum_height
                         spacing: dp(10)
-                        padding: dp(12)
-
+                        padding: dp(10)
                         canvas.before:
                             Color:
                                 rgba: CARD_BG
@@ -630,6 +656,11 @@
                                 pos: self.pos
                                 size: self.size
                                 radius: [10]
+                            Color:
+                                rgba: (1, 1, 1, 0.12)
+                            Line:
+                                width: 1.0
+                                rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
 
                         Label:
                             text: "Account Details"
@@ -642,9 +673,9 @@
                             id: phone_input
                             hint_text: "Email / Username / Phone"
                             multiline: False
+                            font_size: sp(16)
                             size_hint_y: None
                             height: dp(48)
-                            font_size: sp(16)
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
                             on_focus:
@@ -653,7 +684,6 @@
                         RelativeLayout:
                             size_hint_y: None
                             height: dp(48)
-
                             TextInput:
                                 id: password_input
                                 hint_text: "Password"
@@ -661,53 +691,81 @@
                                 multiline: False
                                 font_size: sp(16)
                                 size_hint: 1, 1
-                                padding: [dp(10), dp(10), dp(42), dp(10)]
                                 background_color: (1, 1, 1, 0.18)
                                 foreground_color: TEXT_MAIN
+                                padding: [dp(10), dp(10), dp(40), dp(10)]
                                 on_focus:
                                     if self.focus: root.scroll_to_field(self)
-
                             ToggleButton:
                                 id: login_password_toggle
                                 size_hint: None, None
                                 size: dp(40), dp(40)
                                 pos_hint: {"right": 1, "center_y": 0.5}
+                                text: ""
                                 background_normal: ""
                                 background_down: ""
-                                background_color: 0, 0, 0, 0
-
-                                canvas.after:
+                                background_color: (0,0,0,0)
+                                color: (0.2, 0.2, 0.2, 1)
+                                canvas:
                                     Color:
-                                        rgba: (1, 1, 1, 0.9)
+                                        rgba: 0.2, 0.2, 0.2, 1
                                     Line:
-                                        width: 1.4
-                                        ellipse: (self.center_x - dp(12), self.center_y - dp(6), dp(24), dp(12))
+                                        width: 1.2
+                                        ellipse: (self.x + dp(5), self.y + dp(10), dp(30), dp(20))
+                                    Color:
+                                        rgba: (0.2, 0.2, 0.2, 1) if self.state == 'down' else (0, 0, 0, 0)
                                     Ellipse:
-                                        size: dp(6), dp(6)
-                                        pos: (self.center_x - dp(3), self.center_y - dp(3))
+                                        pos: self.x + dp(15), self.y + dp(15)
+                                        size: dp(10), dp(10)
                                     Color:
-                                        rgba: (1, 1, 1, 0.9) if self.state == "normal" else (0, 0, 0, 0)
+                                        rgba: (0.2, 0.2, 0.2, 1) if self.state == 'normal' else (0, 0, 0, 0)
                                     Line:
-                                        width: 1.4
-                                        points: (self.x + dp(8), self.y + dp(8), self.right - dp(8), self.top - dp(8))
+                                        points: [self.x + dp(5), self.y + dp(10), self.x + dp(35), self.y + dp(30)]
+                                        width: 1.2
+
+                        BoxLayout:
+                            size_hint_y: None
+                            height: dp(32)
+                            spacing: dp(10)
+                            CheckBox:
+                                id: remember_me
+                                size_hint: None, None
+                                size: dp(32), dp(32)
+                                active: root.remember_me
+                                on_active: root.remember_me = self.active
+                            Label:
+                                text: "Keep me logged in"
+                                color: 1, 1, 1, 0.9
+                                halign: "left"
+                                valign: "middle"
+                                text_size: self.size
+
+                        BoxLayout:
+                            size_hint_y: None
+                            height: dp(32)
+                            spacing: dp(10)
+                            Label:
+                                text: ""
+                                size_hint_y: None
+                                height: 0
+                                opacity: 0
 
                         AppButton:
                             id: request_otp_btn
                             text: "Request OTP"
                             size_hint_y: None
                             height: dp(44)
-                            on_release: root.send_otp_to_user()
+                            on_press: root.send_otp_to_user()
 
-                    # ========================
-                    # OTP VERIFICATION
-                    # ========================
+                    # OTP Box
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: self.minimum_height
                         spacing: dp(10)
-                        padding: dp(12)
-
+                        padding: dp(10)
+                        opacity: 1
+                        disabled: False
                         canvas.before:
                             Color:
                                 rgba: CARD_BG
@@ -715,6 +773,11 @@
                                 pos: self.pos
                                 size: self.size
                                 radius: [10]
+                            Color:
+                                rgba: (1, 1, 1, 0.12)
+                            Line:
+                                width: 1.0
+                                rounded_rectangle: [self.x, self.y, self.width, self.height, 10]
 
                         Label:
                             text: "OTP Verification"
@@ -727,13 +790,13 @@
                             id: otp_input
                             hint_text: "Enter OTP"
                             multiline: False
+                            font_size: sp(16)
                             size_hint_y: None
                             height: dp(48)
-                            font_size: sp(16)
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
-                            on_focus: self.focus and (root.scroll_to_field(self) or root.scroll_to_verify())
-
+                            on_focus:
+                                if self.focus: root.scroll_to_field(self)
 
                         AppButton:
                             id: verify_login_btn
@@ -746,16 +809,15 @@
                             text: "Forgot Password?"
                             size_hint_y: None
                             height: dp(40)
-                            background_color: 0, 0, 0, 0
+                            background_color: (0, 0, 0, 0)
                             on_release: root.open_forgot_password()
 
                     AppButton:
                         text: "Back"
                         size_hint_y: None
                         height: dp(44)
-                        color: 0.94, 0.27, 0.27, 1
+                        color: (0.94, 0.27, 0.27, 1)
                         on_release: root.go_back()
-
 
 <ForgotPasswordScreen>:
     name: "forgot_password"
@@ -1205,7 +1267,6 @@
 
 <SubscriptionScreen>:
     name: "subscription"
-
     FloatLayout:
         canvas.before:
             Color:
@@ -1235,81 +1296,59 @@
             ScrollView:
                 do_scroll_x: False
                 bar_width: dp(6)
+                WebPanel:
+                    size_hint_x: None
+                    width: min(root.width * 0.95, dp(980))
+                    x: (root.width - self.width) / 2
 
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: self.minimum_height
-                    padding: dp(12)
-                    spacing: dp(12)
+                    WebCard:
+                        Label:
+                            text: "[b]Subscription[/b]  [font=EmojiFont]💳[/font]"
+                            font_size: sp(18)
+                            size_hint_y: None
+                            height: dp(26)
+                        Label:
+                            text: root.status_text
+                            size_hint_y: None
+                            height: dp(24)
+                            color: TEXT_MAIN
+                        Label:
+                            text: root.expires_text
+                            size_hint_y: None
+                            height: dp(22)
+                            color: TEXT_MUTED
 
-                    WebPanel:
-                        size_hint_x: None
-                        width: min(root.width * 0.95, dp(980))
-                        pos_hint: {"center_x": 0.5}
+                        AppButton:
+                            text: "[b]FREE - 0[/b]\nUnlock 30 owner/service contacts"
+                            size_hint_x: 1
+                            size_hint_y: None
+                            height: dp(64)
 
-                        WebCard:
-                            BoxLayout:
-                                orientation: "vertical"
-                                size_hint_y: None
-                                height: self.minimum_height
-                                spacing: dp(14)
-                                padding: dp(14)
+                        AppButton:
+                            text: "[b]INSTANT - ₹10[/b]\nUnlock 60 owner/service contacts"
+                            size_hint_x: 1
+                            size_hint_y: None
+                            height: dp(64)
 
-                                Label:
-                                    text: "[b]Subscription[/b]  [font=EmojiFont]💳[/font]"
-                                    markup: True
-                                    font_size: sp(18)
-                                    size_hint_y: None
-                                    height: dp(28)
+                        AppButton:
+                            text: "[b]SMART - ₹50[/b]\nUnlock 200 contacts"
+                            size_hint_x: 1
+                            size_hint_y: None
+                            height: dp(64)
 
-                                Label:
-                                    text: root.status_text
-                                    size_hint_y: None
-                                    height: dp(22)
-                                    color: TEXT_MAIN
+                        AppButton:
+                            text: "[b]BUSINESS - ₹150[/b]\nUnlimited contact unlocks/Month"
+                            size_hint_x: 1
+                            size_hint_y: None
+                            height: dp(64)
 
-                                Label:
-                                    text: root.expires_text
-                                    size_hint_y: None
-                                    height: dp(20)
-                                    color: TEXT_MUTED
-
-                                AppButton:
-                                    text: "[b]FREE - 0[/b]\nUnlock 30 owner/service contacts"
-                                    markup: True
-                                    size_hint_x: 1
-                                    size_hint_y: None
-                                    height: dp(64)
-
-                                AppButton:
-                                    text: "[b]INSTANT - ₹10[/b]\nUnlock 60 owner/service contacts"
-                                    markup: True
-                                    size_hint_x: 1
-                                    size_hint_y: None
-                                    height: dp(64)
-
-                                AppButton:
-                                    text: "[b]SMART - ₹50[/b]\nUnlock 200 contacts"
-                                    markup: True
-                                    size_hint_x: 1
-                                    size_hint_y: None
-                                    height: dp(64)
-
-                                AppButton:
-                                    text: "[b]BUSINESS - ₹150[/b]\nUnlimited contact unlocks / Month"
-                                    markup: True
-                                    size_hint_x: 1
-                                    size_hint_y: None
-                                    height: dp(64)
-
-                                AppButton:
-                                    text: "Back"
-                                    size_hint_x: 1
-                                    size_hint_y: None
-                                    height: dp(44)
-                                    color: (0.94, 0.27, 0.27, 1)
-                                    on_release: root.go_back()
+                        AppButton:
+                            text: "Back"
+                            size_hint_x: 1
+                            size_hint_y: None
+                            height: dp(44)
+                            color: (0.94, 0.27, 0.27, 1)
+                            on_release: root.go_back()
 
 
 <RegisterScreen>:
@@ -1506,13 +1545,11 @@
                 pos: self.pos
                 size: self.size
                 source: root.bg_image
-
             Color:
                 rgba: SHINE_PURPLE
             Ellipse:
                 size: self.width * 1.25, self.height * 0.9
                 pos: self.x - self.width * 0.25, self.top - self.height * 0.65
-
             Color:
                 rgba: SHINE_WHITE
             Ellipse:
@@ -1525,146 +1562,90 @@
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
             spacing: dp(12)
 
-            # ==================================================
-            # TOP BAR
-            # ==================================================
+            # -------------------------------
+            # TOP BAR (Avatar wired correctly)
+            # -------------------------------
             MobileTopBar:
                 avatar_text: root.avatar_letter
                 avatar_image: root.profile_image_url
-                avatar_cb: root.go_settings
+                on_avatar_press: root.go_profile()
 
-            # ==================================================
+            # -------------------------------
             # MAIN PANEL
-            # ==================================================
+            # -------------------------------
             WebPanel:
                 size_hint_y: 1
                 spacing: dp(10)
 
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: home_tagline.texture_size[1] + dp(10) + action_row.height
+                    spacing: dp(6)
+
+                    Label:
+                        id: home_tagline
+                        text: "[b][i]Uncover the Best, Good Luck[/i][/b]"
+                        font_name: "CursiveFont"
+                        font_size: sp(25)
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.width, None
+                        size_hint_y: None
+                        height: self.texture_size[1] + dp(6)
+                        color: TEXT_MAIN
+
+                    BoxLayout:
+                        id: action_row
+                        size_hint_y: None
+                        height: dp(40)
+                        spacing: dp(8)
+                        padding: [dp(4), dp(2), dp(4), dp(2)]
+
+                        AppButton:
+                            text: "Refresh"
+                            size_hint: None, None
+                            width: dp(120)
+                            height: dp(40)
+                            on_release: root.refresh()
+
+                        Widget:
+
+                        AppButton:
+                            text: "Filter"
+                            size_hint: None, None
+                            width: dp(120)
+                            height: dp(40)
+                            on_release: root.open_filters()
+
+                Label:
+                    text: "Loading..." if root.is_loading else "Posts"
+                    size_hint_y: None
+                    height: dp(24)
+                    color: TEXT_MUTED
+
                 ScrollView:
                     id: feed_scroll
+                    size_hint_y: 1
                     do_scroll_x: False
                     bar_width: dp(6)
 
-                    BoxLayout:
-                        orientation: "vertical"
+                    GridLayout:
+                        id: list_container
+                        cols: 1
                         size_hint_y: None
                         height: self.minimum_height
-                        spacing: dp(10)
-                        padding: dp(6)
-
-                        # -------------------------------
-                        # HEADER AREA
-                        # -------------------------------
-                        BoxLayout:
-                            orientation: "vertical"
-                            size_hint_y: None
-                            height: self.minimum_height
-                            spacing: dp(8)
-
-                            Label:
-                                id: home_tagline
-                                markup: True
-                                text: "[b]Uncover the Best, Good Luck[/b]"
-                                font_name: "assets/fonts/DancingScript.ttf"
-                                font_size: max(sp(18), self.width * 0.05)
-                                halign: "left"
-                                valign: "middle"
-                                text_size: self.width, None
-                                size_hint_y: None
-                                height: self.texture_size[1] + dp(6)
-                                color: TEXT_MAIN
-
-                            BoxLayout:
-                                id: action_row
-                                orientation: "horizontal"
-                                size_hint_y: None
-                                height: dp(46)
-                                spacing: dp(10)
-
-                                Widget:
-                                    size_hint_x: None
-                                    width: dp(6)
-
-                                AppButton:
-                                    text: "Refresh"
-                                    size_hint: None, None
-                                    width: min(dp(120), root.width * 0.26)
-                                    height: dp(40)
-                                    on_release: root.refresh()
-
-                                Widget:
-                                    size_hint_x: 1
-
-                                AppButton:
-                                    text: "Filter"
-                                    size_hint: None, None
-                                    width: min(dp(120), root.width * 0.26)
-                                    height: dp(40)
-                                    on_release: root.open_filters()
-
-                                Widget:
-                                    size_hint_x: None
-                                    width: dp(6)
-
-                            BoxLayout:
-                                orientation: "horizontal"
-                                size_hint_y: None
-                                height: dp(44)
-                                spacing: dp(10)
-
-                                AppButton:
-                                    text: "Property / Material"
-                                    size_hint_x: 1
-                                    is_active: root.post_group == "property_material"
-                                    background_color: 0, 0, 0, 0
-                                    color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
-                                    on_release:
-                                        root.post_group = "property_material"
-                                        root.refresh()
-
-                                AppButton:
-                                    text: "Services"
-                                    size_hint_x: 1
-                                    is_active: root.post_group == "services"
-                                    background_color: 0, 0, 0, 0
-                                    color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
-                                    on_release:
-                                        root.post_group = "services"
-                                        root.refresh()
-
-                        # -------------------------------
-                        # STATUS LABEL
-                        # -------------------------------
-                        Label:
-                            text: "Loading..." if root.is_loading else "Posts"
-                            size_hint_y: None
-                            height: dp(26)
-                            color: TEXT_MUTED
-                            halign: "left"
-                            valign: "middle"
-                            text_size: self.width, None
-
-                        # -------------------------------
-                        # FEED LIST
-                        # -------------------------------
-                        GridLayout:
-                            id: list_container
-                            cols: 1
-                            size_hint_y: None
-                            height: self.minimum_height
-                            spacing: dp(10)
-
-
-
+                        spacing: dp(8)
 
 <FilterPopup>:
+    # Use a full-screen modal overlay and draw our own rounded panel,
+    # so the popup matches the Home screen card/panel theme.
     title: ""
     separator_height: 0
     size_hint: 1, 1
     auto_dismiss: True
     background: ""
     background_color: (0, 0, 0, 0)
-
     FloatLayout:
         canvas.before:
             Color:
@@ -1672,84 +1653,77 @@
             Rectangle:
                 pos: self.pos
                 size: self.size
-
             Color:
                 rgba: SHINE_PURPLE
             Ellipse:
                 size: self.width * 1.25, self.height * 0.9
                 pos: self.x - self.width * 0.25, self.top - self.height * 0.65
-
             Color:
                 rgba: SHINE_WHITE
             Ellipse:
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
-
         BoxLayout:
             orientation: "vertical"
-            size_hint: 0.94, 0.92
+            size_hint: 0.95, 0.9
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            padding: dp(14)
-            spacing: dp(12)
-
+            spacing: dp(10)
+            padding: dp(12)
             canvas.before:
                 Color:
                     rgba: PANEL_BG
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
-                    radius: [18]
+                    radius: [16]
                 Color:
                     rgba: (1, 1, 1, 0.12)
                 Line:
-                    rounded_rectangle: [self.x, self.y, self.width, self.height, 18]
-                    width: 1
+                    width: 1.0
+                    rounded_rectangle: [self.x, self.y, self.width, self.height, 16]
 
-            # ================= HEADER =================
             BoxLayout:
                 size_hint_y: None
-                height: dp(46)
+                height: dp(44)
                 spacing: dp(8)
-
                 Label:
                     text: "[b]Filters[/b]"
-                    markup: True
                     halign: "left"
                     valign: "middle"
                     text_size: self.size
-
                 Widget:
-
                 AppButton:
                     text: "Close"
                     size_hint_x: None
-                    width: dp(100)
+                    width: dp(110)
+                    color: (0.94, 0.27, 0.27, 1)
                     on_release: root.dismiss()
 
-            # ================= BODY =================
+            Label:
+                text: "[b]Search & Filters[/b]"
+                size_hint_y: None
+                height: dp(22)
+                color: TEXT_MUTED
+
             ScrollView:
                 do_scroll_x: False
                 bar_width: dp(6)
-
                 GridLayout:
-                    cols: 1 if root.width < dp(620) else 2
+                    cols: 2
                     size_hint_y: None
                     height: self.minimum_height
-                    spacing: dp(14)
+                    spacing: dp(10)
 
-                    # ---------- STATE ----------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
-                        height: dp(86)
-                        spacing: dp(6)
-
+                        height: dp(82)
+                        spacing: dp(4)
                         Label:
-                            text: "State"
+                            text: "State (optional)"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
-
                         PrettySpinner:
                             text: root.home.state_value if root.home else "Any"
                             values: root.home.state_options if root.home else ["Any"]
@@ -1759,19 +1733,16 @@
                             size_hint_y: None
                             height: dp(48)
 
-                    # ---------- DISTRICT ----------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
-                        height: dp(86)
-                        spacing: dp(6)
-
+                        height: dp(82)
+                        spacing: dp(4)
                         Label:
-                            text: "District"
+                            text: "District (optional)"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
-
                         PrettySpinner:
                             text: root.home.district_value if root.home else "Any"
                             values: root.home.district_options if root.home else ["Any"]
@@ -1782,15 +1753,18 @@
                             size_hint_y: None
                             height: dp(48)
 
-                    # ---------- AREAS ----------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: dp(260)
-                        spacing: dp(8)
-
+                        spacing: dp(6)
+                        Label:
+                            text: "Area (optional)"
+                            color: TEXT_MUTED
+                            size_hint_y: None
+                            height: dp(22)
                         TextInput:
-                            hint_text: "Search Nearby areas"
+                            hint_text: "Search areas ..."
                             text: root.home.area_search if root.home else ""
                             multiline: False
                             disabled: (not root.home) or (root.home.state_value == "Any") or (root.home.district_value == "Any")
@@ -1798,57 +1772,100 @@
                                 if root.home: root.home.area_search = self.text
                                 if root.home: root.home.render_area_options(root.ids.area_options_container)
                             size_hint_y: None
-                            height: dp(46)
-
+                            height: dp(48)
                         ScrollView:
                             do_scroll_x: False
                             bar_width: dp(6)
                             size_hint_y: None
-                            height: dp(140)
-
+                            height: dp(150)
                             GridLayout:
                                 id: area_options_container
                                 cols: 1
                                 size_hint_y: None
                                 height: self.minimum_height
                                 spacing: dp(6)
-
                         BoxLayout:
                             size_hint_y: None
-                            height: dp(38)
-                            spacing: dp(8)
-
+                            height: dp(40)
+                            spacing: dp(10)
                             AppButton:
-                                text: "Clear"
-                                size_hint_x: None
-                                width: dp(90)
+                                text: "Clear Areas"
                                 disabled: (not root.home) or (not root.home.selected_areas)
                                 on_release:
                                     if root.home: root.home.clear_areas()
                                     if root.home: root.home.render_area_options(root.ids.area_options_container)
-
+                                size_hint_x: None
+                                width: dp(140)
                             Label:
-                                text: "Any" if (not root.home or not root.home.selected_areas) else str(len(root.home.selected_areas)) + " selected"
+                                text: ("Any" if (not root.home) or (not root.home.selected_areas) else (str(len(root.home.selected_areas)) + " selected"))
                                 color: TEXT_MUTED
                                 halign: "left"
                                 valign: "middle"
                                 text_size: self.size
 
+                    BoxLayout:
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: dp(82)
+                        spacing: dp(4)
+                        Label:
+                            text: "Nearby radius (km)"
+                            color: TEXT_MUTED
+                            size_hint_y: None
+                            height: dp(22)
+                        TextInput:
+                            text: root.home.radius_km if root.home else "20"
+                            multiline: False
+                            input_filter: "int"
+                            on_text:
+                                if root.home: root.home.radius_km = self.text
+                            size_hint_y: None
+                            height: dp(48)
 
+                    BoxLayout:
+                        orientation: "horizontal"
+                        size_hint_y: None
+                        height: dp(44)
+                        spacing: dp(8)
+                        Label:
+                            text: root.home.gps_status if root.home else ""
+                            color: TEXT_MUTED
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.size
+                    Widget:
 
-                    # ---------- NEED CATEGORY ----------
+                    BoxLayout:
+                        orientation: "horizontal"
+                        size_hint_y: None
+                        height: dp(44)
+                        spacing: dp(8)
+                        AppButton:
+                            text: "Enable GPS"
+                            size_hint_x: None
+                            width: dp(150)
+                            on_release:
+                                if root.home: root.home.enable_gps()
+                        Label:
+                            text: root.home.gps_msg if root.home else ""
+                            color: TEXT_MUTED
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.size
+
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
                         height: dp(96)
-                        spacing: dp(6)
-
+                        spacing: dp(4)
                         Label:
-                            text: "Need category"
+                            text: "Need category (materials / services / property)"
                             color: TEXT_MUTED
                             size_hint_y: None
-                            height: dp(22)
-
+                            height: dp(42)
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.width, None
                         PrettySpinner:
                             text: root.home.need_category if root.home else "Any"
                             values: root.home.need_values if root.home else ["Any"]
@@ -1857,19 +1874,34 @@
                             size_hint_y: None
                             height: dp(48)
 
-                    # ---------- SORT ----------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
-                        height: dp(86)
-                        spacing: dp(6)
-
+                        height: dp(82)
+                        spacing: dp(4)
                         Label:
-                            text: "Sort by budget"
+                            text: "Post date"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
+                        PrettySpinner:
+                            text: root.home.posted_within_days if root.home else "Any"
+                            values: ["Any", "Today", "Last 7 days", "Last 30 days", "Last 90 days"]
+                            on_text:
+                                if root.home: root.home.posted_within_days = self.text
+                            size_hint_y: None
+                            height: dp(48)
 
+                    BoxLayout:
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: dp(82)
+                        spacing: dp(4)
+                        Label:
+                            text: "Sort (by budget)"
+                            color: TEXT_MUTED
+                            size_hint_y: None
+                            height: dp(22)
                         PrettySpinner:
                             text: root.home.sort_budget if root.home else "Any (Newest)"
                             values: ["Any (Newest)", "Top (high to low)", "Bottom (low to high)"]
@@ -1878,19 +1910,16 @@
                             size_hint_y: None
                             height: dp(48)
 
-                    # ---------- MAX PRICE ----------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
-                        height: dp(86)
-                        spacing: dp(6)
-
+                        height: dp(82)
+                        spacing: dp(4)
                         Label:
                             text: "Max budget"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
-
                         TextInput:
                             text: root.home.max_price if root.home else ""
                             multiline: False
@@ -1900,19 +1929,16 @@
                             size_hint_y: None
                             height: dp(48)
 
-                    # ---------- RENT / SALE ----------
                     BoxLayout:
                         orientation: "vertical"
                         size_hint_y: None
-                        height: dp(86)
-                        spacing: dp(6)
-
+                        height: dp(82)
+                        spacing: dp(4)
                         Label:
-                            text: "Rent / Sale"
+                            text: "Rent/Sale"
                             color: TEXT_MUTED
                             size_hint_y: None
                             height: dp(22)
-
                         PrettySpinner:
                             text: root.home.rent_sale if root.home else "Any"
                             values: ["Any", "Rent", "Sale"]
@@ -1921,19 +1947,15 @@
                             size_hint_y: None
                             height: dp(48)
 
-            # ================= FOOTER =================
             BoxLayout:
                 size_hint_y: None
-                height: dp(50)
-                spacing: dp(12)
-
+                height: dp(48)
+                spacing: dp(10)
                 AppButton:
                     text: "Apply filters"
                     on_release:
                         if root.home: root.home.refresh()
                         root.dismiss()
-
-
 
 <MyPostsScreen>:
     name: "my_posts"
@@ -2049,59 +2071,51 @@
                             spacing: dp(12)
 
                             # -----------------------------
-                            # HEADER ROW (Avatar + Title + Back)
+                            # HEADER ROW (Avatar + Title)
                             # -----------------------------
                             BoxLayout:
-                                orientation: "horizontal"
                                 size_hint_y: None
-                                height: self.minimum_height
+                                height: dp(60)
                                 spacing: dp(12)
-                                padding: dp(4), dp(6)
 
                                 AvatarButton:
                                     size_hint: None, None
                                     size: dp(42), dp(42)
                                     pos_hint: {"center_y": 0.5}
                                     image_source: root.image_source
-                                    fallback_text: root.fallback_text if root.fallback_text else "ME"
+                                    fallback_text: (root.fallback_text if root.fallback_text else "ME")
 
-                                # TEXT COLUMN — wraps correctly
                                 BoxLayout:
                                     orientation: "vertical"
-                                    size_hint_x: 1
-                                    spacing: dp(4)
+                                    size_hint_y: 1
+                                    spacing: dp(2)
 
                                     Label:
-                                        text: root.property_data.get("title", "(loading...)")
+                                        text: root.property_data.get("title","(loading...)")
                                         bold: True
                                         font_size: sp(17)
                                         halign: "left"
-                                        valign: "top"
+                                        valign: "middle"
                                         text_size: self.width, None
                                         size_hint_y: None
-                                        height: self.texture_size[1] + dp(4)
+                                        height: self.texture_size[1] + dp(2)
 
                                     Label:
-                                        text:
-                                            "Ad #" + (str(root.property_data.get("adv_number") or root.property_data.get("ad_number") or root.property_id) if root.property_id else "") + \
-                                            " • " + (root.property_data.get("rent_sale") or "") + \
-                                            " • " + (root.property_data.get("property_type") or "") + \
-                                            " • " + (root.property_data.get("price_display") or "") + \
-                                            " • " + (root.property_data.get("location_display") or "")
+                                        text: "Ad #" + (str(root.property_data.get("adv_number") or root.property_data.get("ad_number") or root.property_id) if root.property_id else "") + " • " + (root.property_data.get("rent_sale") or "") + " • " + (root.property_data.get("property_type") or "")
                                         font_size: sp(12)
                                         color: TEXT_MUTED
                                         halign: "left"
-                                        valign: "top"
+                                        valign: "middle"
                                         text_size: self.width, None
                                         size_hint_y: None
-                                        height: max(self.texture_size[1], dp(28))
+                                        height: self.texture_size[1] + dp(2)
 
-                                # BACK BUTTON
+                                Widget:
+
                                 AppButton:
                                     text: "Back"
-                                    size_hint: None, None
-                                    size: dp(72), dp(36)
-                                    pos_hint: {"center_y": 0.5}
+                                    size_hint: None, 1
+                                    width: dp(80)
                                     on_release: root.back()
 
                             # -----------------------------
@@ -2125,9 +2139,6 @@
                                 spacing: dp(8)
                                 size_hint_y: None
                                 height: self.minimum_height
-                                row_default_height: self.width / 2 * 1.1
-                                row_force_default: True
-
 
                             # -----------------------------
                             # AMENITIES (POST TEXT)
@@ -2142,7 +2153,7 @@
                                 halign: "left"
 
                             # -----------------------------
-                            # ACTION BUTTONS
+                            # ACTION BUTTONS (LIKE BAR STYLE)
                             # -----------------------------
                             BoxLayout:
                                 size_hint_y: None
@@ -2153,6 +2164,11 @@
                                     text: "Contact"
                                     size_hint_x: 1
                                     on_release: root.unlock_contact()
+
+                                AppButton:
+                                    text: "🔗📤"
+                                    size_hint_x: 1
+                                    on_release: root.share_current()
 
 
 <OwnerAddPropertyScreen>:
@@ -2222,18 +2238,9 @@
                         size_hint_y: None
                         height: dp(44)
                     PrettySpinner:
-                        id: post_group_spinner
-                        text: "Owner(property/Material)"
-                        values: root.publish_type_values()
-                        size_hint_y: None
-                        height: dp(44)
-                        on_text: root.on_post_group_changed()
-                    PrettySpinner:
                         id: category_spinner
                         text: "Select Category"
                         values: root.category_values()
-                        # Ensure dropdown always uses the full category list.
-                        on_touch_down: self.values = root.category_values()
                         size_hint_y: None
                         height: dp(44)
                     PrettySpinner:
@@ -2253,7 +2260,6 @@
                         id: contact_phone_input
                         hint_text: "Contact phone"
                         multiline: False
-                        disabled: True
                         size_hint_y: None
                         height: dp(44)
                     # Media upload (optional): max 10 images + 1 video
