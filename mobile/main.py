@@ -12,7 +12,7 @@ from kivy.uix.screenmanager import FadeTransition, ScreenManager
 from kivy.utils import platform
 
 # Register custom widgets used in KV rules.
-from screens.widgets import AvatarButton, HoverButton, HoverToggleButton  # noqa: F401
+from screens.widgets import AvatarButton, HoverButton, HoverToggleButton, MobileTopBar  # noqa: F401
 
 from screens.login_screen import LoginScreen
 from screens.register_screen import RegisterScreen

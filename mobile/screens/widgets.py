@@ -7,6 +7,7 @@ from kivy.properties import BooleanProperty, ListProperty, NumericProperty, Obje
 from kivy.uix.button import Button
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.togglebutton import ToggleButton
 from kivy.utils import platform
 import math
@@ -277,4 +278,18 @@ class AvatarButton(ButtonBehavior, FloatLayout):
             self.has_image = bool(tex is not None and getattr(tex, "size", None) and tex.size[0] > 0 and tex.size[1] > 0)
         except Exception:
             self.has_image = False
+
+
+class MobileTopBar(BoxLayout):
+    """
+    Top bar used across screens (hamburger + avatar).
+
+    Defined as a Python class so KV can safely set callback properties without
+    hitting Builder AttributeError (e.g. `on_avatar_press` mistakenly treated
+    as an `on_<property>` binding).
+    """
+
+    avatar_text = StringProperty("")
+    avatar_image = StringProperty("")
+    avatar_press = ObjectProperty(None, allownone=True)
 

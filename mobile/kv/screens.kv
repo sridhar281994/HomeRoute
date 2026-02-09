@@ -368,10 +368,10 @@
             pos: self.x + dp(12), self.center_y - dp(10)
             size: self.width - dp(24), dp(2)
 
-<MobileTopBar@BoxLayout>:
+<MobileTopBar>:
     avatar_text: ""
     avatar_image: ""
-    on_avatar_press: lambda: None
+    avatar_press: None
 
     orientation: "horizontal"
     size_hint_y: None
@@ -389,7 +389,7 @@
     AvatarButton:
         image_source: root.avatar_image
         fallback_text: root.avatar_text
-        on_release: root.on_avatar_press()
+        avatar_press: root.avatar_press
 
 <AvatarButton>:
     # Defaults (can be overridden by instances)
@@ -426,8 +426,8 @@
 
     AsyncImage:
         source: root.image_source
-        allow_stretch: True
-        keep_ratio: False
+        # allow_stretch/keep_ratio are deprecated in recent Kivy; use fit_mode.
+        fit_mode: "cover"
         size_hint: 1, 1
         opacity: 1 if root.has_image else 0
         on_error: root.image_source = ""
@@ -1567,7 +1567,7 @@
             MobileTopBar:
                 avatar_text: root.avatar_letter
                 avatar_image: root.profile_image_url
-                on_avatar_press: root.go_profile()
+                avatar_press: root.go_profile
 
             # -------------------------------
             # MAIN PANEL
