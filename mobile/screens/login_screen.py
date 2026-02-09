@@ -47,62 +47,102 @@ class LoginScreen(GestureNavigationMixin, Screen):
         Clock.schedule_once(self._update_font_scale, 0)
 
     def on_pre_enter(self, *args):
-        # Sync checkbox with persisted preference.
+        # --------- CLEAR OLD INPUTS ----------
+        try:
+            ids = getattr(self, "ids", {})
+            for key in ("phone_input", "password_input", "otp_input"):
+                w = ids.get(key)
+                if w:
+                    w.text = ""
+                    try:
+                        w.focus = False
+                    except Exception:
+                        pass
+    
+            btn = ids.get("request_otp_btn")
+            if btn:
+                btn.disabled = False
+                btn.text = "Request OTP"
+    
+            vbtn = ids.get("verify_login_btn")
+            if vbtn:
+                vbtn.disabled = False
+                vbtn.text = "Verify & Login"
+    
+            self.is_processing = False
+        except Exception:
+            pass
+    
+        # --------- EXISTING SETUP (UNCHANGED) ----------
         try:
             self.remember_me = bool(get_remember_me())
         except Exception:
             self.remember_me = False
-        # Ensure soft keyboard does not hide OTP input.
+    
         try:
             self._prev_softinput_mode = Window.softinput_mode
             Window.softinput_mode = "resize"
         except Exception:
             pass
+    
         try:
             Window.bind(on_keyboard_height=self._on_keyboard_height)
         except Exception:
             pass
-        # Make swipe-back work even when TextInput captures touch.
+    
         try:
             self.gesture_bind_window()
         except Exception:
             pass
 
+
     def on_leave(self, *args):
+        # --------- CLEAR INPUTS ON EXIT ----------
+        try:
+            ids = getattr(self, "ids", {})
+            for key in ("phone_input", "password_input", "otp_input"):
+                w = ids.get(key)
+                if w:
+                    w.text = ""
+        except Exception:
+            pass
+    
+        # --------- EXISTING SETUP (UNCHANGED) ----------
         try:
             Window.unbind(on_keyboard_height=self._on_keyboard_height)
         except Exception:
             pass
+    
         try:
             if hasattr(self, "_prev_softinput_mode"):
                 Window.softinput_mode = self._prev_softinput_mode
         except Exception:
             pass
+    
         try:
             self.gesture_unbind_window()
         except Exception:
             pass
+    
         return super().on_leave(*args)
-
-    def on_size(self, *args):
-        self._update_font_scale()
 
     def _on_keyboard_height(self, _window, height):
         try:
             h = float(height or 0)
         except Exception:
             return
-
+    
         if h <= 0:
             self.keyboard_padding = 0
             return
-
+    
         # Push content above keyboard
         self.keyboard_padding = h + dp(20)
-
+    
         w = self._focused_input()
         if w:
             self.scroll_to_field(w)
+
 
     def scroll_to_verify(self, *_):
         def _do(*_dt):
@@ -152,16 +192,6 @@ class LoginScreen(GestureNavigationMixin, Screen):
                 return w
         return None
 
-    def _on_keyboard_height(self, _window, height):
-        try:
-            if float(height or 0) <= 0:
-                return
-        except Exception:
-            return
-        w = self._focused_input()
-        if w is None:
-            return
-        self.scroll_to_field(w)
 
     # -----------------------
     # Navigation
