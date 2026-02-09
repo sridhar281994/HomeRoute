@@ -47,6 +47,33 @@ class LoginScreen(GestureNavigationMixin, Screen):
         Clock.schedule_once(self._update_font_scale, 0)
 
     def on_pre_enter(self, *args):
+        # Clear old inputs and reset UI state on each entry.
+        try:
+            ids = getattr(self, "ids", {}) or {}
+            for key in ("phone_input", "password_input", "otp_input"):
+                w = ids.get(key)
+                if w:
+                    w.text = ""
+                    try:
+                        w.focus = False
+                    except Exception:
+                        pass
+
+            btn = ids.get("request_otp_btn")
+            if btn:
+                btn.disabled = False
+                btn.text = "Request OTP"
+
+            vbtn = ids.get("verify_login_btn")
+            if vbtn:
+                vbtn.disabled = False
+                vbtn.text = "Verify & Login"
+
+            self.is_processing = False
+            self.keyboard_padding = 0
+        except Exception:
+            pass
+
         # Sync checkbox with persisted preference.
         try:
             self.remember_me = bool(get_remember_me())
@@ -69,6 +96,20 @@ class LoginScreen(GestureNavigationMixin, Screen):
             pass
 
     def on_leave(self, *args):
+        # Optionally clear on leave as well (prevents stale OTP/password).
+        try:
+            ids = getattr(self, "ids", {}) or {}
+            for key in ("phone_input", "password_input", "otp_input"):
+                w = ids.get(key)
+                if w:
+                    w.text = ""
+                    try:
+                        w.focus = False
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         try:
             Window.unbind(on_keyboard_height=self._on_keyboard_height)
         except Exception:

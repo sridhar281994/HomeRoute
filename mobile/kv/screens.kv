@@ -2241,7 +2241,10 @@
                         text: "Rent"
                         values: ["Rent", "Sale"]
                         size_hint_y: None
-                        height: dp(44)
+                        # Hide for services posts.
+                        height: dp(44) if (root.publish_post_group or "") != "services" else 0
+                        opacity: 1 if (root.publish_post_group or "") != "services" else 0
+                        disabled: (root.publish_post_group or "") == "services"
                     TextInput:
                         id: price_input
                         hint_text: "Price"
