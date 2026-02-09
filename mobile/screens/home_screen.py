@@ -869,11 +869,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
         # =================================================
         # HEADER (Avatar + Meta ONLY)
         # =================================================
-        header = BoxLayout(
-            orientation="horizontal",
-            spacing=dp(10),
-            size_hint_y=None,
-        )
+        header = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None)
         header.bind(minimum_height=header.setter("height"))
 
         try:
@@ -882,9 +878,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
             avatar.fallback_text = owner_initial
             header.add_widget(avatar)
         except Exception:
-            header.add_widget(
-                Label(text=owner_initial, size_hint=(None, None), size=(dp(44), dp(44)))
-            )
+            header.add_widget(Label(text=owner_initial, size_hint=(None, None), size=(dp(44), dp(44))))
 
         meta_lbl = Label(
             text=meta,
@@ -906,7 +900,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
         card.add_widget(header)
 
         # =================================================
-        # MEDIA
+        # MEDIA (NO TOP GAP)
         # =================================================
         if images:
             urls = [
@@ -915,31 +909,24 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 if str((it or {}).get("url") or "").strip()
             ]
             if urls:
-                wrap = FloatLayout(size_hint_y=None)
+                media_box = BoxLayout(orientation="vertical", size_hint_y=None)
                 carousel = Carousel(direction="right", loop=True)
                 carousel.size_hint = (1, None)
                 carousel.height = _POST_MEDIA_MIN_H
-                wrap.height = carousel.height
-
-                def _sync_wrap_h(*_):
-                    wrap.height = carousel.height
-
-                def _sync_img_h(*_):
-                    for im in imgs:
-                        try:
-                            im.height = carousel.height
-                        except Exception:
-                            pass
-
-                carousel.bind(height=_sync_wrap_h)
-                carousel.bind(height=_sync_img_h)
+                media_box.height = carousel.height
 
                 imgs: list[AsyncImage] = []
+
+                def _sync_media_h(*_):
+                    media_box.height = carousel.height
+                    for im in imgs:
+                        im.height = carousel.height
+
+                carousel.bind(height=_sync_media_h)
 
                 def _recalc_height(*_):
                     if carousel.width <= 0:
                         return
-                    # Default to the minimum height so images never render tiny.
                     target_h = float(_POST_MEDIA_MIN_H)
                     for im in imgs:
                         try:
@@ -949,9 +936,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                             tw, th = tex.size
                             if not tw or not th:
                                 continue
-                            # Keep aspect ratio (no stretching).
                             h = carousel.width * (float(th) / float(tw))
-                            # Upscale tiny panoramas and cap very tall images.
                             h = max(float(_POST_MEDIA_MIN_H), min(float(_POST_MEDIA_MAX_H), float(h)))
                             if h > target_h:
                                 target_h = h
@@ -959,49 +944,42 @@ class HomeScreen(GestureNavigationMixin, Screen):
                             continue
                     carousel.height = float(target_h)
 
-                # Recalculate on window resize.
                 carousel.bind(width=_recalc_height)
 
                 for u in urls:
-                    slide = FloatLayout()
-                    img = AsyncImage(source=u, size_hint=(1, None), height=carousel.height)
+                    slide = BoxLayout()
+                    img = AsyncImage(
+                        source=u,
+                        size_hint=(1, None),
+                        height=carousel.height,
+                        allow_stretch=True,
+                        keep_ratio=True,
+                    )
                     try:
-                        setattr(img, "fit_mode", "contain")
+                        setattr(img, "fit_mode", "cover")  # fill vertically
                     except Exception:
                         pass
+
                     slide.add_widget(img)
                     carousel.add_widget(slide)
                     imgs.append(img)
-                    # Recalculate once the texture is available.
                     img.bind(texture=_recalc_height)
 
-                wrap.add_widget(carousel)
+                media_box.add_widget(carousel)
 
-                # Overlay arrows when there are multiple images.
                 if len(urls) > 1:
-                    btn_prev = Factory.AppButton(
-                        text="◀",
-                        size_hint=(None, None),
-                        size=(dp(44), dp(44)),
-                        background_color=(0, 0, 0, 0),
-                        color=(1, 1, 1, 0.92),
-                    )
-                    btn_next = Factory.AppButton(
-                        text="▶",
-                        size_hint=(None, None),
-                        size=(dp(44), dp(44)),
-                        background_color=(0, 0, 0, 0),
-                        color=(1, 1, 1, 0.92),
-                    )
-                    btn_prev.pos_hint = {"x": 0.0, "center_y": 0.5}
-                    btn_next.pos_hint = {"right": 1.0, "center_y": 0.5}
+                    btn_prev = Factory.AppButton(text="◀", size_hint=(None, None), size=(dp(44), dp(44)))
+                    btn_next = Factory.AppButton(text="▶", size_hint=(None, None), size=(dp(44), dp(44)))
+                    btn_row_nav = BoxLayout(size_hint_y=None, height=dp(44))
                     btn_prev.bind(on_release=lambda *_: carousel.load_previous())
                     btn_next.bind(on_release=lambda *_: carousel.load_next())
-                    wrap.add_widget(btn_prev)
-                    wrap.add_widget(btn_next)
+                    btn_row_nav.add_widget(btn_prev)
+                    btn_row_nav.add_widget(btn_next)
+                    media_box.add_widget(btn_row_nav)
+                    media_box.height += dp(44)
 
                 Clock.schedule_once(_recalc_height, 0)
-                card.add_widget(wrap)
+                card.add_widget(media_box)
 
         # =================================================
         # ACTION HANDLERS
@@ -1010,12 +988,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
             if not self.is_logged_in:
                 _popup("Login required", "Please login to contact the owner.")
                 return
-
             pid = p.get("id")
             if not pid:
                 _popup("Error", "Invalid property id.")
                 return
-
             _btn.disabled = True
 
             from threading import Thread
@@ -1030,12 +1006,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
                     Clock.schedule_once(done, 0)
                 except ApiError as e:
-
-                    def fail(*_):
-                        _btn.disabled = False
-                        _popup("Error", str(e))
-
-                    Clock.schedule_once(fail, 0)
+                    Clock.schedule_once(lambda *_: (_btn.__setattr__("disabled", False), _popup("Error", str(e))), 0)
 
             Thread(target=work, daemon=True).start()
 
@@ -1044,7 +1015,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
             pid = p.get("id")
             url = to_api_url(f"/property/{pid}") if pid else ""
             body = "\n".join(x for x in [meta, url] if x)
-
             launched = share_text(subject=subject, text=body)
 
             from kivy.utils import platform
@@ -1056,31 +1026,14 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 _popup("Share", body)
 
         # =================================================
-        # ACTION BUTTONS (VISIBLE)
+        # ACTION BUTTONS
         # =================================================
-        btn_row = BoxLayout(
-            orientation="horizontal",
-            spacing=dp(10),
-            size_hint_y=None,
-            height=dp(44),
-        )
+        btn_row = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None, height=dp(44))
 
         if is_my_posts:
-            btn_edit = Factory.AppButton(
-                text="Edit",
-                size_hint=(1, None),
-                height=dp(44),
-            )
-            btn_delete = Factory.AppButton(
-                text="Delete",
-                size_hint=(1, None),
-                height=dp(44),
-            )
-            btn_share = Factory.AppButton(
-                text="Share",
-                size_hint=(1, None),
-                height=dp(44),
-            )
+            btn_edit = Factory.AppButton(text="Edit", size_hint=(1, None), height=dp(44))
+            btn_delete = Factory.AppButton(text="Delete", size_hint=(1, None), height=dp(44))
+            btn_share = Factory.AppButton(text="Share", size_hint=(1, None), height=dp(44))
 
             btn_edit.bind(on_release=lambda *_: p.get("_on_edit", lambda: None)())
             btn_delete.bind(on_release=lambda *_: p.get("_on_delete", lambda: None)())
@@ -1089,7 +1042,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
             btn_row.add_widget(btn_edit)
             btn_row.add_widget(btn_delete)
             btn_row.add_widget(btn_share)
-
         else:
             btn_contact = Factory.AppButton(
                 text="Contacted" if already_contacted else "Contact owner",
@@ -1349,3 +1301,4 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
     def gesture_refresh_enabled(self) -> bool:
         return True
+
