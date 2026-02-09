@@ -3,7 +3,7 @@ from __future__ import annotations
 from kivy.core.window import Window
 from kivy.animation import Animation
 from kivy.clock import Clock
-from kivy.properties import BooleanProperty, ListProperty, NumericProperty, StringProperty
+from kivy.properties import BooleanProperty, ListProperty, NumericProperty, ObjectProperty, StringProperty
 from kivy.uix.button import Button
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.floatlayout import FloatLayout
@@ -225,6 +225,26 @@ class AvatarButton(ButtonBehavior, FloatLayout):
     image_source = StringProperty("")
     fallback_text = StringProperty("")
     has_image = BooleanProperty(False)
+    # Optional callback that can be assigned from KV:
+    # AvatarButton:
+    #   avatar_press: root.go_profile
+    # (or bind via `on_release:` as usual)
+    avatar_press = ObjectProperty(None, allownone=True)
+
+    def on_release(self, *args) -> None:
+        cb = getattr(self, "avatar_press", None)
+        if not callable(cb):
+            return
+        try:
+            cb()
+        except TypeError:
+            # Best-effort: support callbacks expecting the widget instance.
+            try:
+                cb(self)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def on_kv_post(self, _base_widget) -> None:
         # KV ids are available after kv is applied.

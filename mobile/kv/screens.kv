@@ -391,10 +391,9 @@
         fallback_text: root.avatar_text
         on_release: root.on_avatar_press()
 
-<AvatarButton@ButtonBehavior+FloatLayout>:
-    image_source: ""
+<AvatarButton>:
+    # Defaults (can be overridden by instances)
     fallback_text: "ME"
-    has_image: bool(root.image_source)
 
     size_hint: None, None
     size: dp(44), dp(44)
