@@ -41,6 +41,13 @@ from frontend_app.utils.api import (
     api_meta_categories,
     to_api_url,
 )
+
+
+# Media sizing for post images.
+# - Upscale tiny/wide panoramas so they are still readable.
+# - Cap very tall images so a single post doesn't dominate the feed.
+_POST_MEDIA_MIN_H = dp(240)
+_POST_MEDIA_MAX_H = dp(520)
 from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 
@@ -911,7 +918,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 wrap = FloatLayout(size_hint_y=None)
                 carousel = Carousel(direction="right", loop=True)
                 carousel.size_hint = (1, None)
-                carousel.height = dp(220)
+                carousel.height = _POST_MEDIA_MIN_H
                 wrap.height = carousel.height
 
                 def _sync_wrap_h(*_):
@@ -924,7 +931,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 def _recalc_height(*_):
                     if carousel.width <= 0:
                         return
-                    max_h = dp(180)
+                    target_h = float(_POST_MEDIA_MIN_H)
                     for im in imgs:
                         try:
                             tex = getattr(im, "texture", None)
@@ -935,13 +942,13 @@ class HomeScreen(GestureNavigationMixin, Screen):
                                 continue
                             # Keep aspect ratio (no stretching).
                             h = carousel.width * (float(th) / float(tw))
-                            # Cap extremes so very tall images don't create huge cards.
-                            h = max(dp(160), min(dp(420), h))
-                            if h > max_h:
-                                max_h = h
+                            # Upscale tiny (e.g. very wide panoramas) and cap very tall images.
+                            h = max(float(_POST_MEDIA_MIN_H), min(float(_POST_MEDIA_MAX_H), float(h)))
+                            if h > target_h:
+                                target_h = h
                         except Exception:
                             continue
-                    carousel.height = max_h
+                    carousel.height = float(target_h)
 
                 carousel.bind(width=_recalc_height)
 

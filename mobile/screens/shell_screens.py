@@ -51,6 +51,11 @@ from frontend_app.utils.android_location import get_last_known_location
 from frontend_app.utils.android_filepicker import android_open_gallery, android_uri_to_jpeg_bytes
 from frontend_app.utils.api import api_owner_publish_property_bytes
 
+
+# Media sizing for post/detail images.
+_POST_MEDIA_MIN_H = dp(240)
+_POST_MEDIA_MAX_H = dp(520)
+
 def _sync_app_badge_best_effort() -> None:
     """
     Keep the shared MobileTopBar avatar in sync with session changes.
@@ -325,7 +330,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         wrap = FloatLayout(size_hint_y=None)
         carousel = Carousel(direction="right", loop=True)
         carousel.size_hint = (1, None)
-        carousel.height = dp(260)
+        carousel.height = _POST_MEDIA_MIN_H
         wrap.height = carousel.height
 
         def _sync_wrap_h(*_):
@@ -338,7 +343,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         def _recalc_height(*_):
             if carousel.width <= 0:
                 return
-            max_h = dp(200)
+            target_h = float(_POST_MEDIA_MIN_H)
             for im in imgs:
                 try:
                     tex = getattr(im, "texture", None)
@@ -348,12 +353,12 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
                     if not tw or not th:
                         continue
                     h = carousel.width * (float(th) / float(tw))
-                    h = max(dp(180), min(dp(520), h))
-                    if h > max_h:
-                        max_h = h
+                    h = max(float(_POST_MEDIA_MIN_H), min(float(_POST_MEDIA_MAX_H), float(h)))
+                    if h > target_h:
+                        target_h = h
                 except Exception:
                     continue
-            carousel.height = max_h
+            carousel.height = float(target_h)
 
         carousel.bind(width=_recalc_height)
 
