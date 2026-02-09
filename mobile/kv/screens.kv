@@ -1556,121 +1556,102 @@
                 size_hint_y: 1
                 spacing: dp(10)
 
+                # ===============================
+                # HEADER (STATIC)
+                # ===============================
+                BoxLayout:
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    spacing: dp(8)
+
+                    Label:
+                        id: home_tagline
+                        markup: True
+                        text: "[b]Uncover the Best, Good Luck[/b]"
+                        font_name: "assets/fonts/DancingScript.ttf"
+                        font_size: max(sp(18), self.width * 0.05)
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.width, None
+                        size_hint_y: None
+                        height: self.texture_size[1] + dp(4)
+                        color: TEXT_MAIN
+
+                    BoxLayout:
+                        id: action_row
+                        orientation: "horizontal"
+                        size_hint_y: None
+                        height: dp(44)
+                        spacing: dp(10)
+
+                        AppButton:
+                            text: "Refresh"
+                            size_hint: None, None
+                            width: min(dp(120), root.width * 0.26)
+                            height: dp(36)
+                            on_release: root.refresh()
+
+                        Widget:
+                            size_hint_x: 1
+
+                        AppButton:
+                            text: "Filter"
+                            size_hint: None, None
+                            width: min(dp(120), root.width * 0.26)
+                            height: dp(36)
+                            on_release: root.open_filters()
+
+                    BoxLayout:
+                        orientation: "horizontal"
+                        size_hint_y: None
+                        height: dp(40)
+                        spacing: dp(10)
+
+                        AppButton:
+                            text: "Property / Material"
+                            size_hint_x: 1
+                            is_active: root.post_group == "property_material"
+                            background_color: 0, 0, 0, 0
+                            color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
+                            on_release:
+                                root.post_group = "property_material"
+                                root.refresh()
+
+                        AppButton:
+                            text: "Services"
+                            size_hint_x: 1
+                            is_active: root.post_group == "services"
+                            background_color: 0, 0, 0, 0
+                            color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
+                            on_release:
+                                root.post_group = "services"
+                                root.refresh()
+
+                    Label:
+                        text: "Loading..." if root.is_loading else "Posts"
+                        size_hint_y: None
+                        height: dp(22)
+                        color: TEXT_MUTED
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.width, None
+
+                # ===============================
+                # FEED (ONLY POSTS SCROLL)
+                # ===============================
                 ScrollView:
                     id: feed_scroll
                     do_scroll_x: False
                     bar_width: dp(6)
 
-                    BoxLayout:
-                        orientation: "vertical"
+                    GridLayout:
+                        id: list_container
+                        cols: 1
                         size_hint_y: None
                         height: self.minimum_height
                         spacing: dp(10)
-                        padding: dp(6)
-
-                        # -------------------------------
-                        # HEADER AREA
-                        # -------------------------------
-                        BoxLayout:
-                            orientation: "vertical"
-                            size_hint_y: None
-                            height: self.minimum_height
-                            spacing: dp(8)
-
-                            Label:
-                                id: home_tagline
-                                markup: True
-                                text: "[b]Uncover the Best, Good Luck[/b]"
-                                font_name: "assets/fonts/DancingScript.ttf"
-                                font_size: max(sp(18), self.width * 0.05)
-                                halign: "left"
-                                valign: "middle"
-                                text_size: self.width, None
-                                size_hint_y: None
-                                height: self.texture_size[1] + dp(6)
-                                color: TEXT_MAIN
-
-                            BoxLayout:
-                                id: action_row
-                                orientation: "horizontal"
-                                size_hint_y: None
-                                height: dp(46)
-                                spacing: dp(10)
-
-                                Widget:
-                                    size_hint_x: None
-                                    width: dp(6)
-
-                                AppButton:
-                                    text: "Refresh"
-                                    size_hint: None, None
-                                    width: min(dp(120), root.width * 0.26)
-                                    height: dp(40)
-                                    on_release: root.refresh()
-
-                                Widget:
-                                    size_hint_x: 1
-
-                                AppButton:
-                                    text: "Filter"
-                                    size_hint: None, None
-                                    width: min(dp(120), root.width * 0.26)
-                                    height: dp(40)
-                                    on_release: root.open_filters()
-
-                                Widget:
-                                    size_hint_x: None
-                                    width: dp(6)
-
-                            BoxLayout:
-                                orientation: "horizontal"
-                                size_hint_y: None
-                                height: dp(44)
-                                spacing: dp(10)
-
-                                AppButton:
-                                    text: "Property / Material"
-                                    size_hint_x: 1
-                                    is_active: root.post_group == "property_material"
-                                    background_color: 0, 0, 0, 0
-                                    color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
-                                    on_release:
-                                        root.post_group = "property_material"
-                                        root.refresh()
-
-                                AppButton:
-                                    text: "Services"
-                                    size_hint_x: 1
-                                    is_active: root.post_group == "services"
-                                    background_color: 0, 0, 0, 0
-                                    color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
-                                    on_release:
-                                        root.post_group = "services"
-                                        root.refresh()
-
-                        # -------------------------------
-                        # STATUS LABEL
-                        # -------------------------------
-                        Label:
-                            text: "Loading..." if root.is_loading else "Posts"
-                            size_hint_y: None
-                            height: dp(26)
-                            color: TEXT_MUTED
-                            halign: "left"
-                            valign: "middle"
-                            text_size: self.width, None
-
-                        # -------------------------------
-                        # FEED LIST
-                        # -------------------------------
-                        GridLayout:
-                            id: list_container
-                            cols: 1
-                            size_hint_y: None
-                            height: self.minimum_height
-                            spacing: dp(10)
-
-
+                        padding: dp(0)
 
 
 <FilterPopup>:

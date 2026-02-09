@@ -924,13 +924,22 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 def _sync_wrap_h(*_):
                     wrap.height = carousel.height
 
+                def _sync_img_h(*_):
+                    for im in imgs:
+                        try:
+                            im.height = carousel.height
+                        except Exception:
+                            pass
+
                 carousel.bind(height=_sync_wrap_h)
+                carousel.bind(height=_sync_img_h)
 
                 imgs: list[AsyncImage] = []
 
                 def _recalc_height(*_):
                     if carousel.width <= 0:
                         return
+                    # Default to the minimum height so images never render tiny.
                     target_h = float(_POST_MEDIA_MIN_H)
                     for im in imgs:
                         try:
@@ -942,7 +951,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                                 continue
                             # Keep aspect ratio (no stretching).
                             h = carousel.width * (float(th) / float(tw))
-                            # Upscale tiny (e.g. very wide panoramas) and cap very tall images.
+                            # Upscale tiny panoramas and cap very tall images.
                             h = max(float(_POST_MEDIA_MIN_H), min(float(_POST_MEDIA_MAX_H), float(h)))
                             if h > target_h:
                                 target_h = h
@@ -950,24 +959,25 @@ class HomeScreen(GestureNavigationMixin, Screen):
                             continue
                     carousel.height = float(target_h)
 
+                # Recalculate on window resize.
                 carousel.bind(width=_recalc_height)
 
                 for u in urls:
                     slide = FloatLayout()
-                    img = AsyncImage(source=u)
-                    # Do not stretch; preserve aspect ratio.
+                    img = AsyncImage(source=u, size_hint=(1, None), height=carousel.height)
                     try:
                         setattr(img, "fit_mode", "contain")
                     except Exception:
                         pass
-                    img.size_hint = (1, 1)
                     slide.add_widget(img)
                     carousel.add_widget(slide)
                     imgs.append(img)
+                    # Recalculate once the texture is available.
                     img.bind(texture=_recalc_height)
 
                 wrap.add_widget(carousel)
 
+                # Overlay arrows when there are multiple images.
                 if len(urls) > 1:
                     btn_prev = Factory.AppButton(
                         text="◀",
