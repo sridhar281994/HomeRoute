@@ -46,6 +46,13 @@ class LoginScreen(GestureNavigationMixin, Screen):
         super().__init__(**kwargs)
         Clock.schedule_once(self._update_font_scale, 0)
 
+    def on_remember_me(self, *_):
+        # Persist preference immediately when toggled.
+        try:
+            set_remember_me(bool(self.remember_me))
+        except Exception:
+            pass
+
     def on_pre_enter(self, *args):
         # Clear old inputs and reset UI state on each entry.
         try:

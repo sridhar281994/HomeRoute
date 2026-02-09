@@ -9,6 +9,9 @@ from kivy.metrics import dp
 from kivy.properties import BooleanProperty, DictProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.carousel import Carousel
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
@@ -299,24 +302,100 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         if not items:
             container.add_widget(Label(text="No Photos", size_hint_y=None, height=dp(42), color=(1, 1, 1, 0.75)))
             return
-
-        # Use web-like tile height (~220px). Kivy dp() scales across DPI.
-        tile_h = dp(220)
+        # Show media as a carousel with arrows when multiple images exist.
+        # Keep aspect ratio (no stretching) and let the screen height adapt.
+        urls: list[str] = []
         for it in items:
             it = it or {}
             url = to_api_url(str(it.get("url") or "").strip())
             ctype = str(it.get("content_type") or "").lower().strip()
-            if not url:
+            if not url or ctype.startswith("video/"):
                 continue
-            if ctype.startswith("video/"):
-                tile = BoxLayout(size_hint_y=None, height=tile_h, padding=dp(10))
-                tile.canvas.before.clear()
-                container.add_widget(Label(text="[b]Video[/b]", size_hint_y=None, height=tile_h, color=(1, 1, 1, 0.78)))
-            else:
-                img = Factory.AsyncImage(source=url, fit_mode="fill")
-                img.size_hint_y = None
-                img.height = tile_h
-                container.add_widget(img)
+            urls.append(url)
+
+        if not urls:
+            container.add_widget(Label(text="No Photos", size_hint_y=None, height=dp(42), color=(1, 1, 1, 0.75)))
+            return
+
+        try:
+            container.cols = 1
+        except Exception:
+            pass
+
+        wrap = FloatLayout(size_hint_y=None)
+        carousel = Carousel(direction="right", loop=True)
+        carousel.size_hint = (1, None)
+        carousel.height = dp(260)
+        wrap.height = carousel.height
+
+        def _sync_wrap_h(*_):
+            wrap.height = carousel.height
+
+        carousel.bind(height=_sync_wrap_h)
+
+        imgs: list[AsyncImage] = []
+
+        def _recalc_height(*_):
+            if carousel.width <= 0:
+                return
+            max_h = dp(200)
+            for im in imgs:
+                try:
+                    tex = getattr(im, "texture", None)
+                    if not tex:
+                        continue
+                    tw, th = tex.size
+                    if not tw or not th:
+                        continue
+                    h = carousel.width * (float(th) / float(tw))
+                    h = max(dp(180), min(dp(520), h))
+                    if h > max_h:
+                        max_h = h
+                except Exception:
+                    continue
+            carousel.height = max_h
+
+        carousel.bind(width=_recalc_height)
+
+        for u in urls:
+            slide = FloatLayout()
+            img = AsyncImage(source=u)
+            try:
+                setattr(img, "fit_mode", "contain")
+            except Exception:
+                pass
+            img.size_hint = (1, 1)
+            slide.add_widget(img)
+            carousel.add_widget(slide)
+            imgs.append(img)
+            img.bind(texture=_recalc_height)
+
+        wrap.add_widget(carousel)
+
+        if len(urls) > 1:
+            btn_prev = Factory.AppButton(
+                text="◀",
+                size_hint=(None, None),
+                size=(dp(46), dp(46)),
+                background_color=(0, 0, 0, 0),
+                color=(1, 1, 1, 0.92),
+            )
+            btn_next = Factory.AppButton(
+                text="▶",
+                size_hint=(None, None),
+                size=(dp(46), dp(46)),
+                background_color=(0, 0, 0, 0),
+                color=(1, 1, 1, 0.92),
+            )
+            btn_prev.pos_hint = {"x": 0.0, "center_y": 0.5}
+            btn_next.pos_hint = {"right": 1.0, "center_y": 0.5}
+            btn_prev.bind(on_release=lambda *_: carousel.load_previous())
+            btn_next.bind(on_release=lambda *_: carousel.load_next())
+            wrap.add_widget(btn_prev)
+            wrap.add_widget(btn_next)
+
+        Clock.schedule_once(_recalc_height, 0)
+        container.add_widget(wrap)
 
     def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
         """

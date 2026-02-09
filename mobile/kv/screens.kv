@@ -601,8 +601,6 @@
                     padding: dp(14), dp(14), dp(14), root.keyboard_padding
                     spacing: dp(16)
 
-                    AuthHeader:
-
                     Label:
                         text: "[b]Secure Login[/b]  [font=EmojiFont]🔐[/font]"
                         markup: True
@@ -733,6 +731,24 @@
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
                             on_focus: self.focus and (root.scroll_to_field(self) or root.scroll_to_verify())
+
+                        BoxLayout:
+                            size_hint_y: None
+                            height: dp(34)
+                            spacing: dp(10)
+                            padding: [0, dp(2), 0, dp(2)]
+                            CheckBox:
+                                id: remember_me_chk
+                                size_hint: None, None
+                                size: dp(26), dp(26)
+                                active: bool(root.remember_me)
+                                on_active: root.remember_me = bool(self.active)
+                            Label:
+                                text: "Remember me"
+                                color: TEXT_MUTED
+                                halign: "left"
+                                valign: "middle"
+                                text_size: self.size
 
 
                         AppButton:

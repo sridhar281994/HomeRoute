@@ -15,6 +15,8 @@ from kivy.properties import (
 )
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.checkbox import CheckBox
+from kivy.uix.carousel import Carousel
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
@@ -900,32 +902,89 @@ class HomeScreen(GestureNavigationMixin, Screen):
         # MEDIA
         # =================================================
         if images:
-            grid = GridLayout(cols=2, spacing=dp(6), size_hint_y=None)
+            urls = [
+                to_api_url(str((it or {}).get("url") or "").strip())
+                for it in (images or [])
+                if str((it or {}).get("url") or "").strip()
+            ]
+            if urls:
+                wrap = FloatLayout(size_hint_y=None)
+                carousel = Carousel(direction="right", loop=True)
+                carousel.size_hint = (1, None)
+                carousel.height = dp(220)
+                wrap.height = carousel.height
 
-            def _resize_grid(*_):
-                if grid.width <= 0:
-                    return
-                w = (grid.width - dp(6)) / 2
-                h = w * 1.2
-                rows = (len(images[:4]) + 1) // 2
-                grid.height = rows * h + max(0, rows - 1) * dp(6)
-                for c in grid.children:
-                    c.height = h
-                    c.size_hint_y = None
+                def _sync_wrap_h(*_):
+                    wrap.height = carousel.height
 
-            grid.bind(width=_resize_grid)
+                carousel.bind(height=_sync_wrap_h)
 
-            for it in images[:4]:
-                img = AsyncImage(
-                    source=to_api_url(it.get("url") or ""),
-                    allow_stretch=True,
-                    keep_ratio=False,
-                )
-                img.size_hint_y = None
-                grid.add_widget(img)
+                imgs: list[AsyncImage] = []
 
-            Clock.schedule_once(_resize_grid, 0)
-            card.add_widget(grid)
+                def _recalc_height(*_):
+                    if carousel.width <= 0:
+                        return
+                    max_h = dp(180)
+                    for im in imgs:
+                        try:
+                            tex = getattr(im, "texture", None)
+                            if not tex:
+                                continue
+                            tw, th = tex.size
+                            if not tw or not th:
+                                continue
+                            # Keep aspect ratio (no stretching).
+                            h = carousel.width * (float(th) / float(tw))
+                            # Cap extremes so very tall images don't create huge cards.
+                            h = max(dp(160), min(dp(420), h))
+                            if h > max_h:
+                                max_h = h
+                        except Exception:
+                            continue
+                    carousel.height = max_h
+
+                carousel.bind(width=_recalc_height)
+
+                for u in urls:
+                    slide = FloatLayout()
+                    img = AsyncImage(source=u)
+                    # Do not stretch; preserve aspect ratio.
+                    try:
+                        setattr(img, "fit_mode", "contain")
+                    except Exception:
+                        pass
+                    img.size_hint = (1, 1)
+                    slide.add_widget(img)
+                    carousel.add_widget(slide)
+                    imgs.append(img)
+                    img.bind(texture=_recalc_height)
+
+                wrap.add_widget(carousel)
+
+                if len(urls) > 1:
+                    btn_prev = Factory.AppButton(
+                        text="◀",
+                        size_hint=(None, None),
+                        size=(dp(44), dp(44)),
+                        background_color=(0, 0, 0, 0),
+                        color=(1, 1, 1, 0.92),
+                    )
+                    btn_next = Factory.AppButton(
+                        text="▶",
+                        size_hint=(None, None),
+                        size=(dp(44), dp(44)),
+                        background_color=(0, 0, 0, 0),
+                        color=(1, 1, 1, 0.92),
+                    )
+                    btn_prev.pos_hint = {"x": 0.0, "center_y": 0.5}
+                    btn_next.pos_hint = {"right": 1.0, "center_y": 0.5}
+                    btn_prev.bind(on_release=lambda *_: carousel.load_previous())
+                    btn_next.bind(on_release=lambda *_: carousel.load_next())
+                    wrap.add_widget(btn_prev)
+                    wrap.add_widget(btn_next)
+
+                Clock.schedule_once(_recalc_height, 0)
+                card.add_widget(wrap)
 
         # =================================================
         # ACTION HANDLERS
