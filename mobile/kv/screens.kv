@@ -1577,88 +1577,94 @@
                 size_hint_y: 1
                 spacing: dp(10)
 
-                BoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: home_tagline.texture_size[1] + dp(10) + post_group_row.height + action_row.height
-                    spacing: dp(6)
-                    BoxLayout:
-                        id: post_group_row
-                        size_hint_y: None
-                        height: dp(42)
-                        spacing: dp(8)
-                        padding: [dp(4), 0, dp(4), 0]
-
-                        AppToggle:
-                            text: "Property/Materials"
-                            group: "home_post_group"
-                            state: "down" if (root.post_group or "") == "property_material" else "normal"
-                            on_state:
-                                if self.state == "down": setattr(root, "post_group", "property_material")
-                                if self.state == "down": root.refresh()
-
-                        AppToggle:
-                            text: "Services"
-                            group: "home_post_group"
-                            state: "down" if (root.post_group or "") == "services" else "normal"
-                            on_state:
-                                if self.state == "down": setattr(root, "post_group", "services")
-                                if self.state == "down": root.refresh()
-
-
-                    Label:
-                        id: home_tagline
-                        text: "[b][i]Uncover the Best, Good Luck[/i][/b]"
-                        font_name: "CursiveFont"
-                        font_size: sp(25)
-                        halign: "left"
-                        valign: "middle"
-                        text_size: self.width, None
-                        size_hint_y: None
-                        height: self.texture_size[1] + dp(6)
-                        color: TEXT_MAIN
-
-                    BoxLayout:
-                        id: action_row
-                        size_hint_y: None
-                        height: dp(40)
-                        spacing: dp(8)
-                        padding: [dp(4), dp(2), dp(4), dp(2)]
-
-                        AppButton:
-                            text: "Refresh"
-                            size_hint: None, None
-                            width: dp(120)
-                            height: dp(40)
-                            on_release: root.refresh()
-
-                        Widget:
-
-                        AppButton:
-                            text: "Filter"
-                            size_hint: None, None
-                            width: dp(120)
-                            height: dp(40)
-                            on_release: root.open_filters()
-
-                Label:
-                    text: "Loading..." if root.is_loading else "Posts"
-                    size_hint_y: None
-                    height: dp(24)
-                    color: TEXT_MUTED
-
                 ScrollView:
                     id: feed_scroll
-                    size_hint_y: 1
                     do_scroll_x: False
                     bar_width: dp(6)
 
-                    GridLayout:
-                        id: list_container
-                        cols: 1
+                    BoxLayout:
+                        orientation: "vertical"
                         size_hint_y: None
                         height: self.minimum_height
-                        spacing: dp(8)
+                        spacing: dp(10)
+                        padding: dp(6)
+
+                        BoxLayout:
+                            orientation: "vertical"
+                            size_hint_y: None
+                            height: self.minimum_height
+                            spacing: dp(6)
+
+                            BoxLayout:
+                                id: post_group_row
+                                size_hint_y: None
+                                height: dp(42)
+                                spacing: dp(8)
+                                padding: [dp(4), 0, dp(4), 0]
+
+                                AppToggle:
+                                    text: "Property/Materials"
+                                    group: "home_post_group"
+                                    state: "down" if (root.post_group or "") == "property_material" else "normal"
+                                    on_state:
+                                        if self.state == "down": setattr(root, "post_group", "property_material")
+                                        if self.state == "down": root.refresh()
+
+                                AppToggle:
+                                    text: "Services"
+                                    group: "home_post_group"
+                                    state: "down" if (root.post_group or "") == "services" else "normal"
+                                    on_state:
+                                        if self.state == "down": setattr(root, "post_group", "services")
+                                        if self.state == "down": root.refresh()
+
+                            Label:
+                                id: home_tagline
+                                text: "[b][i]Uncover the Best, Good Luck[/i][/b]"
+                                font_name: "CursiveFont"
+                                font_size: sp(25)
+                                halign: "left"
+                                valign: "middle"
+                                text_size: self.width, None
+                                size_hint_y: None
+                                height: self.texture_size[1] + dp(6)
+                                color: TEXT_MAIN
+
+                            BoxLayout:
+                                id: action_row
+                                size_hint_y: None
+                                height: dp(40)
+                                spacing: dp(8)
+                                padding: [dp(4), dp(2), dp(4), dp(2)]
+
+                                AppButton:
+                                    text: "Refresh"
+                                    size_hint: None, None
+                                    width: dp(120)
+                                    height: dp(40)
+                                    on_release: root.refresh()
+
+                                Widget:
+
+                                AppButton:
+                                    text: "Filter"
+                                    size_hint: None, None
+                                    width: dp(120)
+                                    height: dp(40)
+                                    on_release: root.open_filters()
+
+                        Label:
+                            text: "Loading..." if root.is_loading else "Posts"
+                            size_hint_y: None
+                            height: dp(24)
+                            color: TEXT_MUTED
+
+                        GridLayout:
+                            id: list_container
+                            cols: 1
+                            size_hint_y: None
+                            height: self.minimum_height
+                            spacing: dp(8)
 
 <FilterPopup>:
     # Use a full-screen modal overlay and draw our own rounded panel,
