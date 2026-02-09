@@ -34,6 +34,7 @@ export default function OwnerAddPage() {
   const [propertyId, setPropertyId] = useState<number | null>(null);
   const [adNumber, setAdNumber] = useState<string>("");
   const [msg, setMsg] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
   const [selectedMediaSummary, setSelectedMediaSummary] = useState<string>("");
   const [mediaMsg, setMediaMsg] = useState<string>("");
@@ -304,6 +305,9 @@ export default function OwnerAddPage() {
             onChange={(e) => {
               const v = e.target.value === "services" ? "services" : "property_material";
               setPostGroup(v);
+              if (v === "services") {
+                setRentSale("rent");
+              }
               // Reset category if it doesn't fit the new group.
               setPropertyType((prev) => {
                 const ok = needOptionsFlat.includes(prev);
@@ -347,13 +351,15 @@ export default function OwnerAddPage() {
           <label className="muted">Price</label>
           <input value={price} onChange={(e) => setPrice(e.target.value)} />
         </div>
-        <div className="col-6">
-          <label className="muted">Rent/Sale</label>
-          <select value={rentSale} onChange={(e) => setRentSale(e.target.value)}>
-            <option value="rent">Rent</option>
-            <option value="sale">Sale</option>
-          </select>
-        </div>
+        {postGroup === "property_material" ? (
+          <div className="col-6">
+            <label className="muted">Rent/Sale</label>
+            <select value={rentSale} onChange={(e) => setRentSale(e.target.value)}>
+              <option value="rent">Rent</option>
+              <option value="sale">Sale</option>
+            </select>
+          </div>
+        ) : null}
         <div className="col-6">
           <label className="muted">Contact phone</label>
           <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
@@ -423,7 +429,9 @@ export default function OwnerAddPage() {
         <div className="col-12 row">
           <button
             className="primary"
+            disabled={isSubmitting}
             onClick={async () => {
+              if (isSubmitting) return;
               setMsg("");
               try {
                 if (!state) throw new Error("Select state.");
@@ -434,6 +442,7 @@ export default function OwnerAddPage() {
                 if (!propertyType.trim()) throw new Error("Select need category.");
                 if (useCompanyName && !companyName.trim()) throw new Error("Please enter company name (or select No).");
 
+                setIsSubmitting(true);
                 // GPS is optional (State/District/Area are mandatory).
                 // Best-effort: if user blocks location, proceed without GPS.
                 let gps: { lat: number; lon: number } | null = null;
@@ -452,7 +461,7 @@ export default function OwnerAddPage() {
                   location: area || "",
                   address: "",
                   price: Number(price || 0),
-                  rent_sale: rentSale,
+                  rent_sale: postGroup === "services" ? "rent" : rentSale,
                   property_type: propertyType.trim(),
                   post_group: postGroup,
                   contact_phone: contactPhone,
@@ -484,10 +493,12 @@ export default function OwnerAddPage() {
                 loadMyAds();
               } catch (e: any) {
                 setMsg(e.message || "Failed");
+              } finally {
+                setIsSubmitting(false);
               }
             }}
           >
-            Submit Ad
+            {isSubmitting ? "Submitting..." : "Submit Ad"}
           </button>
           <span className="muted">{msg}</span>
         </div>

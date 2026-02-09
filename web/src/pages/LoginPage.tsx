@@ -22,6 +22,17 @@ export default function LoginPage() {
     "333176294914-nusbltfj219k3ou30dnqluvcqsvsr93d.apps.googleusercontent.com";
 
   useEffect(() => {
+    setIdentifier("");
+    setPassword("");
+    setOtp("");
+    setMsg("");
+    const active = document.activeElement as HTMLElement | null;
+    if (active && typeof active.blur === "function") {
+      active.blur();
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     let rendered = false;
     let tries = 0;
