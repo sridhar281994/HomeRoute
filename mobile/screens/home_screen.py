@@ -899,7 +899,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
         card.add_widget(header)
 
         # =================================================
-        # MEDIA
+        # MEDIA (FIXED: no background bleed)
         # =================================================
         if images:
             urls = [
@@ -908,16 +908,16 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 if str((it or {}).get("url") or "").strip()
             ]
             if urls:
-                wrap = FloatLayout(size_hint_y=None)
+                media_box = BoxLayout(orientation="vertical", size_hint_y=None)
                 carousel = Carousel(direction="right", loop=True)
                 carousel.size_hint = (1, None)
                 carousel.height = dp(220)
-                wrap.height = carousel.height
+                media_box.height = carousel.height
 
-                def _sync_wrap_h(*_):
-                    wrap.height = carousel.height
+                def _sync_media_h(*_):
+                    media_box.height = carousel.height
 
-                carousel.bind(height=_sync_wrap_h)
+                carousel.bind(height=_sync_media_h)
 
                 imgs: list[AsyncImage] = []
 
@@ -933,9 +933,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                             tw, th = tex.size
                             if not tw or not th:
                                 continue
-                            # Keep aspect ratio (no stretching).
                             h = carousel.width * (float(th) / float(tw))
-                            # Cap extremes so very tall images don't create huge cards.
                             h = max(dp(160), min(dp(420), h))
                             if h > max_h:
                                 max_h = h
@@ -946,20 +944,20 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 carousel.bind(width=_recalc_height)
 
                 for u in urls:
-                    slide = FloatLayout()
+                    slide = BoxLayout()
                     img = AsyncImage(source=u)
-                    # Do not stretch; preserve aspect ratio.
                     try:
                         setattr(img, "fit_mode", "contain")
                     except Exception:
                         pass
-                    img.size_hint = (1, 1)
+                    img.size_hint = (1, None)
+                    img.height = carousel.height
                     slide.add_widget(img)
                     carousel.add_widget(slide)
                     imgs.append(img)
                     img.bind(texture=_recalc_height)
 
-                wrap.add_widget(carousel)
+                media_box.add_widget(carousel)
 
                 if len(urls) > 1:
                     btn_prev = Factory.AppButton(
@@ -976,15 +974,16 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         background_color=(0, 0, 0, 0),
                         color=(1, 1, 1, 0.92),
                     )
-                    btn_prev.pos_hint = {"x": 0.0, "center_y": 0.5}
-                    btn_next.pos_hint = {"right": 1.0, "center_y": 0.5}
+                    btn_row_nav = BoxLayout(size_hint_y=None, height=dp(44))
                     btn_prev.bind(on_release=lambda *_: carousel.load_previous())
                     btn_next.bind(on_release=lambda *_: carousel.load_next())
-                    wrap.add_widget(btn_prev)
-                    wrap.add_widget(btn_next)
+                    btn_row_nav.add_widget(btn_prev)
+                    btn_row_nav.add_widget(btn_next)
+                    media_box.add_widget(btn_row_nav)
+                    media_box.height += dp(44)
 
                 Clock.schedule_once(_recalc_height, 0)
-                card.add_widget(wrap)
+                card.add_widget(media_box)
 
         # =================================================
         # ACTION HANDLERS
