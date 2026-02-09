@@ -425,6 +425,7 @@
         StencilPop
 
     AsyncImage:
+        id: avatar_img
         source: root.image_source
         # allow_stretch/keep_ratio are deprecated in recent Kivy; use fit_mode.
         fit_mode: "cover"
@@ -1579,8 +1580,31 @@
                 BoxLayout:
                     orientation: "vertical"
                     size_hint_y: None
-                    height: home_tagline.texture_size[1] + dp(10) + action_row.height
+                    height: home_tagline.texture_size[1] + dp(10) + post_group_row.height + action_row.height
                     spacing: dp(6)
+                    BoxLayout:
+                        id: post_group_row
+                        size_hint_y: None
+                        height: dp(42)
+                        spacing: dp(8)
+                        padding: [dp(4), 0, dp(4), 0]
+
+                        AppToggle:
+                            text: "Property/Materials"
+                            group: "home_post_group"
+                            state: "down" if (root.post_group or "") == "property_material" else "normal"
+                            on_state:
+                                if self.state == "down": setattr(root, "post_group", "property_material")
+                                if self.state == "down": root.refresh()
+
+                        AppToggle:
+                            text: "Services"
+                            group: "home_post_group"
+                            state: "down" if (root.post_group or "") == "services" else "normal"
+                            on_state:
+                                if self.state == "down": setattr(root, "post_group", "services")
+                                if self.state == "down": root.refresh()
+
 
                     Label:
                         id: home_tagline
@@ -2211,6 +2235,13 @@
                         size_hint_y: None
                         height: dp(32)
                     PrettySpinner:
+                        id: post_group_spinner
+                        text: "Owner(property/Material)"
+                        values: root.publish_type_values()
+                        size_hint_y: None
+                        height: dp(44)
+                        on_text: root.on_post_group_changed()
+                    PrettySpinner:
                         id: state_spinner
                         text: "Select State"
                         values: root.state_values()
@@ -2242,12 +2273,15 @@
                         values: root.category_values()
                         size_hint_y: None
                         height: dp(44)
+                    # Rent/Sale is only applicable for property/material posts.
                     PrettySpinner:
                         id: rent_sale_spinner
                         text: "Rent"
                         values: ["Rent", "Sale"]
                         size_hint_y: None
-                        height: dp(44)
+                        height: dp(44) if (root.publish_post_group or "") != "services" else 0
+                        opacity: 1 if (root.publish_post_group or "") != "services" else 0
+                        disabled: (root.publish_post_group or "") == "services"
                     TextInput:
                         id: price_input
                         hint_text: "Price"

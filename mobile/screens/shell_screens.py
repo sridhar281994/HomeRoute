@@ -1005,6 +1005,9 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
 
 
 class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
+    publish_post_group = StringProperty("property_material")  # property_material | services
+    is_submitting = BooleanProperty(False)
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._edit_data: dict[str, Any] | None = None
@@ -1014,6 +1017,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         self._preferred_category: str = ""
         # Publish type (controls which categories are shown)
         self._publish_post_group: str = "property_material"  # property_material | services
+        self.publish_post_group = "property_material"
 
     def start_new(self) -> None:
         """
@@ -1109,6 +1113,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         except Exception:
             label = ""
         self._publish_post_group = "services" if "service" in label.lower() else "property_material"
+        self.publish_post_group = self._publish_post_group
         # Reload categories filtered by the selected type.
         self._load_publish_categories(preferred=str(getattr(self, "_preferred_category", "") or ""))
 
@@ -1135,6 +1140,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                             items = [str(x or "").strip() for x in ((g or {}).get("items") or []) if str(x or "").strip()]
                             if pref in items:
                                 self._publish_post_group = "property_material" if (gl in property_groups) else "services"
+                                self.publish_post_group = self._publish_post_group
                                 break
                     except Exception:
                         pass
@@ -1169,6 +1175,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     # Sync the publish-type spinner label.
                     try:
                         pg = str(getattr(self, "_publish_post_group", "") or "").strip().lower()
+                        self.publish_post_group = pg or "property_material"
                         if "post_group_spinner" in self.ids:
                             self.ids["post_group_spinner"].text = "Owner(services Only)" if pg == "services" else "Owner(property/Material)"
                     except Exception:
@@ -1446,6 +1453,9 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         Android-safe: uploads JPEG BYTES (not file paths).
         """
 
+        if bool(getattr(self, "is_submitting", False)):
+            return
+
         title = (self.ids.get("title_input").text or "").strip() if self.ids.get("title_input") else ""
         state = (self.ids.get("state_spinner").text or "").strip() if self.ids.get("state_spinner") else ""
         district = (self.ids.get("district_spinner").text or "").strip() if self.ids.get("district_spinner") else ""
@@ -1480,6 +1490,16 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         except Exception:
             _popup("Error", "Enter a valid price.")
             return
+
+        # Debounce submit button (single click).
+        self.is_submitting = True
+        try:
+            btn = (self.ids or {}).get("submit_btn")
+            if btn is not None:
+                btn.disabled = True
+                btn.text = "Submitting..."
+        except Exception:
+            pass
 
         from threading import Thread
         from kivy.utils import platform
@@ -1559,11 +1579,44 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                         self.edit_property_id = None
                         self._edit_data = None
 
+                    # Re-enable submit button
+                    try:
+                        self.is_submitting = False
+                        b = (self.ids or {}).get("submit_btn")
+                        if b is not None:
+                            b.disabled = False
+                            b.text = "Submit (goes to admin review)" if (not self.edit_property_id) else "Save Changes"
+                    except Exception:
+                        pass
+
                 Clock.schedule_once(done, 0)
 
             except ApiError as e:
                 err_msg = str(e)
-                Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
+                def fail(*_):
+                    _popup("Error", err_msg)
+                    try:
+                        self.is_submitting = False
+                        b = (self.ids or {}).get("submit_btn")
+                        if b is not None:
+                            b.disabled = False
+                            b.text = "Submit (goes to admin review)" if (not self.edit_property_id) else "Save Changes"
+                    except Exception:
+                        pass
+                Clock.schedule_once(fail, 0)
+            except Exception as e:
+                err_msg = str(e) or "Publish failed"
+                def fail2(*_):
+                    _popup("Error", err_msg)
+                    try:
+                        self.is_submitting = False
+                        b = (self.ids or {}).get("submit_btn")
+                        if b is not None:
+                            b.disabled = False
+                            b.text = "Submit (goes to admin review)" if (not self.edit_property_id) else "Save Changes"
+                    except Exception:
+                        pass
+                Clock.schedule_once(fail2, 0)
 
         def _maybe_with_location(ok: bool) -> None:
             if self.edit_property_id:
