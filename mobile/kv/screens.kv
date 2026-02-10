@@ -58,6 +58,12 @@
             width: 1.1
             rounded_rectangle: [self.x, self.y, self.width, self.height, 12]
 
+<ScrollView>:
+    # Hide scrollbars everywhere (mobile-first UI).
+    bar_width: 0
+    bar_color: 0, 0, 0, 0
+    bar_inactive_color: 0, 0, 0, 0
+
 <AppButton@HoverButton>:
     markup: True
     bold: True
@@ -511,7 +517,7 @@
 
             ScrollView:
                 do_scroll_x: False
-                bar_width: dp(6)
+                bar_width: 0
 
                 WebPanel:
                     size_hint_x: None
@@ -594,13 +600,12 @@
                 scroll_type: ["content"]
 
                 BoxLayout:
+                    id: login_content
                     orientation: "vertical"
                     size_hint_y: None
                     height: self.minimum_height
-                    padding: dp(14)
+                    padding: dp(14), dp(14), dp(14), root.keyboard_padding
                     spacing: dp(16)
-
-                    AuthHeader:
 
                     Label:
                         text: "[b]Secure Login[/b]  [font=EmojiFont]🔐[/font]"
@@ -676,19 +681,14 @@
                                 background_color: 0, 0, 0, 0
 
                                 canvas.after:
-                                    # Eye outline
                                     Color:
                                         rgba: (1, 1, 1, 0.9)
                                     Line:
                                         width: 1.4
                                         ellipse: (self.center_x - dp(12), self.center_y - dp(6), dp(24), dp(12))
-
-                                    # Pupil
                                     Ellipse:
                                         size: dp(6), dp(6)
                                         pos: (self.center_x - dp(3), self.center_y - dp(3))
-
-                                    # Slash when password hidden
                                     Color:
                                         rgba: (1, 1, 1, 0.9) if self.state == "normal" else (0, 0, 0, 0)
                                     Line:
@@ -736,8 +736,25 @@
                             font_size: sp(16)
                             background_color: (1, 1, 1, 0.18)
                             foreground_color: TEXT_MAIN
-                            on_focus:
-                                if self.focus: root.scroll_to_field(self)
+                            on_focus: self.focus and (root.scroll_to_field(self) or root.scroll_to_verify())
+
+                        BoxLayout:
+                            size_hint_y: None
+                            height: dp(34)
+                            spacing: dp(10)
+                            padding: [0, dp(2), 0, dp(2)]
+                            CheckBox:
+                                id: remember_me_chk
+                                size_hint: None, None
+                                size: dp(26), dp(26)
+                                active: bool(root.remember_me)
+                                on_active: root.remember_me = bool(self.active)
+                            Label:
+                                text: "Remember me"
+                                color: TEXT_MUTED
+                                halign: "left"
+                                valign: "middle"
+                                text_size: self.size
 
 
                         AppButton:
@@ -792,7 +809,7 @@
 
             ScrollView:
                 do_scroll_x: False
-                bar_width: dp(6)
+                bar_width: 0
 
                 WebPanel:
                     size_hint_x: None
@@ -871,7 +888,7 @@
 
             ScrollView:
                 do_scroll_x: False
-                bar_width: dp(6)
+                bar_width: 0
 
                 WebPanel:
                     size_hint_x: None
@@ -991,7 +1008,7 @@
 
             ScrollView:
                 do_scroll_x: False
-                bar_width: dp(6)
+                bar_width: 0
 
                 BoxLayout:
                     orientation: "vertical"
@@ -1239,7 +1256,7 @@
 
             ScrollView:
                 do_scroll_x: False
-                bar_width: dp(6)
+                bar_width: 0
 
                 BoxLayout:
                     orientation: "vertical"
@@ -1308,6 +1325,45 @@
                                     size_hint_y: None
                                     height: dp(64)
 
+                                WebCard:
+                                    BoxLayout:
+                                        orientation: "vertical"
+                                        size_hint_y: None
+                                        height: self.minimum_height
+                                        spacing: dp(10)
+                                        padding: dp(14)
+
+                                        Label:
+                                            text: "[b]Summary[/b]"
+                                            markup: True
+                                            font_size: sp(16)
+                                            size_hint_y: None
+                                            height: dp(24)
+
+                                        Label:
+                                            text: root.summary_window_text
+                                            size_hint_y: None
+                                            height: dp(18)
+                                            color: TEXT_MUTED
+
+                                        Label:
+                                            text: "Service requested: " + root.summary_service_requested
+                                            size_hint_y: None
+                                            height: dp(20)
+                                            color: TEXT_MAIN
+
+                                        Label:
+                                            text: "Earned: " + root.summary_earned
+                                            size_hint_y: None
+                                            height: dp(20)
+                                            color: TEXT_MAIN
+
+                                        Label:
+                                            text: "Merchant fee: " + root.summary_merchant_fee
+                                            size_hint_y: None
+                                            height: dp(20)
+                                            color: TEXT_MAIN
+
                                 AppButton:
                                     text: "Back"
                                     size_hint_x: 1
@@ -1345,7 +1401,7 @@
 
             ScrollView:
                 do_scroll_x: False
-                bar_width: dp(6)
+                bar_width: 0
 
                 WebPanel:
                     size_hint_x: None
@@ -1524,148 +1580,107 @@
                 size: self.width * 0.75, self.height * 0.5
                 pos: self.right - self.width * 0.65, self.y - self.height * 0.12
 
-        BoxLayout:
-            orientation: "vertical"
-            size_hint: 0.95, 0.95
-            pos_hint: {"center_x": 0.5, "center_y": 0.5}
-            spacing: dp(12)
+        # Whole screen scrolls (no static upper section).
+        ScrollView:
+            id: feed_scroll
+            do_scroll_x: False
+            bar_width: 0
 
-            # ==================================================
-            # TOP BAR
-            # ==================================================
-            MobileTopBar:
-                avatar_text: root.avatar_letter
-                avatar_image: root.profile_image_url
-                avatar_cb: root.go_settings
+            BoxLayout:
+                orientation: "vertical"
+                size_hint: 0.95, None
+                height: self.minimum_height
+                pos_hint: {"center_x": 0.5}
+                spacing: dp(12)
+                padding: [0, 0, 0, dp(10)]
 
-            # ==================================================
-            # MAIN PANEL
-            # ==================================================
-            WebPanel:
-                size_hint_y: 1
-                spacing: dp(10)
+                MobileTopBar:
+                    avatar_text: root.avatar_letter
+                    avatar_image: root.profile_image_url
+                    avatar_cb: root.go_settings
 
-                # -------------------------------
-                # HEADER AREA
-                # -------------------------------
-                BoxLayout:
-                    orientation: "vertical"
+                WebPanel:
                     size_hint_y: None
                     height: self.minimum_height
-                    spacing: dp(8)
-
-                    Label:
-                        id: home_tagline
-                        markup: True
-                        text: "[b]Uncover the Best, Good Luck[/b]"
-                        font_name: "assets/fonts/DancingScript.ttf"
-                        font_size: max(sp(18), self.width * 0.05)
-                        halign: "left"
-                        valign: "middle"
-                        text_size: self.width, None
-                        size_hint_y: None
-                        height: self.texture_size[1] + dp(6)
-                        color: TEXT_MAIN
-
-                    # -------------------------------
-                    # ACTION BUTTON ROW
-                    # -------------------------------
-                    BoxLayout:
-                        id: action_row
-                        orientation: "horizontal"
-                        size_hint_y: None
-                        height: dp(46)
-                        spacing: dp(10)
-
-                        Widget:
-                            size_hint_x: None
-                            width: dp(6)
-
-                        AppButton:
-                            text: "Refresh"
-                            size_hint: None, None
-                            width: min(dp(120), root.width * 0.26)
-                            height: dp(40)
-                            on_release: root.refresh()
-
-                        Widget:
-                            size_hint_x: 1
-
-                        AppButton:
-                            text: "Filter"
-                            size_hint: None, None
-                            width: min(dp(120), root.width * 0.26)
-                            height: dp(40)
-                            on_release: root.open_filters()
-
-                        Widget:
-                            size_hint_x: None
-                            width: dp(6)
+                    spacing: dp(10)
 
                     BoxLayout:
-                        orientation: "horizontal"
+                        orientation: "vertical"
                         size_hint_y: None
-                        height: dp(44)
-                        spacing: dp(10)
+                        height: self.minimum_height
+                        spacing: dp(8)
 
-                        AppButton:
-                            text: "Property / Material"
-                            size_hint_x: 1
-                            is_active: root.post_group == "property_material"
-                            background_color: 0, 0, 0, 0
-                            color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
-                            on_release:
-                                root.post_group = "property_material"
-                                root.refresh()
+                        Label:
+                            id: home_tagline
+                            markup: True
+                            text: "[b]Uncover the Best, Good Luck[/b]"
+                            font_name: "assets/fonts/DancingScript.ttf"
+                            font_size: max(sp(18), self.width * 0.05)
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.width, None
+                            size_hint_y: None
+                            height: self.texture_size[1] + dp(4)
+                            color: TEXT_MAIN
 
-                            canvas.before:
-                                Color:
-                                    rgba: (0.80, 0.72, 1.0, 0.22) if self.is_active else (0, 0, 0, 0)
-                                RoundedRectangle:
-                                    pos: self.pos
-                                    size: self.size
-                                    radius: [dp(14)]
+                        BoxLayout:
+                            id: action_row
+                            orientation: "horizontal"
+                            size_hint_y: None
+                            height: dp(44)
+                            spacing: dp(10)
 
-                        AppButton:
-                            text: "Services"
-                            size_hint_x: 1
-                            is_active: root.post_group == "services"
-                            background_color: 0, 0, 0, 0
-                            color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
-                            on_release:
-                                root.post_group = "services"
-                                root.refresh()
+                            AppButton:
+                                text: "Refresh"
+                                size_hint: None, None
+                                width: min(dp(120), root.width * 0.26)
+                                height: dp(36)
+                                on_release: root.refresh()
 
-                            canvas.before:
-                                Color:
-                                    rgba: (0.80, 0.72, 1.0, 0.22) if self.is_active else (0, 0, 0, 0)
-                                RoundedRectangle:
-                                    pos: self.pos
-                                    size: self.size
-                                    radius: [dp(14)]
+                            Widget:
+                                size_hint_x: 1
 
+                            AppButton:
+                                text: "Filter"
+                                size_hint: None, None
+                                width: min(dp(120), root.width * 0.26)
+                                height: dp(36)
+                                on_release: root.open_filters()
 
+                        BoxLayout:
+                            orientation: "horizontal"
+                            size_hint_y: None
+                            height: dp(40)
+                            spacing: dp(10)
 
-                # -------------------------------
-                # STATUS LABEL
-                # -------------------------------
-                Label:
-                    text: "Loading..." if root.is_loading else "Posts"
-                    size_hint_y: None
-                    height: dp(26)
-                    color: TEXT_MUTED
-                    halign: "left"
-                    valign: "middle"
-                    text_size: self.width, None
+                            AppButton:
+                                text: "Property / Material"
+                                size_hint_x: 1
+                                is_active: root.post_group == "property_material"
+                                background_color: 0, 0, 0, 0
+                                color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
+                                on_release:
+                                    root.post_group = "property_material"
+                                    root.refresh()
 
-                # -------------------------------
-                # FEED LIST
-                # -------------------------------
-                ScrollView:
-                    id: feed_scroll
-                    size_hint_y: 1
-                    do_scroll_x: False
-                    bar_width: dp(6)
+                            AppButton:
+                                text: "Services"
+                                size_hint_x: 1
+                                is_active: root.post_group == "services"
+                                background_color: 0, 0, 0, 0
+                                color: (1, 1, 1, 1) if self.is_active else ACCENT_PURPLE
+                                on_release:
+                                    root.post_group = "services"
+                                    root.refresh()
+
+                        Label:
+                            text: "Loading..." if root.is_loading else "Posts"
+                            size_hint_y: None
+                            height: dp(22)
+                            color: TEXT_MUTED
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.width, None
 
                     GridLayout:
                         id: list_container
@@ -1673,7 +1688,7 @@
                         size_hint_y: None
                         height: self.minimum_height
                         spacing: dp(10)
-
+                        padding: dp(0)
 
 
 <FilterPopup>:
@@ -1748,13 +1763,37 @@
             # ================= BODY =================
             ScrollView:
                 do_scroll_x: False
-                bar_width: dp(6)
+                bar_width: 0
 
                 GridLayout:
                     cols: 1 if root.width < dp(620) else 2
                     size_hint_y: None
                     height: self.minimum_height
                     spacing: dp(14)
+
+                    # ---------- POST TYPE ----------
+                    BoxLayout:
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: dp(86)
+                        spacing: dp(6)
+
+                        Label:
+                            text: "Category"
+                            color: TEXT_MUTED
+                            size_hint_y: None
+                            height: dp(22)
+
+                        PrettySpinner:
+                            text:
+                                "Property / Material" if (root.home and root.home.post_group == "property_material") else (
+                                "Services" if (root.home and root.home.post_group == "services") else "Property / Material"
+                                )
+                            values: ["Property / Material", "Services"]
+                            on_text:
+                                if root.home: root.home.post_group = ("services" if "service" in self.text.lower() else "property_material")
+                            size_hint_y: None
+                            height: dp(48)
 
                     # ---------- STATE ----------
                     BoxLayout:
@@ -1821,7 +1860,7 @@
 
                         ScrollView:
                             do_scroll_x: False
-                            bar_width: dp(6)
+                            bar_width: 0
                             size_hint_y: None
                             height: dp(140)
 
@@ -2016,7 +2055,7 @@
 
                 ScrollView:
                     do_scroll_x: False
-                    bar_width: dp(6)
+                    bar_width: 0
                     GridLayout:
                         id: my_posts_container
                         cols: 1
@@ -2043,7 +2082,7 @@
 
             ScrollView:
                 do_scroll_x: False
-                bar_width: dp(6)
+                bar_width: 0
 
                 BoxLayout:
                     orientation: "vertical"
@@ -2203,7 +2242,7 @@
 
             ScrollView:
                 do_scroll_x: False
-                bar_width: dp(6)
+                bar_width: 0
                 WebPanel:
                     size_hint_x: None
                     width: min(root.width * 0.95, dp(980))
@@ -2260,7 +2299,10 @@
                         text: "Rent"
                         values: ["Rent", "Sale"]
                         size_hint_y: None
-                        height: dp(44)
+                        # Hide for services posts.
+                        height: dp(44) if (root.publish_post_group or "") != "services" else 0
+                        opacity: 1 if (root.publish_post_group or "") != "services" else 0
+                        disabled: (root.publish_post_group or "") == "services"
                     TextInput:
                         id: price_input
                         hint_text: "Price"

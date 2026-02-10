@@ -73,6 +73,31 @@ def _verify_ca_bundle() -> str:
     return certifi.where()
 
 
+def _guess_content_type(filename: str) -> str:
+    """
+    Mobile uploads often include modern formats (AVIF/HEIC) that Python's
+    `mimetypes` may not know by default. Ensure we send a correct part
+    content-type so the backend can process and Cloudinary can detect format.
+    """
+    name = (filename or "").strip()
+    ct = mimetypes.guess_type(name)[0]
+    if ct:
+        return ct.strip()
+    ext = os.path.splitext(name.lower())[1]
+    return {
+        ".heic": "image/heic",
+        ".heif": "image/heif",
+        ".avif": "image/avif",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".mp4": "video/mp4",
+        ".mov": "video/quicktime",
+    }.get(ext, "application/octet-stream")
+
+
 def _request(method: str, url: str, **kwargs) -> requests.Response:
     timeout = kwargs.pop("timeout", DEFAULT_TIMEOUT)
     verify = kwargs.pop("verify", _verify_ca_bundle())
@@ -331,7 +356,7 @@ def api_owner_publish_property(*, payload: dict[str, Any], file_paths: list[str]
         for fp in paths:
             f = stack.enter_context(open(fp, "rb"))
             fname = os.path.basename(fp)
-            ctype = (mimetypes.guess_type(fname)[0] or "application/octet-stream").strip()
+            ctype = _guess_content_type(fname)
             files.append(("files", (fname, f, ctype)))
         resp = _request(
             "POST",
@@ -344,6 +369,34 @@ def api_owner_publish_property(*, payload: dict[str, Any], file_paths: list[str]
         )
     return _handle(resp)
 
+def api_owner_publish_property_bytes(*, payload: dict[str, Any], files_bytes: list[bytes]) -> dict[str, Any]:
+    """
+    Atomic publish (create + upload) using in-memory bytes (Android-safe).
+    Backend endpoint: POST /owner/properties/publish
+    """
+    url = f"{_base_url()}/owner/properties/publish"
+
+    form = {"payload": json.dumps(payload or {}, ensure_ascii=False)}
+
+    files: list[tuple[str, tuple[str, Any, str]]] = []
+    for i, b in enumerate(files_bytes or []):
+        files.append(
+            (
+                "files",
+                (f"image_{i}.jpg", b, "image/jpeg"),
+            )
+        )
+
+    resp = _request(
+        "POST",
+        url,
+        data=form,
+        files=files,
+        headers=_headers(),
+        timeout=120,
+        verify=_verify_ca_bundle(),
+    )
+    return _handle(resp)
 
 def api_owner_update_property(*, property_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     """
@@ -372,7 +425,8 @@ def api_upload_property_media(*, property_id: int, file_path: str, sort_order: i
     """
     url = f"{_base_url()}/properties/{int(property_id)}/images"
     with open(file_path, "rb") as f:
-        files = {"file": (os.path.basename(file_path), f)}
+        fname = os.path.basename(file_path)
+        files = {"file": (fname, f, _guess_content_type(fname))}
         resp = _request(
             "POST",
             url,
@@ -390,6 +444,19 @@ def api_upload_property_media(*, property_id: int, file_path: str, sort_order: i
 def api_subscription_status() -> dict[str, Any]:
     url = f"{_base_url()}/me/subscription"
     resp = _request("GET", url, headers=_headers(), timeout=15, verify=_verify_ca_bundle())
+    return _handle(resp)
+
+
+def api_subscription_summary(*, window_days: int = 30) -> dict[str, Any]:
+    url = f"{_base_url()}/me/subscription/summary"
+    resp = _request(
+        "GET",
+        url,
+        params={"window_days": int(window_days)},
+        headers=_headers(),
+        timeout=15,
+        verify=_verify_ca_bundle(),
+    )
     return _handle(resp)
 
 
@@ -411,9 +478,33 @@ def api_me_update(*, name: str) -> dict[str, Any]:
 def api_me_upload_profile_image(*, file_path: str) -> dict[str, Any]:
     url = f"{_base_url()}/me/profile-image"
     with open(file_path, "rb") as f:
-        files = {"file": (os.path.basename(file_path), f)}
+        fname = os.path.basename(file_path)
+        files = {"file": (fname, f, _guess_content_type(fname))}
         resp = _request("POST", url, files=files, headers=_headers(), timeout=30, verify=_verify_ca_bundle())
     return _handle(resp)
+
+def api_me_upload_profile_image_bytes(*, raw: bytes) -> dict[str, Any]:
+    """
+    Upload profile image using in-memory JPEG bytes (Android-safe).
+    Backend endpoint: POST /me/profile-image
+    """
+    url = f"{_base_url()}/me/profile-image"
+
+    files = {
+        "file": ("profile.jpg", raw, "image/jpeg"),
+    }
+
+    resp = _request(
+        "POST",
+        url,
+        files=files,
+        headers=_headers(),
+        timeout=60,
+        verify=_verify_ca_bundle(),
+    )
+    return _handle(resp)
+
+
 
 
 def api_me_change_email_request_otp(*, new_email: str) -> dict[str, Any]:

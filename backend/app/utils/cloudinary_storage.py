@@ -13,6 +13,41 @@ from app.utils.cloudinary_config import cloudinary_is_configured
 ResourceType = Literal["image", "video"]
 
 
+def _suffix_from_upload(*, filename: str, content_type: str, resource_type: ResourceType) -> str:
+    """
+    Pick a temp-file suffix for Cloudinary upload.
+
+    Cloudinary detects by content, but extension helps when formats aren't
+    supported by Pillow and we fall back to raw upload.
+    """
+    ext = os.path.splitext((filename or "").strip())[1].lower()
+    if ext and len(ext) <= 12 and ext.startswith("."):
+        return ext
+
+    ct = (content_type or "").lower().strip()
+    if resource_type == "image":
+        if ct in {"image/jpeg", "image/jpg"}:
+            return ".jpg"
+        if ct == "image/png":
+            return ".png"
+        if ct == "image/webp":
+            return ".webp"
+        if ct == "image/gif":
+            return ".gif"
+        if ct == "image/avif":
+            return ".avif"
+        if ct in {"image/heic", "image/heif"}:
+            return ".heic"
+        return ".img"
+
+    # video
+    if ct == "video/mp4":
+        return ".mp4"
+    if ct == "video/quicktime":
+        return ".mov"
+    return ".bin"
+
+
 def _cloudinary_folder() -> str:
     return (os.getenv("CLOUDINARY_FOLDER") or "quickrent4u").strip()
 
@@ -39,29 +74,50 @@ def upload_bytes(
     tmp_path = None
 
     try:
-        # ✅ STRICT IMAGE VALIDATION
         if resource_type == "image":
             try:
+                # ✅ Best case: Pillow can decode → normalize to JPEG
                 img = Image.open(BytesIO(raw))
-                img.verify()          # validates structure
+                img.verify()  # structural validation
+
                 img = Image.open(BytesIO(raw))
                 img = img.convert("RGB")
-            except Exception:
-                raise RuntimeError(
-                    "Invalid image file. Please upload from Camera or Gallery."
+
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                    img.save(tmp, format="JPEG", quality=85, optimize=True)
+                    tmp.flush()
+                    tmp_path = tmp.name
+
+            except Exception as e:
+                # 🔥 CRITICAL FIX
+                # Pillow failure ≠ invalid image (very common on Android)
+                # Fall back to raw upload and let Cloudinary decode
+                print("Pillow decode skipped, uploading raw image:", e)
+
+                suffix = _suffix_from_upload(
+                    filename=filename,
+                    content_type=content_type,
+                    resource_type=resource_type,
                 )
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                img.save(tmp, format="JPEG", quality=85, optimize=True)
-                tmp.flush()
-                tmp_path = tmp.name
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(raw)
+                    tmp.flush()
+                    tmp_path = tmp.name
+
         else:
-            ext = os.path.splitext(filename or "")[1] or ".mp4"
+            # video / other files → always raw upload
+            ext = _suffix_from_upload(
+                filename=filename,
+                content_type=content_type,
+                resource_type=resource_type,
+            )
             with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
                 tmp.write(raw)
                 tmp.flush()
                 tmp_path = tmp.name
 
+        # 🚀 Upload to Cloudinary
         res = cloudinary.uploader.upload(
             tmp_path,
             resource_type=resource_type,

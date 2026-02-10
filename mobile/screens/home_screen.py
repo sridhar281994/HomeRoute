@@ -15,6 +15,8 @@ from kivy.properties import (
 )
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.checkbox import CheckBox
+from kivy.uix.carousel import Carousel
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
@@ -39,6 +41,13 @@ from frontend_app.utils.api import (
     api_meta_categories,
     to_api_url,
 )
+
+
+# Media sizing for post images.
+# - Upscale tiny/wide panoramas so they are still readable.
+# - Cap very tall images so a single post doesn't dominate the feed.
+_POST_MEDIA_MIN_H = dp(240)
+_POST_MEDIA_MAX_H = dp(520)
 from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 
@@ -58,6 +67,64 @@ def _popup(title: str, message: str) -> None:
 
     Clock.schedule_once(_open, 0)
 
+
+def _is_payment_required_msg(msg: str) -> bool:
+    m = (msg or "").strip().lower()
+    return (
+        "subscription required" in m
+        or "payment required" in m
+        or "unlock limit reached" in m
+        or "http 402" in m
+        or "http 429" in m
+    )
+
+
+def _payment_required_popup(*, screen: "HomeScreen", detail: str = "") -> None:
+    """
+    Friendly paywall popup for contact unlocks.
+    """
+
+    def _open(*_):
+        root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        msg = "[b]Payment required[/b]\nSubscribe to unlock more owner/service contacts."
+        lbl = Label(text=msg, markup=True, halign="center", valign="middle")
+        lbl.text_size = (dp(280), None)
+        lbl.size_hint_y = None
+        lbl.height = lbl.texture_size[1] + dp(10)
+        root.add_widget(lbl)
+
+        if (detail or "").strip():
+            d = Label(text=str(detail).strip(), color=(1, 1, 1, 0.72), halign="center", valign="middle")
+            d.text_size = (dp(280), None)
+            d.size_hint_y = None
+            d.height = d.texture_size[1] + dp(6)
+            root.add_widget(d)
+
+        btns = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
+        btn_cancel = Factory.AppButton(text="Not now", color=(0.94, 0.27, 0.27, 1))
+        btn_sub = Factory.AppButton(text="View subscription")
+        btns.add_widget(btn_cancel)
+        btns.add_widget(btn_sub)
+        root.add_widget(btns)
+
+        popup = Popup(title="", content=root, size_hint=(0.9, 0.42), auto_dismiss=False)
+
+        def go_sub(*_):
+            try:
+                popup.dismiss()
+            except Exception:
+                pass
+            try:
+                if screen.manager:
+                    screen.manager.current = "subscription"
+            except Exception:
+                pass
+
+        btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+        btn_sub.bind(on_release=go_sub)
+        popup.open()
+
+    Clock.schedule_once(_open, 0)
 
 @dataclass
 class PropertyCard:
@@ -860,11 +927,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
         # =================================================
         # HEADER (Avatar + Meta ONLY)
         # =================================================
-        header = BoxLayout(
-            orientation="horizontal",
-            spacing=dp(10),
-            size_hint_y=None,
-        )
+        header = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None)
         header.bind(minimum_height=header.setter("height"))
 
         try:
@@ -873,9 +936,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
             avatar.fallback_text = owner_initial
             header.add_widget(avatar)
         except Exception:
-            header.add_widget(
-                Label(text=owner_initial, size_hint=(None, None), size=(dp(44), dp(44)))
-            )
+            header.add_widget(Label(text=owner_initial, size_hint=(None, None), size=(dp(44), dp(44))))
 
         meta_lbl = Label(
             text=meta,
@@ -897,69 +958,185 @@ class HomeScreen(GestureNavigationMixin, Screen):
         card.add_widget(header)
 
         # =================================================
-        # MEDIA
+        # MEDIA (NO TOP GAP)
         # =================================================
         if images:
-            grid = GridLayout(cols=2, spacing=dp(6), size_hint_y=None)
+            urls = [
+                to_api_url(str((it or {}).get("url") or "").strip())
+                for it in (images or [])
+                if str((it or {}).get("url") or "").strip()
+            ]
+            if urls:
+                media_box = BoxLayout(orientation="vertical", size_hint_y=None)
+                carousel = Carousel(direction="right", loop=True)
+                carousel.size_hint = (1, None)
+                carousel.height = _POST_MEDIA_MIN_H
+                media_box.height = carousel.height
 
-            def _resize_grid(*_):
-                if grid.width <= 0:
-                    return
-                w = (grid.width - dp(6)) / 2
-                h = w * 1.2
-                rows = (len(images[:4]) + 1) // 2
-                grid.height = rows * h + max(0, rows - 1) * dp(6)
-                for c in grid.children:
-                    c.height = h
-                    c.size_hint_y = None
+                imgs: list[AsyncImage] = []
 
-            grid.bind(width=_resize_grid)
+                def _sync_media_h(*_):
+                    media_box.height = carousel.height
+                    for im in imgs:
+                        im.height = carousel.height
 
-            for it in images[:4]:
-                img = AsyncImage(
-                    source=to_api_url(it.get("url") or ""),
-                    allow_stretch=True,
-                    keep_ratio=False,
-                )
-                img.size_hint_y = None
-                grid.add_widget(img)
+                carousel.bind(height=_sync_media_h)
 
-            Clock.schedule_once(_resize_grid, 0)
-            card.add_widget(grid)
+                def _recalc_height(*_):
+                    if carousel.width <= 0:
+                        return
+                    target_h = float(_POST_MEDIA_MIN_H)
+                    for im in imgs:
+                        try:
+                            tex = getattr(im, "texture", None)
+                            if not tex:
+                                continue
+                            tw, th = tex.size
+                            if not tw or not th:
+                                continue
+                            h = carousel.width * (float(th) / float(tw))
+                            h = max(float(_POST_MEDIA_MIN_H), min(float(_POST_MEDIA_MAX_H), float(h)))
+                            if h > target_h:
+                                target_h = h
+                        except Exception:
+                            continue
+                    carousel.height = float(target_h)
+
+                carousel.bind(width=_recalc_height)
+
+                for u in urls:
+                    slide = BoxLayout()
+                    img = AsyncImage(
+                        source=u,
+                        size_hint=(1, None),
+                        height=carousel.height,
+                        allow_stretch=True,
+                        keep_ratio=True,
+                    )
+                    try:
+                        setattr(img, "fit_mode", "cover")  # fill vertically
+                    except Exception:
+                        pass
+
+                    slide.add_widget(img)
+                    carousel.add_widget(slide)
+                    imgs.append(img)
+                    img.bind(texture=_recalc_height)
+
+                media_box.add_widget(carousel)
+
+                if len(urls) > 1:
+                    btn_prev = Factory.AppButton(text="◀", size_hint=(None, None), size=(dp(44), dp(44)))
+                    btn_next = Factory.AppButton(text="▶", size_hint=(None, None), size=(dp(44), dp(44)))
+                    btn_row_nav = BoxLayout(size_hint_y=None, height=dp(44))
+                    btn_prev.bind(on_release=lambda *_: carousel.load_previous())
+                    btn_next.bind(on_release=lambda *_: carousel.load_next())
+                    btn_row_nav.add_widget(btn_prev)
+                    btn_row_nav.add_widget(btn_next)
+                    media_box.add_widget(btn_row_nav)
+                    media_box.height += dp(44)
+
+                Clock.schedule_once(_recalc_height, 0)
+                card.add_widget(media_box)
 
         # =================================================
         # ACTION HANDLERS
         # =================================================
+        contact_lbl = Label(
+            text=str((p or {}).get("contact_text") or "").strip(),
+            size_hint_y=None,
+            color=(1, 1, 1, 0.82),
+            halign="left",
+            valign="middle",
+        )
+
+        def _resize_contact(*_):
+            contact_lbl.text_size = (contact_lbl.width, None)
+            contact_lbl.height = (contact_lbl.texture_size[1] + dp(6)) if (contact_lbl.text or "").strip() else 0
+
+        contact_lbl.bind(width=_resize_contact, texture_size=_resize_contact)
+        Clock.schedule_once(_resize_contact, 0)
+
+        def _set_contact_text(txt: str) -> None:
+            try:
+                p["contact_text"] = str(txt or "").strip()
+            except Exception:
+                pass
+            contact_lbl.text = str(txt or "").strip()
+            _resize_contact()
+
         def on_contact(_btn):
             if not self.is_logged_in:
                 _popup("Login required", "Please login to contact the owner.")
                 return
-
             pid = p.get("id")
             if not pid:
                 _popup("Error", "Invalid property id.")
                 return
-
             _btn.disabled = True
 
             from threading import Thread
 
             def work():
                 try:
-                    api_get_property_contact(pid)
+                    data = api_get_property_contact(pid) or {}
+                    phone = str(data.get("phone") or "").strip()
+                    email = str(data.get("email") or "").strip()
+                    owner_name2 = str(data.get("owner_name") or "").strip()
+                    company = str(data.get("owner_company_name") or "").strip()
+                    parts = []
+                    if owner_name2:
+                        parts.append(owner_name2)
+                    if company:
+                        parts.append(company)
+                    header_txt = " • ".join(parts).strip()
+                    lines = []
+                    if header_txt:
+                        lines.append(f"[b]{header_txt}[/b]")
+                    if phone:
+                        lines.append(f"Phone: {phone}")
+                    if email:
+                        lines.append(f"Email: {email}")
+                    contact_text = "\n".join(lines).strip()
 
                     def done(*_):
-                        _btn.text = "Contacted"
+                        _btn.text = "View contact"
                         p["contacted"] = True
+                        _set_contact_text(contact_text or "Contact unlocked.")
+                        _btn.disabled = False
 
                     Clock.schedule_once(done, 0)
                 except ApiError as e:
+                    # Capture exception string outside the scheduled callback
+                    # (Python clears exception variables after except blocks).
+                    msg = str(e) or "Failed to unlock contact"
 
                     def fail(*_):
                         _btn.disabled = False
-                        _popup("Error", str(e))
+                        if _is_payment_required_msg(msg):
+                            friendly = "Payment required. Please subscribe to unlock more contacts."
+                            _set_contact_text(friendly)
+                            _payment_required_popup(screen=self, detail="")
+                            return
+                        # Non-paywall errors: show inline + toast.
+                        _set_contact_text(msg)
+                        _popup("Error", msg)
 
                     Clock.schedule_once(fail, 0)
+                except Exception as e:
+                    msg = str(e) or "Failed to unlock contact"
+
+                    def fail2(*_):
+                        _btn.disabled = False
+                        if _is_payment_required_msg(msg):
+                            friendly = "Payment required. Please subscribe to unlock more contacts."
+                            _set_contact_text(friendly)
+                            _payment_required_popup(screen=self, detail="")
+                            return
+                        _set_contact_text(msg)
+                        _popup("Error", msg)
+
+                    Clock.schedule_once(fail2, 0)
 
             Thread(target=work, daemon=True).start()
 
@@ -968,7 +1145,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
             pid = p.get("id")
             url = to_api_url(f"/property/{pid}") if pid else ""
             body = "\n".join(x for x in [meta, url] if x)
-
             launched = share_text(subject=subject, text=body)
 
             from kivy.utils import platform
@@ -980,31 +1156,14 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 _popup("Share", body)
 
         # =================================================
-        # ACTION BUTTONS (VISIBLE)
+        # ACTION BUTTONS
         # =================================================
-        btn_row = BoxLayout(
-            orientation="horizontal",
-            spacing=dp(10),
-            size_hint_y=None,
-            height=dp(44),
-        )
+        btn_row = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=None, height=dp(44))
 
         if is_my_posts:
-            btn_edit = Factory.AppButton(
-                text="Edit",
-                size_hint=(1, None),
-                height=dp(44),
-            )
-            btn_delete = Factory.AppButton(
-                text="Delete",
-                size_hint=(1, None),
-                height=dp(44),
-            )
-            btn_share = Factory.AppButton(
-                text="Share",
-                size_hint=(1, None),
-                height=dp(44),
-            )
+            btn_edit = Factory.AppButton(text="Edit", size_hint=(1, None), height=dp(44))
+            btn_delete = Factory.AppButton(text="Delete", size_hint=(1, None), height=dp(44))
+            btn_share = Factory.AppButton(text="Share", size_hint=(1, None), height=dp(44))
 
             btn_edit.bind(on_release=lambda *_: p.get("_on_edit", lambda: None)())
             btn_delete.bind(on_release=lambda *_: p.get("_on_delete", lambda: None)())
@@ -1013,13 +1172,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
             btn_row.add_widget(btn_edit)
             btn_row.add_widget(btn_delete)
             btn_row.add_widget(btn_share)
-
         else:
             btn_contact = Factory.AppButton(
-                text="Contacted" if already_contacted else "Contact owner",
+                text="View contact" if already_contacted else "Contact owner",
                 size_hint=(1, None),
                 height=dp(44),
-                disabled=already_contacted,
+                disabled=False,
             )
             btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
 
@@ -1029,6 +1187,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
             btn_row.add_widget(btn_contact)
             btn_row.add_widget(btn_share)
 
+        # Inline contact details/status area (grows only when text is set).
+        card.add_widget(contact_lbl)
         card.add_widget(btn_row)
         return card
 
@@ -1273,3 +1433,4 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
     def gesture_refresh_enabled(self) -> bool:
         return True
+

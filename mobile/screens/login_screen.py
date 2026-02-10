@@ -40,12 +40,47 @@ class LoginScreen(GestureNavigationMixin, Screen):
     font_scale = NumericProperty(1.0)
     remember_me = BooleanProperty(False)
     is_processing = BooleanProperty(False)
+    keyboard_padding = NumericProperty(0)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         Clock.schedule_once(self._update_font_scale, 0)
 
+    def on_remember_me(self, *_):
+        # Persist preference immediately when toggled.
+        try:
+            set_remember_me(bool(self.remember_me))
+        except Exception:
+            pass
+
     def on_pre_enter(self, *args):
+        # Clear old inputs and reset UI state on each entry.
+        try:
+            ids = getattr(self, "ids", {}) or {}
+            for key in ("phone_input", "password_input", "otp_input"):
+                w = ids.get(key)
+                if w:
+                    w.text = ""
+                    try:
+                        w.focus = False
+                    except Exception:
+                        pass
+
+            btn = ids.get("request_otp_btn")
+            if btn:
+                btn.disabled = False
+                btn.text = "Request OTP"
+
+            vbtn = ids.get("verify_login_btn")
+            if vbtn:
+                vbtn.disabled = False
+                vbtn.text = "Verify & Login"
+
+            self.is_processing = False
+            self.keyboard_padding = 0
+        except Exception:
+            pass
+
         # Sync checkbox with persisted preference.
         try:
             self.remember_me = bool(get_remember_me())
@@ -68,6 +103,20 @@ class LoginScreen(GestureNavigationMixin, Screen):
             pass
 
     def on_leave(self, *args):
+        # Optionally clear on leave as well (prevents stale OTP/password).
+        try:
+            ids = getattr(self, "ids", {}) or {}
+            for key in ("phone_input", "password_input", "otp_input"):
+                w = ids.get(key)
+                if w:
+                    w.text = ""
+                    try:
+                        w.focus = False
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         try:
             Window.unbind(on_keyboard_height=self._on_keyboard_height)
         except Exception:
@@ -85,6 +134,49 @@ class LoginScreen(GestureNavigationMixin, Screen):
 
     def on_size(self, *args):
         self._update_font_scale()
+
+    def _on_keyboard_height(self, _window, height):
+        try:
+            h = float(height or 0)
+        except Exception:
+            return
+
+        if h <= 0:
+            self.keyboard_padding = 0
+            return
+
+        # Debounce small keyboard height changes (Android suggestion bar can jitter)
+        # to avoid layout flicker while typing.
+        try:
+            last = float(getattr(self, "_last_kb_h", 0.0) or 0.0)
+        except Exception:
+            last = 0.0
+        try:
+            setattr(self, "_last_kb_h", h)
+        except Exception:
+            pass
+        if last and abs(h - last) < dp(12):
+            return
+
+        # Push content above keyboard
+        self.keyboard_padding = h + dp(20)
+
+        w = self._focused_input()
+        if w:
+            self.scroll_to_field(w)
+
+    def scroll_to_verify(self, *_):
+        def _do(*_dt):
+            try:
+                sv = self.ids.get("login_scroll")
+                btn = self.ids.get("verify_login_btn")
+                if sv and btn:
+                    sv.scroll_to(btn, padding=dp(200), animate=True)
+            except Exception:
+                pass
+
+        Clock.schedule_once(_do, 0.1)
+        Clock.schedule_once(_do, 0.3)
 
     def _update_font_scale(self, *_):
         width = self.width or Window.width or 1

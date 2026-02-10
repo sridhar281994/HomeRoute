@@ -541,9 +541,10 @@ def _admin_otp_email() -> str:
 
 def _free_contact_limit() -> int:
     try:
-        return max(0, int(os.environ.get("FREE_CONTACT_LIMIT") or "5"))
+        # Default to 30 free contact unlocks per user.
+        return max(0, int(os.environ.get("FREE_CONTACT_LIMIT") or "30"))
     except Exception:
-        return 5
+        return 30
 
 
 def _public_image_url(file_path: str) -> str:
@@ -1219,6 +1220,19 @@ def health():
     return {"ok": True}
 
 
+@app.get("/version")
+def version():
+    """
+    Lightweight deployment/version endpoint for debugging.
+    Render sets RENDER_GIT_COMMIT automatically for each deploy.
+    """
+    return {
+        "render_git_commit": (os.getenv("RENDER_GIT_COMMIT") or "").strip(),
+        "render_service_id": (os.getenv("RENDER_SERVICE_ID") or "").strip(),
+        "render_instance_id": (os.getenv("RENDER_INSTANCE_ID") or "").strip(),
+    }
+
+
 # -----------------------
 # Metadata (categories)
 # -----------------------
@@ -1415,6 +1429,14 @@ def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_
     # One-time: consume the OTP.
     db.execute(delete(OtpCode).where(OtpCode.id == otp.id))
 
+    # Ensure a subscription row exists (older accounts might not have one).
+    try:
+        sub = db.execute(select(Subscription).where(Subscription.user_id == user.id)).scalar_one_or_none()
+        if not sub:
+            db.add(Subscription(user_id=user.id, status="inactive", provider="google_play"))
+    except Exception:
+        pass
+
     token = create_access_token(user_id=user.id, role=user.role)
     return {
         "access_token": token,
@@ -1605,6 +1627,80 @@ def me_subscription(
         db.add(sub)
         db.flush()
     return {"status": sub.status, "provider": sub.provider, "expires_at": sub.expires_at}
+
+
+@app.get("/me/subscription/summary")
+def me_subscription_summary(
+    window_days: int = Query(default=30, ge=1, le=365),
+    me: Annotated[User, Depends(get_current_user)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """
+    Summary metrics for the subscription page.
+    Defaults to the last 30 days.
+
+    - service_requested: contact unlock attempts by this user (free + subscribed)
+    - earned: sum of plan prices for purchases recorded in DB (best-effort)
+    - merchant_fee: computed from earned using MERCHANT_FEE_RATE (defaults to 0)
+    """
+    if me is None or db is None:
+        raise HTTPException(status_code=500, detail="Server misconfiguration")
+
+    now = dt.datetime.now(dt.timezone.utc)
+    since = now - dt.timedelta(days=int(window_days))
+
+    # Contacts unlocked in window (best-effort).
+    paid_cnt = (
+        db.execute(
+            select(func.count(ContactUsage.id)).where(
+                (ContactUsage.user_id == me.id) & (ContactUsage.used_at >= since)
+            )
+        ).scalar()
+        or 0
+    )
+    free_cnt = (
+        db.execute(
+            select(func.count(FreeContactUsage.id)).where(
+                (FreeContactUsage.user_id == me.id) & (FreeContactUsage.used_at >= since)
+            )
+        ).scalar()
+        or 0
+    )
+    service_requested = int(paid_cnt) + int(free_cnt)
+
+    # Revenue (earned) within window based on recorded subscription purchases.
+    earned = (
+        db.execute(
+            select(func.coalesce(func.sum(SubscriptionPlan.price_inr), 0))
+            .select_from(UserSubscription)
+            .join(SubscriptionPlan, SubscriptionPlan.id == UserSubscription.plan_id)
+            .where((UserSubscription.user_id == me.id) & (UserSubscription.created_at >= since))
+        ).scalar()
+        or 0
+    )
+    try:
+        earned_inr = int(earned or 0)
+    except Exception:
+        earned_inr = 0
+
+    # Merchant fee (configurable rate).
+    try:
+        fee_rate = float(os.getenv("MERCHANT_FEE_RATE") or "0")
+    except Exception:
+        fee_rate = 0.0
+    if fee_rate < 0:
+        fee_rate = 0.0
+    merchant_fee_inr = int(round(float(earned_inr) * float(fee_rate)))
+
+    return {
+        "window_days": int(window_days),
+        "from": since.isoformat(),
+        "to": now.isoformat(),
+        "service_requested": int(service_requested),
+        "earned": int(earned_inr),
+        "merchant_fee": int(merchant_fee_inr),
+        "merchant_fee_rate": float(fee_rate),
+    }
 
 
 class VerifyPurchaseIn(BaseModel):
@@ -2213,9 +2309,20 @@ def list_properties(
     else:
         stmt = stmt.order_by(Property.id.desc())
     if state_norm:
-        stmt = stmt.where(Property.state_normalized == state_norm)
+        # Backward compatibility: some older rows may have empty normalized fields.
+        stmt = stmt.where(
+            or_(
+                (Property.state_normalized == state_norm),
+                and_((Property.state_normalized == ""), Property.state.ilike(state_in)),
+            )
+        )
     if district_norm:
-        stmt = stmt.where(Property.district_normalized == district_norm)
+        stmt = stmt.where(
+            or_(
+                (Property.district_normalized == district_norm),
+                and_((Property.district_normalized == ""), Property.district.ilike(district_in)),
+            )
+        )
     if area_norms:
         stmt = stmt.where(Property.area_normalized.in_(area_norms))
     elif area_norm:
@@ -2441,8 +2548,10 @@ def list_nearby_properties(
     - Bounding-box prefilter on lat/lon
     - Distance calculation for ordering
     """
-    district_norm = _norm_key((district or "").strip())
-    state_norm = _norm_key((state or "").strip())
+    district_in = (district or "").strip()
+    state_in = (state or "").strip()
+    district_norm = _norm_key(district_in)
+    state_norm = _norm_key(state_in)
     area_in = (area or "").strip()
     area_list = _split_csv_values(area_in)
     area_norms = [_norm_key(x) for x in area_list]
@@ -2473,9 +2582,19 @@ def list_nearby_properties(
     )
 
     if district_norm:
-        stmt = stmt.where(Property.district_normalized == district_norm)
+        stmt = stmt.where(
+            or_(
+                (Property.district_normalized == district_norm),
+                and_((Property.district_normalized == ""), Property.district.ilike(district_in)),
+            )
+        )
     if state_norm:
-        stmt = stmt.where(Property.state_normalized == state_norm)
+        stmt = stmt.where(
+            or_(
+                (Property.state_normalized == state_norm),
+                and_((Property.state_normalized == ""), Property.state.ilike(state_in)),
+            )
+        )
     if area_norms:
         stmt = stmt.where(Property.area_normalized.in_(area_norms))
     elif area_norm:
@@ -3932,7 +4051,10 @@ def upload_property_image(
                 raw=stored_bytes,
                 resource_type=("image" if is_image else "video"),
                 public_id=f"property_{p.id}_{token}",
-                filename=("upload.jpg" if is_image else ((file.filename or "").strip() or safe_name)),
+                # Preserve extension so Cloudinary can detect format when Pillow cannot
+                # (e.g. AVIF/HEIC/unknown-but-valid inputs). `safe_name` already
+                # contains `_safe_upload_ext(...)` output.
+                filename=(((file.filename or "").strip() or safe_name)),
                 content_type=stored_content_type,
             )
         except Exception as e:

@@ -178,7 +178,15 @@ export default function PropertyPage() {
                 setContacted(true);
                 setMsg(`${sent} ${header}${who}.`);
               } catch (e: any) {
-                setMsg(e.message || "Locked");
+                const m = String(e?.message || "Locked");
+                const ml = m.toLowerCase();
+                if (ml.includes("subscription required") || ml.includes("payment required") || ml.includes("unlock limit")) {
+                  setMsg("Payment required. Please subscribe to unlock more contacts.");
+                  // Optional: send user to subscription page quickly.
+                  setTimeout(() => nav("/subscription"), 300);
+                  return;
+                }
+                setMsg(m || "Locked");
               }
             }}
           >

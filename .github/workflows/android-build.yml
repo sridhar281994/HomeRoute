@@ -43,15 +43,43 @@ jobs:
           set -euo pipefail
           IMAGE="kivy/buildozer:latest"
           docker run --rm \
+            --entrypoint bash \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -w /home/user/hostcwd \
             "${IMAGE}" \
-            keytool -list -v \
-              -keystore mobile/flatnow-debug.keystore \
-              -alias flatnowdebug \
-              -storepass android \
-              -keypass android \
-            | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p"
+            -lc '
+              set -euo pipefail
+
+              KS="mobile/flatnow-debug.keystore"
+              PASS="android"
+
+              if [ ! -f "${KS}" ]; then
+                echo "Keystore missing: ${KS}"
+                exit 1
+              fi
+
+              # Some users provide a default debug.keystore (alias androiddebugkey),
+              # others provide the recommended flatnowdebug alias.
+              SRC_ALIAS="flatnowdebug"
+              if ! keytool -list -keystore "${KS}" -storepass "${PASS}" -alias "${SRC_ALIAS}" >/dev/null 2>&1; then
+                SRC_ALIAS="androiddebugkey"
+              fi
+              if ! keytool -list -keystore "${KS}" -storepass "${PASS}" -alias "${SRC_ALIAS}" >/dev/null 2>&1; then
+                SRC_ALIAS="$(keytool -list -keystore "${KS}" -storepass "${PASS}" 2>/dev/null | sed -n "s/^\([^,]*\),.*/\1/p" | head -n1)"
+              fi
+              if [ -z "${SRC_ALIAS}" ]; then
+                echo "Unable to detect alias in ${KS}. Ensure the keystore contains a key entry."
+                exit 1
+              fi
+
+              echo "Detected keystore alias: ${SRC_ALIAS}"
+              keytool -list -v \
+                -keystore "${KS}" \
+                -alias "${SRC_ALIAS}" \
+                -storepass "${PASS}" \
+                -keypass "${PASS}" \
+              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p"
+            '
 
       - name: Build debug APK (docker)
         run: |
@@ -64,28 +92,68 @@ jobs:
           done
 
           docker run --rm \
+            --entrypoint bash \
             -e HOME=/home/user \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -v "$GITHUB_WORKSPACE/mobile/.buildozer":/home/user/.buildozer \
             -v "$GITHUB_WORKSPACE/mobile/.gradle":/home/user/.gradle \
             -w /home/user/hostcwd/mobile \
             "${IMAGE}" \
-            bash -lc '
-              set -e
+            -lc '
+              set -euo pipefail
 
               mkdir -p ~/.android
+
+              KS="flatnow-debug.keystore"
+              PASS="android"
+              BUILD_CMD="buildozer"
+              if [ -x "/home/user/.venv/bin/buildozer" ]; then
+                BUILD_CMD="/home/user/.venv/bin/buildozer"
+              fi
+
+              if [ ! -f "${KS}" ]; then
+                echo "Keystore missing inside container: ${KS}"
+                exit 1
+              fi
+
+              SRC_ALIAS="flatnowdebug"
+              if ! keytool -list -keystore "${KS}" -storepass "${PASS}" -alias "${SRC_ALIAS}" >/dev/null 2>&1; then
+                SRC_ALIAS="androiddebugkey"
+              fi
+              if ! keytool -list -keystore "${KS}" -storepass "${PASS}" -alias "${SRC_ALIAS}" >/dev/null 2>&1; then
+                SRC_ALIAS="$(keytool -list -keystore "${KS}" -storepass "${PASS}" 2>/dev/null | sed -n "s/^\([^,]*\),.*/\1/p" | head -n1)"
+              fi
+              if [ -z "${SRC_ALIAS}" ]; then
+                echo "Unable to detect alias in ${KS}. Ensure the keystore contains a key entry."
+                exit 1
+              fi
+
+              echo "Importing ${KS} alias ${SRC_ALIAS} into ~/.android/debug.keystore as androiddebugkey"
+              rm -f ~/.android/debug.keystore
               keytool -importkeystore -noprompt \
-                -srckeystore flatnow-debug.keystore \
-                -srcalias flatnowdebug \
-                -srcstorepass android \
-                -srckeypass android \
+                -srckeystore "${KS}" \
+                -srcalias "${SRC_ALIAS}" \
+                -srcstorepass "${PASS}" \
+                -srckeypass "${PASS}" \
                 -destkeystore ~/.android/debug.keystore \
-                -deststorepass android \
-                -destkeypass android \
+                -deststorepass "${PASS}" \
+                -destkeypass "${PASS}" \
                 -destalias androiddebugkey
 
-              yes | buildozer android update || true
-              yes | buildozer android debug
+              echo "debug.keystore SHA1:"
+              keytool -list -v \
+                -keystore ~/.android/debug.keystore \
+                -alias androiddebugkey \
+                -storepass "${PASS}" \
+                -keypass "${PASS}" \
+              | sed -n "s/^[[:space:]]*SHA1:[[:space:]]*//p"
+
+              # buildozer can be interactive; piping "yes" prevents stalls.
+              # IMPORTANT: disable pipefail so the SIGPIPE exit code from `yes`
+              # (141) does not fail the CI job after a successful build.
+              set +o pipefail
+              yes | "${BUILD_CMD}" android update || true
+              yes | "${BUILD_CMD}" android debug
             '
 
       - name: Upload APK artifact

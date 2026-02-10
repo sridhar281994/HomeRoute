@@ -9,6 +9,9 @@ from kivy.metrics import dp
 from kivy.properties import BooleanProperty, DictProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.carousel import Carousel
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
@@ -38,6 +41,7 @@ from frontend_app.utils.api import (
     api_owner_publish_property,
     api_owner_update_property,
     api_subscription_status,
+    api_subscription_summary,
     api_upload_property_media,
     to_api_url,
 )
@@ -45,8 +49,13 @@ from frontend_app.utils.share import share_text
 from frontend_app.utils.storage import clear_session, get_session, get_user, set_guest_session, set_session
 from frontend_app.utils.android_permissions import ensure_permissions, required_location_permissions, required_media_permissions
 from frontend_app.utils.android_location import get_last_known_location
-from frontend_app.utils.android_filepicker import android_open_gallery, ensure_local_paths, is_image_path, is_video_path
+from frontend_app.utils.android_filepicker import android_open_gallery, android_uri_to_jpeg_bytes
+from frontend_app.utils.api import api_owner_publish_property_bytes
 
+
+# Media sizing for post/detail images.
+_POST_MEDIA_MIN_H = dp(240)
+_POST_MEDIA_MAX_H = dp(520)
 
 def _sync_app_badge_best_effort() -> None:
     """
@@ -234,7 +243,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
             self.gesture_bind_window()
         except Exception:
             pass
-
+        
     def on_leave(self, *args):
         try:
             self.gesture_unbind_window()
@@ -299,24 +308,100 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         if not items:
             container.add_widget(Label(text="No Photos", size_hint_y=None, height=dp(42), color=(1, 1, 1, 0.75)))
             return
-
-        # Use web-like tile height (~220px). Kivy dp() scales across DPI.
-        tile_h = dp(220)
+        # Show media as a carousel with arrows when multiple images exist.
+        # Keep aspect ratio (no stretching) and let the screen height adapt.
+        urls: list[str] = []
         for it in items:
             it = it or {}
             url = to_api_url(str(it.get("url") or "").strip())
             ctype = str(it.get("content_type") or "").lower().strip()
-            if not url:
+            if not url or ctype.startswith("video/"):
                 continue
-            if ctype.startswith("video/"):
-                tile = BoxLayout(size_hint_y=None, height=tile_h, padding=dp(10))
-                tile.canvas.before.clear()
-                container.add_widget(Label(text="[b]Video[/b]", size_hint_y=None, height=tile_h, color=(1, 1, 1, 0.78)))
-            else:
-                img = Factory.AsyncImage(source=url, fit_mode="fill")
-                img.size_hint_y = None
-                img.height = tile_h
-                container.add_widget(img)
+            urls.append(url)
+
+        if not urls:
+            container.add_widget(Label(text="No Photos", size_hint_y=None, height=dp(42), color=(1, 1, 1, 0.75)))
+            return
+
+        try:
+            container.cols = 1
+        except Exception:
+            pass
+
+        wrap = FloatLayout(size_hint_y=None)
+        carousel = Carousel(direction="right", loop=True)
+        carousel.size_hint = (1, None)
+        carousel.height = _POST_MEDIA_MIN_H
+        wrap.height = carousel.height
+
+        def _sync_wrap_h(*_):
+            wrap.height = carousel.height
+
+        carousel.bind(height=_sync_wrap_h)
+
+        imgs: list[AsyncImage] = []
+
+        def _recalc_height(*_):
+            if carousel.width <= 0:
+                return
+            target_h = float(_POST_MEDIA_MIN_H)
+            for im in imgs:
+                try:
+                    tex = getattr(im, "texture", None)
+                    if not tex:
+                        continue
+                    tw, th = tex.size
+                    if not tw or not th:
+                        continue
+                    h = carousel.width * (float(th) / float(tw))
+                    h = max(float(_POST_MEDIA_MIN_H), min(float(_POST_MEDIA_MAX_H), float(h)))
+                    if h > target_h:
+                        target_h = h
+                except Exception:
+                    continue
+            carousel.height = float(target_h)
+
+        carousel.bind(width=_recalc_height)
+
+        for u in urls:
+            slide = FloatLayout()
+            img = AsyncImage(source=u)
+            try:
+                setattr(img, "fit_mode", "contain")
+            except Exception:
+                pass
+            img.size_hint = (1, 1)
+            slide.add_widget(img)
+            carousel.add_widget(slide)
+            imgs.append(img)
+            img.bind(texture=_recalc_height)
+
+        wrap.add_widget(carousel)
+
+        if len(urls) > 1:
+            btn_prev = Factory.AppButton(
+                text="◀",
+                size_hint=(None, None),
+                size=(dp(46), dp(46)),
+                background_color=(0, 0, 0, 0),
+                color=(1, 1, 1, 0.92),
+            )
+            btn_next = Factory.AppButton(
+                text="▶",
+                size_hint=(None, None),
+                size=(dp(46), dp(46)),
+                background_color=(0, 0, 0, 0),
+                color=(1, 1, 1, 0.92),
+            )
+            btn_prev.pos_hint = {"x": 0.0, "center_y": 0.5}
+            btn_next.pos_hint = {"right": 1.0, "center_y": 0.5}
+            btn_prev.bind(on_release=lambda *_: carousel.load_previous())
+            btn_next.bind(on_release=lambda *_: carousel.load_next())
+            wrap.add_widget(btn_prev)
+            wrap.add_widget(btn_next)
+
+        Clock.schedule_once(_recalc_height, 0)
+        container.add_widget(wrap)
 
     def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
         """
@@ -708,50 +793,105 @@ class SettingsScreen(GestureNavigationMixin, Screen):
 
         Thread(target=work, daemon=True).start()
 
-    def open_image_picker(self):
-        def _on_sel(selection):
+    def open_profile_image_picker(self):
+        """
+        Pick a single profile image using native Android gallery picker (content:// URI)
+        and upload as JPEG bytes. Desktop fallback uses file chooser path.
+        """
+        import os
+        from kivy.utils import platform
+        from kivy.metrics import dp
+        from kivy.factory import Factory
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.label import Label
+        from kivy.uix.popup import Popup
+        from kivy.uix.filechooser import FileChooserListView
+    
+        def _on_selected(uris):
+            print("RAW URIS:", uris)
+    
+            if not uris:
+                _popup("Error", "No image selected")
+                return
+    
             try:
-                paths = ensure_local_paths(selection or [])
-                img = next((p for p in paths if is_image_path(p)), "")
-                if img:
-                    self.upload_profile_image(img)
+                jpeg = android_uri_to_jpeg_bytes(uris[0])
             except Exception as e:
-                _popup("Error", f"Pick failed: {e}")
-
-        def _open():
+                _popup("Error", f"Invalid image selected\n{e}")
+                return
+    
+            # Upload JPEG bytes to backend
+            self.upload_profile_image_bytes(jpeg)
+    
+        # ---------------- ANDROID (NATIVE GALLERY PICKER) ----------------
+        if platform == "android":
             launched = android_open_gallery(
-                on_selection=_on_sel,
+                on_selection=_on_selected,
                 multiple=False,
                 mime_types=["image/*"],
             )
+    
             if not launched:
-                _popup("Picker Error", "Unable to open system picker.")
+                _popup("Picker Error", "Unable to open native gallery picker on this device.")
+            return
+    
+        # ---------------- DESKTOP FALLBACK ----------------
+        chooser = FileChooserListView(
+            path=os.path.abspath(_default_media_dir()),
+            multiselect=False,
+            filters=["*.png", "*.jpg", "*.jpeg", "*.webp"],
+        )
+    
+        root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
+        root.add_widget(Label(text="Select profile image", size_hint_y=None, height=dp(24)))
+        root.add_widget(chooser)
+    
+        btns = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10))
+        btn_cancel = Factory.AppButton(text="Cancel")
+        btn_use = Factory.AppButton(text="Use Selected")
+        btns.add_widget(btn_cancel)
+        btns.add_widget(btn_use)
+        root.add_widget(btns)
+    
+        popup = Popup(
+            title="Choose Profile Image",
+            content=root,
+            size_hint=(0.94, 0.94),
+            auto_dismiss=False,
+        )
+    
+        def _apply_desktop_selection(paths):
+            if not paths:
+                popup.dismiss()
+                return
+            self.upload_profile_image(paths[0])
+    
+        btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+        btn_use.bind(on_release=lambda *_: (_apply_desktop_selection(list(chooser.selection or [])), popup.dismiss()))
+        popup.open()
 
-        def _after(ok: bool):
-            # SAF picker works even without media permissions on modern Android.
-            if not ok:
-                _popup("Permission", "Media permission denied. Opening system picker anyway.")
-            _open()
 
-        ensure_permissions(required_media_permissions(), on_result=_after)
-
-    def upload_profile_image(self, file_path: str):
+    def upload_profile_image_bytes(self, img_bytes: bytes):
         from threading import Thread
-
+    
         def work():
             try:
-                data = api_me_upload_profile_image(file_path=file_path)
+                data = api_me_upload_profile_image_bytes(raw=img_bytes)
                 u = data.get("user") or {}
                 sess = get_session() or {}
-                set_session(token=str(sess.get("token") or ""), user=u, remember=bool(sess.get("remember_me") or False))
+                set_session(
+                    token=str(sess.get("token") or ""),
+                    user=u,
+                    remember=bool(sess.get("remember_me") or False),
+                )
                 Clock.schedule_once(lambda *_: self._apply_user(u), 0)
                 Clock.schedule_once(lambda *_: _sync_app_badge_best_effort(), 0)
                 Clock.schedule_once(lambda *_: _popup("Saved", "Profile image updated."), 0)
             except ApiError as e:
-                err_msg = str(e)
-                Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
-
+                Clock.schedule_once(lambda *_: _popup("Error", str(e)), 0)
+    
         Thread(target=work, daemon=True).start()
+
 
     def request_email_otp(self):
         new_email = (self.ids.get("new_email_input").text or "").strip() if self.ids.get("new_email_input") else ""
@@ -885,6 +1025,10 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
     status_text = StringProperty("Status: loading…")
     provider_text = StringProperty("")
     expires_text = StringProperty("")
+    summary_window_text = StringProperty("Last 30 days")
+    summary_service_requested = StringProperty("—")
+    summary_earned = StringProperty("—")
+    summary_merchant_fee = StringProperty("—")
     is_loading = BooleanProperty(False)
 
     def on_pre_enter(self, *args):
@@ -922,11 +1066,20 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
                 status = str(data.get("status") or "inactive").strip()
                 provider = str(data.get("provider") or "").strip()
                 expires_at = str(data.get("expires_at") or "").strip()
+                s2 = api_subscription_summary(window_days=30) or {}
+                wd = int(s2.get("window_days") or 30)
+                service_requested = int(s2.get("service_requested") or 0)
+                earned = int(s2.get("earned") or 0)
+                fee = int(s2.get("merchant_fee") or 0)
 
                 def done(*_):
                     self.status_text = f"Status: {status}"
                     self.provider_text = f"Provider: {provider}" if provider else "Provider: —"
                     self.expires_text = f"Expires: {expires_at}" if expires_at else "Expires: —"
+                    self.summary_window_text = f"Last {wd} days"
+                    self.summary_service_requested = str(service_requested)
+                    self.summary_earned = f"₹{earned}"
+                    self.summary_merchant_fee = f"₹{fee}"
                     self.is_loading = False
 
                 Clock.schedule_once(done, 0)
@@ -936,6 +1089,10 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
                     self.status_text = "Status: unavailable"
                     self.provider_text = ""
                     self.expires_text = ""
+                    self.summary_window_text = "Last 30 days"
+                    self.summary_service_requested = "—"
+                    self.summary_earned = "—"
+                    self.summary_merchant_fee = "—"
                     self.is_loading = False
                     _popup("Error", str(e) or "Failed to load subscription.")
 
@@ -950,15 +1107,21 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
 
 
 class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
+    # Exposed to KV for conditional UI (e.g. hide Rent/Sale for services).
+    publish_post_group = StringProperty("property_material")  # property_material | services
+    # Prevent double-submit race.
+    is_submitting = BooleanProperty(False)
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._edit_data: dict[str, Any] | None = None
         self.edit_property_id: int | None = None
-        self._selected_media: list[str] = []
+        self._selected_media: list[bytes] = []
         self._category_items_cache: list[str] = []
         self._preferred_category: str = ""
         # Publish type (controls which categories are shown)
         self._publish_post_group: str = "property_material"  # property_material | services
+        self.publish_post_group = "property_material"
 
     def start_new(self) -> None:
         """
@@ -1054,6 +1217,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
         except Exception:
             label = ""
         self._publish_post_group = "services" if "service" in label.lower() else "property_material"
+        self.publish_post_group = self._publish_post_group
         # Reload categories filtered by the selected type.
         self._load_publish_categories(preferred=str(getattr(self, "_preferred_category", "") or ""))
 
@@ -1080,6 +1244,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                             items = [str(x or "").strip() for x in ((g or {}).get("items") or []) if str(x or "").strip()]
                             if pref in items:
                                 self._publish_post_group = "property_material" if (gl in property_groups) else "services"
+                                self.publish_post_group = self._publish_post_group
                                 break
                     except Exception:
                         pass
@@ -1114,6 +1279,7 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     # Sync the publish-type spinner label.
                     try:
                         pg = str(getattr(self, "_publish_post_group", "") or "").strip().lower()
+                        self.publish_post_group = pg or "property_material"
                         if "post_group_spinner" in self.ids:
                             self.ids["post_group_spinner"].text = "Owner(services Only)" if pg == "services" else "Owner(property/Material)"
                     except Exception:
@@ -1308,115 +1474,104 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
 
     def open_media_picker(self):
         """
-        Pick up to 10 images + 1 video to upload with the ad.
-        Android-safe: forces picker launch on UI thread after permission callback.
+        Pick images using Android SAF (content:// URIs) and convert to JPEG bytes.
+        Desktop fallback uses file chooser paths.
         """
+        from kivy.utils import platform
 
-        def _apply_selection(selection) -> None:
-            try:
-                paths = ensure_local_paths(selection or [])
-                media = [p for p in paths if is_image_path(p) or is_video_path(p)]
-                # Restrict videos for mobile publish (images only).
-                if any(is_video_path(x) for x in media):
-                    _popup("Videos not allowed", "Please select images only.")
-                    return
-                images = [x for x in media if is_image_path(x)]
-                videos: list[str] = []
+        def _on_selected(uris):
+            print("RAW URIS:", uris)
 
-                if len(images) > 10:
-                    images = images[:10]
-
-                self._selected_media = list(images + videos)
-
-                if "media_summary" in self.ids:
-                    parts: list[str] = []
-                    if images:
-                        parts.append(f"{len(images)} image(s)")
-                    if videos:
-                        parts.append(f"{len(videos)} video(s)")
-                    self.ids["media_summary"].text = (
-                            "Selected: " + " + ".join(parts)
-                    ) if parts else ""
-            except Exception:
+            if not uris:
+                _popup("Error", "No image selected")
                 return
 
-        def _open_picker() -> None:
-            try:
-                from kivy.utils import platform as _platform
-            except Exception:
-                _platform = ""
+            images: list[bytes] = []
 
-            if _platform == "android":
-                launched = android_open_gallery(
-                    on_selection=_apply_selection,
-                    multiple=True,
-                    mime_types=["image/*"],
-                )
-                if not launched:
-                    _popup("Gallery picker unavailable", "Unable to open Android gallery picker.")
+            for uri in uris:
+                try:
+                    jpeg = android_uri_to_jpeg_bytes(uri)
+                    images.append(jpeg)
+                except Exception as e:
+                    print("Rejected:", uri, e)
+
+            if not images:
+                _popup("Error", "Invalid image selected")
                 return
 
-            # Desktop/dev fallback
-            chooser = FileChooserListView(
-                path=os.path.abspath(_default_media_dir()),
-                multiselect=True,
-                filters=[
-                    "*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif",
-                    "*.mp4", "*.mov", "*.m4v", "*.avi", "*.mkv",
-                ],
+            # ✅ Store BYTES (not file paths)
+            self._selected_media = images
+
+            if "media_summary" in self.ids:
+                self.ids["media_summary"].text = f"Selected: {len(images)} image(s)"
+
+        # ---------------- ANDROID (REAL PICKER) ----------------
+        if platform == "android":
+            launched = android_open_gallery(
+                on_selection=_on_selected,
+                multiple=True,
+                mime_types=["image/*"],
             )
 
-            root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
-            root.add_widget(
-                Label(
-                    text="Select up to 10 images and optionally 1 video.",
-                    size_hint_y=None,
-                    height=dp(24),
-                    color=(1, 1, 1, 0.78),
-                )
-            )
-            root.add_widget(chooser)
+            if not launched:
+                _popup("Picker Error", "Unable to open image picker")
+            return
 
-            btns = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10))
-            btn_cancel = Factory.AppButton(text="Cancel", color=(0.94, 0.27, 0.27, 1))
-            btn_use = Factory.AppButton(text="Use Selected")
-            btns.add_widget(btn_cancel)
-            btns.add_widget(btn_use)
-            root.add_widget(btns)
+        # ---------------- DESKTOP FALLBACK ----------------
+        chooser = FileChooserListView(
+            path=os.path.abspath(_default_media_dir()),
+            multiselect=True,
+            filters=["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"],
+        )
 
-            popup = Popup(
-                title="Choose Media",
-                content=root,
-                size_hint=(0.94, 0.94),
-                auto_dismiss=False,
-            )
-            btn_cancel.bind(on_release=lambda *_: popup.dismiss())
-            btn_use.bind(on_release=lambda *_: (_apply_selection(list(chooser.selection or [])), popup.dismiss()))
-            popup.open()
+        root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
+        root.add_widget(Label(text="Select images", size_hint_y=None, height=dp(24)))
+        root.add_widget(chooser)
 
-        def _after(ok: bool) -> None:
-            # SAF picker works even if permission is denied.
-            if not ok:
-                _popup("Permission", "Media permission denied. Opening picker anyway.")
+        btns = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10))
+        btn_cancel = Factory.AppButton(text="Cancel")
+        btn_use = Factory.AppButton(text="Use Selected")
+        btns.add_widget(btn_cancel)
+        btns.add_widget(btn_use)
+        root.add_widget(btns)
 
-            # 🔴 CRITICAL FIX: force UI-thread + delay
-            Clock.schedule_once(lambda *_: _open_picker(), 0.15)
+        popup = Popup(
+            title="Choose Images",
+            content=root,
+            size_hint=(0.94, 0.94),
+            auto_dismiss=False,
+        )
 
-        ensure_permissions(required_media_permissions(), on_result=_after)
+        def _apply_desktop_selection(paths):
+            self._selected_media = [str(p) for p in paths]
+            if "media_summary" in self.ids:
+                self.ids["media_summary"].text = f"Selected: {len(paths)} image(s)"
+
+        btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+        btn_use.bind(on_release=lambda *_: (_apply_desktop_selection(list(chooser.selection or [])), popup.dismiss()))
+        popup.open()
 
     def submit_listing(self):
         """
         Create the ad (goes to admin review).
-        Location/Address are removed from UI as requested.
+        Android-safe: uploads JPEG BYTES (not file paths).
         """
+
+        if bool(getattr(self, "is_submitting", False)):
+            return
+
         title = (self.ids.get("title_input").text or "").strip() if self.ids.get("title_input") else ""
         state = (self.ids.get("state_spinner").text or "").strip() if self.ids.get("state_spinner") else ""
         district = (self.ids.get("district_spinner").text or "").strip() if self.ids.get("district_spinner") else ""
         area = (self.ids.get("area_spinner").text or "").strip() if self.ids.get("area_spinner") else ""
         category = (self.ids.get("category_spinner").text or "").strip() if self.ids.get("category_spinner") else ""
         price_text = (self.ids.get("price_input").text or "").strip() if self.ids.get("price_input") else ""
-        rent_sale = (self.ids.get("rent_sale_spinner").text or "").strip().lower() if self.ids.get("rent_sale_spinner") else "rent"
-        contact_phone = (self.ids.get("contact_phone_input").text or "").strip() if self.ids.get("contact_phone_input") else ""
+        rent_sale = (
+            (self.ids.get("rent_sale_spinner").text or "").strip().lower()
+            if self.ids.get("rent_sale_spinner") else "rent"
+        )
+        contact_phone = (self.ids.get("contact_phone_input").text or "").strip() if self.ids.get(
+            "contact_phone_input") else ""
 
         if not state or state in {"Select State", "Select Country"}:
             _popup("Error", "Please select state.")
@@ -1440,18 +1595,26 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
             _popup("Error", "Enter a valid price.")
             return
 
+        # Debounce submit button (single click).
+        self.is_submitting = True
+        try:
+            btn = (self.ids or {}).get("submit_btn")
+            if btn is not None:
+                btn.disabled = True
+                btn.text = "Submitting..."
+        except Exception:
+            pass
+
         from threading import Thread
-        # api_owner_create_property/api_owner_update_property imported at module level
+        from kivy.utils import platform
 
         def _start_submit(gps_lat: float | None, gps_lng: float | None) -> None:
             try:
-                used_atomic = False
                 payload = {
                     "state": state,
                     "district": district,
                     "area": area,
                     "title": title,
-                    # Use district as a simple display location.
                     "location": area or district,
                     "address": "",
                     "price": price,
@@ -1461,83 +1624,113 @@ class OwnerAddPropertyScreen(GestureNavigationMixin, Screen):
                     "contact_phone": contact_phone,
                     "contact_email": "",
                     "amenities": [],
-                    # GPS is optional; omit by sending nulls.
                     "gps_lat": gps_lat,
                     "gps_lng": gps_lng,
                 }
+
+                selected = list(getattr(self, "_selected_media", []) or [])
+
+                # ---------------- EDIT MODE ----------------
                 if self.edit_property_id:
                     res = api_owner_update_property(property_id=int(self.edit_property_id), payload=payload)
                     pid = self.edit_property_id
-                    status = ((res.get("property") or {}).get("status") or "updated").strip() if isinstance(res, dict) else "updated"
+                    status = ((res.get("property") or {}).get("status") or "updated").strip()
+
+                # ---------------- CREATE MODE ----------------
                 else:
-                    selected = list(getattr(self, "_selected_media", []) or [])
                     if selected:
-                        # Atomic publish (create + upload). If upload fails, the ad is NOT created.
-                        res = api_owner_publish_property(payload=payload, file_paths=[str(x) for x in selected])
+                        # Atomic publish
+                        if platform == "android" and isinstance(selected[0], (bytes, bytearray)):
+                            res = api_owner_publish_property_bytes(payload=payload, files_bytes=selected)
+                        else:
+                            res = api_owner_publish_property(payload=payload, file_paths=[str(x) for x in selected])
+
                         pid = res.get("id")
                         status = res.get("status") or "created"
-                        used_atomic = True
+
                     else:
                         res = api_owner_create_property(payload=payload)
                         pid = res.get("id")
                         status = res.get("status") or "pending"
-
-                # Upload selected media (best-effort) only for the legacy (non-atomic) path.
-                selected = list(getattr(self, "_selected_media", []) or [])
-                if (not self.edit_property_id) and pid and selected and (not used_atomic):
-                    for i, fp in enumerate(selected):
-                        api_upload_property_media(property_id=int(pid), file_path=str(fp), sort_order=i)
 
                 def done(*_):
                     if self.edit_property_id:
                         msg = f"Ad updated (#{pid})"
                     else:
                         msg = f"Ad created (#{pid}) • status: {status}"
-                    if selected and (not self.edit_property_id):
-                        msg += f"\nUploaded {len(selected)} file(s)."
+
+                    if selected and not self.edit_property_id:
+                        msg += f"\nUploaded {len(selected)} image(s)."
+
                     _popup("Saved", msg)
+
                     if self.manager:
-                        # Refresh lists so edits reflect everywhere.
                         try:
                             home = self.manager.get_screen("home")
                             if hasattr(home, "refresh"):
-                                home.refresh()  # type: ignore[attr-defined]
+                                home.refresh()
                         except Exception:
                             pass
+
                         try:
                             mp = self.manager.get_screen("my_posts")
                             if hasattr(mp, "refresh"):
-                                mp.refresh()  # type: ignore[attr-defined]
+                                mp.refresh()
                         except Exception:
                             pass
-                        # After save, show the user's posts list (no dashboard screen).
+
                         self.manager.current = "my_posts"
-                        # Exit edit mode after save.
                         self.edit_property_id = None
                         self._edit_data = None
 
+                    # Re-enable submit button
+                    try:
+                        self.is_submitting = False
+                        b = (self.ids or {}).get("submit_btn")
+                        if b is not None:
+                            b.disabled = False
+                            b.text = "Submit (goes to admin review)" if (not self.edit_property_id) else "Save Changes"
+                    except Exception:
+                        pass
+
                 Clock.schedule_once(done, 0)
+
             except ApiError as e:
                 err_msg = str(e)
-                Clock.schedule_once(lambda *_dt, err_msg=err_msg: _popup("Error", err_msg), 0)
+                def fail(*_):
+                    _popup("Error", err_msg)
+                    try:
+                        self.is_submitting = False
+                        b = (self.ids or {}).get("submit_btn")
+                        if b is not None:
+                            b.disabled = False
+                            b.text = "Submit (goes to admin review)" if (not self.edit_property_id) else "Save Changes"
+                    except Exception:
+                        pass
+                Clock.schedule_once(fail, 0)
+            except Exception as e:
+                err_msg = str(e) or "Publish failed"
+                def fail2(*_):
+                    _popup("Error", err_msg)
+                    try:
+                        self.is_submitting = False
+                        b = (self.ids or {}).get("submit_btn")
+                        if b is not None:
+                            b.disabled = False
+                            b.text = "Submit (goes to admin review)" if (not self.edit_property_id) else "Save Changes"
+                    except Exception:
+                        pass
+                Clock.schedule_once(fail2, 0)
 
         def _maybe_with_location(ok: bool) -> None:
-            # For edits, don't force location permission / GPS capture.
             if self.edit_property_id:
-                def work():
-                    _start_submit(None, None)
-                Thread(target=work, daemon=True).start()
+                Thread(target=lambda: _start_submit(None, None), daemon=True).start()
                 return
 
             loc = get_last_known_location() if ok else None
             gps_lat, gps_lng = (loc[0], loc[1]) if loc else (None, None)
+            Thread(target=lambda: _start_submit(gps_lat, gps_lng), daemon=True).start()
 
-            def work():
-                _start_submit(gps_lat, gps_lng)
-
-            Thread(target=work, daemon=True).start()
-
-        # Request location permission at runtime (best-effort). Submission continues even if denied.
         ensure_permissions(required_location_permissions(), on_result=_maybe_with_location)
 
     def go_back(self):
