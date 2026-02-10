@@ -541,9 +541,10 @@ def _admin_otp_email() -> str:
 
 def _free_contact_limit() -> int:
     try:
-        return max(0, int(os.environ.get("FREE_CONTACT_LIMIT") or "5"))
+        # Default to 30 free contact unlocks per user.
+        return max(0, int(os.environ.get("FREE_CONTACT_LIMIT") or "30"))
     except Exception:
-        return 5
+        return 30
 
 
 def _public_image_url(file_path: str) -> str:
@@ -1427,6 +1428,14 @@ def login_verify_otp(data: LoginVerifyOtpIn, db: Annotated[Session, Depends(get_
         raise HTTPException(status_code=401, detail="Invalid OTP")
     # One-time: consume the OTP.
     db.execute(delete(OtpCode).where(OtpCode.id == otp.id))
+
+    # Ensure a subscription row exists (older accounts might not have one).
+    try:
+        sub = db.execute(select(Subscription).where(Subscription.user_id == user.id)).scalar_one_or_none()
+        if not sub:
+            db.add(Subscription(user_id=user.id, status="inactive", provider="google_play"))
+    except Exception:
+        pass
 
     token = create_access_token(user_id=user.id, role=user.role)
     return {

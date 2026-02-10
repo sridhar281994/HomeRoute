@@ -68,6 +68,64 @@ def _popup(title: str, message: str) -> None:
     Clock.schedule_once(_open, 0)
 
 
+def _is_payment_required_msg(msg: str) -> bool:
+    m = (msg or "").strip().lower()
+    return (
+        "subscription required" in m
+        or "payment required" in m
+        or "unlock limit reached" in m
+        or "http 402" in m
+        or "http 429" in m
+    )
+
+
+def _payment_required_popup(*, screen: "HomeScreen", detail: str = "") -> None:
+    """
+    Friendly paywall popup for contact unlocks.
+    """
+
+    def _open(*_):
+        root = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        msg = "[b]Payment required[/b]\nSubscribe to unlock more owner/service contacts."
+        lbl = Label(text=msg, markup=True, halign="center", valign="middle")
+        lbl.text_size = (dp(280), None)
+        lbl.size_hint_y = None
+        lbl.height = lbl.texture_size[1] + dp(10)
+        root.add_widget(lbl)
+
+        if (detail or "").strip():
+            d = Label(text=str(detail).strip(), color=(1, 1, 1, 0.72), halign="center", valign="middle")
+            d.text_size = (dp(280), None)
+            d.size_hint_y = None
+            d.height = d.texture_size[1] + dp(6)
+            root.add_widget(d)
+
+        btns = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
+        btn_cancel = Factory.AppButton(text="Not now", color=(0.94, 0.27, 0.27, 1))
+        btn_sub = Factory.AppButton(text="View subscription")
+        btns.add_widget(btn_cancel)
+        btns.add_widget(btn_sub)
+        root.add_widget(btns)
+
+        popup = Popup(title="", content=root, size_hint=(0.9, 0.42), auto_dismiss=False)
+
+        def go_sub(*_):
+            try:
+                popup.dismiss()
+            except Exception:
+                pass
+            try:
+                if screen.manager:
+                    screen.manager.current = "subscription"
+            except Exception:
+                pass
+
+        btn_cancel.bind(on_release=lambda *_: popup.dismiss())
+        btn_sub.bind(on_release=go_sub)
+        popup.open()
+
+    Clock.schedule_once(_open, 0)
+
 @dataclass
 class PropertyCard:
     id: int
@@ -1055,7 +1113,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
                     def fail(*_):
                         _btn.disabled = False
-                        # Show inline message in the post itself as requested.
+                        if _is_payment_required_msg(msg):
+                            friendly = "Payment required. Please subscribe to unlock more contacts."
+                            _set_contact_text(friendly)
+                            _payment_required_popup(screen=self, detail="")
+                            return
+                        # Non-paywall errors: show inline + toast.
                         _set_contact_text(msg)
                         _popup("Error", msg)
 
@@ -1065,6 +1128,11 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
                     def fail2(*_):
                         _btn.disabled = False
+                        if _is_payment_required_msg(msg):
+                            friendly = "Payment required. Please subscribe to unlock more contacts."
+                            _set_contact_text(friendly)
+                            _payment_required_popup(screen=self, detail="")
+                            return
                         _set_contact_text(msg)
                         _popup("Error", msg)
 

@@ -44,7 +44,8 @@ class QuickRentApp(App):
         kv_path = resource_find("kv/screens.kv") or os.path.join(base_dir, "kv", "screens.kv")
         Builder.load_file(kv_path)
 
-        sm = ScreenManager()
+        # Use a short fade transition to avoid startup/screen-change flicker.
+        sm = ScreenManager(transition=FadeTransition(duration=0.12))
         sm.add_widget(SplashScreen(name="splash"))
         sm.add_widget(WelcomeScreen(name="welcome"))
         sm.add_widget(LoginScreen(name="login"))

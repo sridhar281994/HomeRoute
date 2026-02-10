@@ -145,6 +145,19 @@ class LoginScreen(GestureNavigationMixin, Screen):
             self.keyboard_padding = 0
             return
 
+        # Debounce small keyboard height changes (Android suggestion bar can jitter)
+        # to avoid layout flicker while typing.
+        try:
+            last = float(getattr(self, "_last_kb_h", 0.0) or 0.0)
+        except Exception:
+            last = 0.0
+        try:
+            setattr(self, "_last_kb_h", h)
+        except Exception:
+            pass
+        if last and abs(h - last) < dp(12):
+            return
+
         # Push content above keyboard
         self.keyboard_padding = h + dp(20)
 
