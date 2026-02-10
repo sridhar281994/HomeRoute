@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import GuestGate from "../components/GuestGate";
-import { getSession, getSubscriptionStatus } from "../api";
+import { getSession, getSubscriptionStatus, getSubscriptionSummary } from "../api";
 
 export default function SubscriptionPage() {
   const s = getSession();
@@ -11,6 +11,12 @@ export default function SubscriptionPage() {
   const [expiresAt, setExpiresAt] = useState("");
   const [msg, setMsg] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [summary, setSummary] = useState<{
+    window_days: number;
+    service_requested: number;
+    earned: number;
+    merchant_fee: number;
+  } | null>(null);
 
   async function load() {
     if (isLoading) return;
@@ -21,11 +27,19 @@ export default function SubscriptionPage() {
       setStatus(String(r.status || "inactive"));
       setProvider(String(r.provider || ""));
       setExpiresAt(String(r.expires_at || ""));
+      const s2 = await getSubscriptionSummary({ window_days: 30 });
+      setSummary({
+        window_days: Number(s2.window_days || 30),
+        service_requested: Number(s2.service_requested || 0),
+        earned: Number(s2.earned || 0),
+        merchant_fee: Number(s2.merchant_fee || 0),
+      });
     } catch (e: any) {
       setMsg(e.message || "Failed to load subscription.");
       setStatus("Unavailable");
       setProvider("");
       setExpiresAt("");
+      setSummary(null);
     } finally {
       setIsLoading(false);
     }
@@ -102,6 +116,26 @@ export default function SubscriptionPage() {
             <div className="sub-plan-title">BUSINESS - ₹150</div>
             <div className="sub-plan-desc">Unlimited contact unlocks/Month</div>
           </button>
+        </div>
+      </div>
+
+      <div className="grid" style={{ marginTop: 12 }}>
+        <div className="col-12">
+          <div className="card">
+            <div className="h2">Summary</div>
+            <div className="muted" style={{ marginTop: 6 }}>
+              Last {summary?.window_days ?? 30} days
+            </div>
+            <div className="muted" style={{ marginTop: 10 }}>
+              Service requested: {summary ? summary.service_requested : "—"}
+            </div>
+            <div className="muted" style={{ marginTop: 6 }}>
+              Earned: {summary ? `₹${summary.earned}` : "—"}
+            </div>
+            <div className="muted" style={{ marginTop: 6 }}>
+              Merchant fee: {summary ? `₹${summary.merchant_fee}` : "—"}
+            </div>
+          </div>
         </div>
       </div>
 

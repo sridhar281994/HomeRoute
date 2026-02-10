@@ -251,6 +251,19 @@ export function getSubscriptionStatus() {
   return api<{ status: string; provider?: string; expires_at?: string }>(`/me/subscription`);
 }
 
+export function getSubscriptionSummary(params?: { window_days?: number }) {
+  const wd = params?.window_days ?? 30;
+  return api<{
+    window_days: number;
+    from: string;
+    to: string;
+    service_requested: number;
+    earned: number;
+    merchant_fee: number;
+    merchant_fee_rate: number;
+  }>(`/me/subscription/summary?window_days=${encodeURIComponent(String(wd))}`);
+}
+
 export function updateMe(input: { name: string }) {
   return api<{ ok: boolean; user: User }>(`/me`, {
     method: "PATCH",
