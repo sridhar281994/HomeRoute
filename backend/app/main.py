@@ -1620,6 +1620,80 @@ def me_subscription(
     return {"status": sub.status, "provider": sub.provider, "expires_at": sub.expires_at}
 
 
+@app.get("/me/subscription/summary")
+def me_subscription_summary(
+    window_days: int = Query(default=30, ge=1, le=365),
+    me: Annotated[User, Depends(get_current_user)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """
+    Summary metrics for the subscription page.
+    Defaults to the last 30 days.
+
+    - service_requested: contact unlock attempts by this user (free + subscribed)
+    - earned: sum of plan prices for purchases recorded in DB (best-effort)
+    - merchant_fee: computed from earned using MERCHANT_FEE_RATE (defaults to 0)
+    """
+    if me is None or db is None:
+        raise HTTPException(status_code=500, detail="Server misconfiguration")
+
+    now = dt.datetime.now(dt.timezone.utc)
+    since = now - dt.timedelta(days=int(window_days))
+
+    # Contacts unlocked in window (best-effort).
+    paid_cnt = (
+        db.execute(
+            select(func.count(ContactUsage.id)).where(
+                (ContactUsage.user_id == me.id) & (ContactUsage.used_at >= since)
+            )
+        ).scalar()
+        or 0
+    )
+    free_cnt = (
+        db.execute(
+            select(func.count(FreeContactUsage.id)).where(
+                (FreeContactUsage.user_id == me.id) & (FreeContactUsage.used_at >= since)
+            )
+        ).scalar()
+        or 0
+    )
+    service_requested = int(paid_cnt) + int(free_cnt)
+
+    # Revenue (earned) within window based on recorded subscription purchases.
+    earned = (
+        db.execute(
+            select(func.coalesce(func.sum(SubscriptionPlan.price_inr), 0))
+            .select_from(UserSubscription)
+            .join(SubscriptionPlan, SubscriptionPlan.id == UserSubscription.plan_id)
+            .where((UserSubscription.user_id == me.id) & (UserSubscription.created_at >= since))
+        ).scalar()
+        or 0
+    )
+    try:
+        earned_inr = int(earned or 0)
+    except Exception:
+        earned_inr = 0
+
+    # Merchant fee (configurable rate).
+    try:
+        fee_rate = float(os.getenv("MERCHANT_FEE_RATE") or "0")
+    except Exception:
+        fee_rate = 0.0
+    if fee_rate < 0:
+        fee_rate = 0.0
+    merchant_fee_inr = int(round(float(earned_inr) * float(fee_rate)))
+
+    return {
+        "window_days": int(window_days),
+        "from": since.isoformat(),
+        "to": now.isoformat(),
+        "service_requested": int(service_requested),
+        "earned": int(earned_inr),
+        "merchant_fee": int(merchant_fee_inr),
+        "merchant_fee_rate": float(fee_rate),
+    }
+
+
 class VerifyPurchaseIn(BaseModel):
     token: str = Field(..., min_length=1)
     product_id: str | None = None
