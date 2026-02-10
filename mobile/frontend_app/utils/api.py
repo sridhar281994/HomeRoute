@@ -447,6 +447,19 @@ def api_subscription_status() -> dict[str, Any]:
     return _handle(resp)
 
 
+def api_subscription_summary(*, window_days: int = 30) -> dict[str, Any]:
+    url = f"{_base_url()}/me/subscription/summary"
+    resp = _request(
+        "GET",
+        url,
+        params={"window_days": int(window_days)},
+        headers=_headers(),
+        timeout=15,
+        verify=_verify_ca_bundle(),
+    )
+    return _handle(resp)
+
+
 # -----------------------
 # Me / Profile
 # -----------------------

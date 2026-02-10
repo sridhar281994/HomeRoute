@@ -41,6 +41,7 @@ from frontend_app.utils.api import (
     api_owner_publish_property,
     api_owner_update_property,
     api_subscription_status,
+    api_subscription_summary,
     api_upload_property_media,
     to_api_url,
 )
@@ -1024,6 +1025,10 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
     status_text = StringProperty("Status: loading…")
     provider_text = StringProperty("")
     expires_text = StringProperty("")
+    summary_window_text = StringProperty("Last 30 days")
+    summary_service_requested = StringProperty("—")
+    summary_earned = StringProperty("—")
+    summary_merchant_fee = StringProperty("—")
     is_loading = BooleanProperty(False)
 
     def on_pre_enter(self, *args):
@@ -1061,11 +1066,20 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
                 status = str(data.get("status") or "inactive").strip()
                 provider = str(data.get("provider") or "").strip()
                 expires_at = str(data.get("expires_at") or "").strip()
+                s2 = api_subscription_summary(window_days=30) or {}
+                wd = int(s2.get("window_days") or 30)
+                service_requested = int(s2.get("service_requested") or 0)
+                earned = int(s2.get("earned") or 0)
+                fee = int(s2.get("merchant_fee") or 0)
 
                 def done(*_):
                     self.status_text = f"Status: {status}"
                     self.provider_text = f"Provider: {provider}" if provider else "Provider: —"
                     self.expires_text = f"Expires: {expires_at}" if expires_at else "Expires: —"
+                    self.summary_window_text = f"Last {wd} days"
+                    self.summary_service_requested = str(service_requested)
+                    self.summary_earned = f"₹{earned}"
+                    self.summary_merchant_fee = f"₹{fee}"
                     self.is_loading = False
 
                 Clock.schedule_once(done, 0)
@@ -1075,6 +1089,10 @@ class SubscriptionScreen(GestureNavigationMixin, Screen):
                     self.status_text = "Status: unavailable"
                     self.provider_text = ""
                     self.expires_text = ""
+                    self.summary_window_text = "Last 30 days"
+                    self.summary_service_requested = "—"
+                    self.summary_earned = "—"
+                    self.summary_merchant_fee = "—"
                     self.is_loading = False
                     _popup("Error", str(e) or "Failed to load subscription.")
 
