@@ -1771,6 +1771,30 @@
                     height: self.minimum_height
                     spacing: dp(14)
 
+                    # ---------- POST TYPE ----------
+                    BoxLayout:
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: dp(86)
+                        spacing: dp(6)
+
+                        Label:
+                            text: "Category"
+                            color: TEXT_MUTED
+                            size_hint_y: None
+                            height: dp(22)
+
+                        PrettySpinner:
+                            text:
+                                "Property / Material" if (root.home and root.home.post_group == "property_material") else (
+                                "Services" if (root.home and root.home.post_group == "services") else "Property / Material"
+                                )
+                            values: ["Property / Material", "Services"]
+                            on_text:
+                                if root.home: root.home.post_group = ("services" if "service" in self.text.lower() else "property_material")
+                            size_hint_y: None
+                            height: dp(48)
+
                     # ---------- STATE ----------
                     BoxLayout:
                         orientation: "vertical"

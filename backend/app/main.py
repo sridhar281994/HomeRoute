@@ -2309,9 +2309,20 @@ def list_properties(
     else:
         stmt = stmt.order_by(Property.id.desc())
     if state_norm:
-        stmt = stmt.where(Property.state_normalized == state_norm)
+        # Backward compatibility: some older rows may have empty normalized fields.
+        stmt = stmt.where(
+            or_(
+                (Property.state_normalized == state_norm),
+                and_((Property.state_normalized == ""), Property.state.ilike(state_in)),
+            )
+        )
     if district_norm:
-        stmt = stmt.where(Property.district_normalized == district_norm)
+        stmt = stmt.where(
+            or_(
+                (Property.district_normalized == district_norm),
+                and_((Property.district_normalized == ""), Property.district.ilike(district_in)),
+            )
+        )
     if area_norms:
         stmt = stmt.where(Property.area_normalized.in_(area_norms))
     elif area_norm:
@@ -2537,8 +2548,10 @@ def list_nearby_properties(
     - Bounding-box prefilter on lat/lon
     - Distance calculation for ordering
     """
-    district_norm = _norm_key((district or "").strip())
-    state_norm = _norm_key((state or "").strip())
+    district_in = (district or "").strip()
+    state_in = (state or "").strip()
+    district_norm = _norm_key(district_in)
+    state_norm = _norm_key(state_in)
     area_in = (area or "").strip()
     area_list = _split_csv_values(area_in)
     area_norms = [_norm_key(x) for x in area_list]
@@ -2569,9 +2582,19 @@ def list_nearby_properties(
     )
 
     if district_norm:
-        stmt = stmt.where(Property.district_normalized == district_norm)
+        stmt = stmt.where(
+            or_(
+                (Property.district_normalized == district_norm),
+                and_((Property.district_normalized == ""), Property.district.ilike(district_in)),
+            )
+        )
     if state_norm:
-        stmt = stmt.where(Property.state_normalized == state_norm)
+        stmt = stmt.where(
+            or_(
+                (Property.state_normalized == state_norm),
+                and_((Property.state_normalized == ""), Property.state.ilike(state_in)),
+            )
+        )
     if area_norms:
         stmt = stmt.where(Property.area_normalized.in_(area_norms))
     elif area_norm:
