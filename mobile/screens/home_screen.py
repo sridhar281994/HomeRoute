@@ -1006,6 +1006,29 @@ class HomeScreen(GestureNavigationMixin, Screen):
         # =================================================
         # ACTION HANDLERS
         # =================================================
+        contact_lbl = Label(
+            text=str((p or {}).get("contact_text") or "").strip(),
+            size_hint_y=None,
+            color=(1, 1, 1, 0.82),
+            halign="left",
+            valign="middle",
+        )
+
+        def _resize_contact(*_):
+            contact_lbl.text_size = (contact_lbl.width, None)
+            contact_lbl.height = (contact_lbl.texture_size[1] + dp(6)) if (contact_lbl.text or "").strip() else 0
+
+        contact_lbl.bind(width=_resize_contact, texture_size=_resize_contact)
+        Clock.schedule_once(_resize_contact, 0)
+
+        def _set_contact_text(txt: str) -> None:
+            try:
+                p["contact_text"] = str(txt or "").strip()
+            except Exception:
+                pass
+            contact_lbl.text = str(txt or "").strip()
+            _resize_contact()
+
         def on_contact(_btn):
             if not self.is_logged_in:
                 _popup("Login required", "Please login to contact the owner.")
@@ -1022,20 +1045,52 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
             def work():
                 try:
-                    api_get_property_contact(pid)
+                    data = api_get_property_contact(pid) or {}
+                    phone = str(data.get("phone") or "").strip()
+                    email = str(data.get("email") or "").strip()
+                    owner_name2 = str(data.get("owner_name") or "").strip()
+                    company = str(data.get("owner_company_name") or "").strip()
+                    parts = []
+                    if owner_name2:
+                        parts.append(owner_name2)
+                    if company:
+                        parts.append(company)
+                    header_txt = " • ".join(parts).strip()
+                    lines = []
+                    if header_txt:
+                        lines.append(f"[b]{header_txt}[/b]")
+                    if phone:
+                        lines.append(f"Phone: {phone}")
+                    if email:
+                        lines.append(f"Email: {email}")
+                    contact_text = "\n".join(lines).strip()
 
                     def done(*_):
-                        _btn.text = "Contacted"
+                        _btn.text = "View contact"
                         p["contacted"] = True
+                        _set_contact_text(contact_text or "Contact unlocked.")
+                        _btn.disabled = False
 
                     Clock.schedule_once(done, 0)
                 except ApiError as e:
+                    msg = str(e) or "Failed to unlock contact"
 
                     def fail(*_):
                         _btn.disabled = False
-                        _popup("Error", str(e))
+                        # Show inline message in the post itself as requested.
+                        _set_contact_text(msg)
+                        _popup("Error", msg)
 
                     Clock.schedule_once(fail, 0)
+                except Exception as e:
+                    msg = str(e) or "Failed to unlock contact"
+
+                    def fail2(*_):
+                        _btn.disabled = False
+                        _set_contact_text(msg)
+                        _popup("Error", msg)
+
+                    Clock.schedule_once(fail2, 0)
 
             Thread(target=work, daemon=True).start()
 
@@ -1092,10 +1147,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         else:
             btn_contact = Factory.AppButton(
-                text="Contacted" if already_contacted else "Contact owner",
+                text="View contact" if already_contacted else "Contact owner",
                 size_hint=(1, None),
                 height=dp(44),
-                disabled=already_contacted,
+                disabled=False,
             )
             btn_share = Factory.AppButton(text="Share", size_hint=(None, None), width=dp(96), height=dp(44))
 
@@ -1105,6 +1160,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
             btn_row.add_widget(btn_contact)
             btn_row.add_widget(btn_share)
 
+        # Inline contact details/status area (grows only when text is set).
+        card.add_widget(contact_lbl)
         card.add_widget(btn_row)
         return card
 
