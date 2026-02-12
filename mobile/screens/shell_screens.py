@@ -69,6 +69,26 @@ def _format_price_display(value: Any) -> str:
     return f"Rs {raw}"
 
 
+def _format_distance_away(value: Any) -> str:
+    try:
+        n = float(value)
+    except Exception:
+        return "— km away from you"
+    if not (n == n):
+        return "— km away from you"
+    pretty = f"{n:.1f}" if n < 10 else str(int(round(n)))
+    return f"{pretty} km away from you"
+
+
+def _post_header_meta(p: dict[str, Any]) -> str:
+    ad_no = str((p or {}).get("adv_number") or (p or {}).get("ad_number") or (p or {}).get("id") or "").strip() or "—"
+    district = str((p or {}).get("district") or "").strip() or "—"
+    area = str((p or {}).get("area") or "").strip() or "—"
+    price = _format_price_display((p or {}).get("price_display") or (p or {}).get("price")) or "—"
+    distance = _format_distance_away((p or {}).get("distance_km"))
+    return f"Ad number: {ad_no} • District: {district} • Area: {area} • Price: {price} • {distance}"
+
+
 class _TapAsyncImage(AsyncImage):
     """
     AsyncImage that still allows Carousel swipes, while detecting simple taps.
@@ -274,6 +294,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
     property_data = DictProperty({})
     fallback_text = StringProperty("U")
     image_source = StringProperty("")
+    header_meta = StringProperty("")
 
     def on_pre_enter(self, *args):
         try:
@@ -291,6 +312,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
     def load_property(self, property_id: int):
         self.property_id = int(property_id)
         self.property_data = {}
+        self.header_meta = ""
 
         def work():
             try:
@@ -298,6 +320,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
                 data2 = dict(data)
                 data2["price_display"] = _format_price_display(data2.get("price_display") or data2.get("price"))
                 Clock.schedule_once(lambda *_: setattr(self, "property_data", data2), 0)
+                Clock.schedule_once(lambda *_: setattr(self, "header_meta", _post_header_meta(data2)), 0)
                 # Also rebuild media grid (if KV container exists).
                 Clock.schedule_once(lambda *_: self._render_media_grid(data2), 0)
                 # Avatar in the detail header should reflect the post owner.
@@ -410,11 +433,29 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
             except Exception:
                 pass
             img.size_hint = (1, 1)
+            tiny = Label(
+                text="...",
+                size_hint=(None, None),
+                size=(dp(18), dp(18)),
+                pos_hint={"center_x": 0.5, "center_y": 0.5},
+                color=(1, 1, 1, 0.78),
+            )
+
+            def _hide_tiny(_img, _tex, tiny=tiny):
+                try:
+                    tex = getattr(_img, "texture", None)
+                    if tex is not None and getattr(tex, "size", None) and tex.size[0] > 0 and tex.size[1] > 0:
+                        tiny.opacity = 0
+                except Exception:
+                    pass
+
             img.on_tap = (lambda idx=len(imgs): self._open_image_viewer(urls, idx))
+            slide.add_widget(tiny)
             slide.add_widget(img)
             carousel.add_widget(slide)
             imgs.append(img)
             img.bind(texture=_recalc_height)
+            img.bind(texture=_hide_tiny)
 
         wrap.add_widget(carousel)
 
@@ -608,29 +649,21 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         p = dict(self.property_data or {})
         title_s = str(p.get("title") or "Property").strip()
         pid = int(self.property_id or 0)
-        adv = str(p.get("adv_number") or p.get("ad_number") or pid or "").strip()
-        meta_lines: list[str] = []
-        for x in [
-            str(p.get("rent_sale") or "").strip(),
-            str(p.get("property_type") or "").strip(),
-            _format_price_display(p.get("price_display") or p.get("price")),
-            str(p.get("location_display") or "").strip(),
-        ]:
-            if x:
-                meta_lines.append(x)
+        adv = str(p.get("adv_number") or p.get("ad_number") or pid or "").strip() or "—"
+        district = str(p.get("district") or "").strip() or "—"
+        area = str(p.get("area") or "").strip() or "—"
+        price = _format_price_display(p.get("price_display") or p.get("price")) or "—"
+        distance = _format_distance_away(p.get("distance_km"))
         # Prefer linking to the web UI route if hosted on the same domain.
         api_link = to_api_url(f"/property/{pid}") if pid else ""
-        # Share format (3 lines):
-        # Title
-        # rent • type • price • location
-        # URL
         share_meta = " • ".join(
             x
             for x in [
-                str(p.get("rent_sale") or "").strip(),
-                str(p.get("property_type") or "").strip(),
-                _format_price_display(p.get("price_display") or p.get("price")),
-                str(p.get("location_display") or "").strip(),
+                f"Ad number: {adv}",
+                f"District: {district}",
+                f"Area: {area}",
+                f"Price: {price}",
+                distance,
             ]
             if x
         )

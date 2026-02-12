@@ -3,6 +3,8 @@ import { formatPriceDisplay, getSession, ownerDeleteProperty, ownerListPropertie
 import { Link, useNavigate } from "react-router-dom";
 import GuestGate from "../components/GuestGate";
 import { sharePost } from "../share";
+import ImageViewerModal from "../components/ImageViewerModal";
+import ImageWithTinyLoader from "../components/ImageWithTinyLoader";
 
 function groupByStatus(items: any[]) {
   const out: Record<string, any[]> = {};
@@ -19,6 +21,9 @@ export default function MyPostsPage() {
   const isLocked = !s.token;
   const [items, setItems] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
+  const [viewerOpen, setViewerOpen] = useState<boolean>(false);
+  const [viewerUrls, setViewerUrls] = useState<string[]>([]);
+  const [viewerIndex, setViewerIndex] = useState<number>(0);
 
   async function load() {
     setMsg("");
@@ -38,6 +43,21 @@ export default function MyPostsPage() {
 
   const grouped = useMemo(() => groupByStatus(items), [items]);
   const order = ["pending", "approved", "rejected", "suspended", "unknown"];
+
+  function fmtDistance(dkm: any): string {
+    const n = Number(dkm);
+    if (!Number.isFinite(n)) return "— km away from you";
+    const pretty = n < 10 ? n.toFixed(1) : Math.round(n).toString();
+    return `${pretty} km away from you`;
+  }
+
+  function openViewer(urls: string[], index: number) {
+    const clean = urls.map((u) => String(u || "").trim()).filter(Boolean);
+    if (!clean.length) return;
+    setViewerUrls(clean);
+    setViewerIndex(Math.max(0, Math.min(index, clean.length - 1)));
+    setViewerOpen(true);
+  }
 
   if (isLocked) {
     return (
@@ -76,7 +96,17 @@ export default function MyPostsPage() {
                   </div>
                 </div>
                 <div className="grid" style={{ marginTop: 10 }}>
-                  {arr.map((p) => (
+                  {arr.map((p) => {
+                    const adNo = String(p.adv_number || p.ad_number || p.id || "").trim() || "—";
+                    const districtLabel = String(p.district || "").trim() || "—";
+                    const areaLabel = String(p.area || "").trim() || "—";
+                    const priceLabel = formatPriceDisplay(p.price_display || p.price) || "—";
+                    const distanceLabel = fmtDistance(p.distance_km);
+                    const imageUrls = (Array.isArray(p.images) ? p.images : [])
+                      .filter((m: any) => !String(m?.content_type || "").toLowerCase().startsWith("video/"))
+                      .map((m: any) => toApiUrl(String(m?.url || "")))
+                      .filter(Boolean);
+                    return (
                     <div className="col-12" key={p.id}>
                       <div className="card post-card">
                         <div className="post-header">
@@ -85,8 +115,7 @@ export default function MyPostsPage() {
                           </div>
                           <div>
                             <div className="muted post-meta">
-                              Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • status: {p.status} • {p.rent_sale} •{" "}
-                              {p.property_type} • {formatPriceDisplay(p.price_display)} • {p.location_display}
+                              Ad number: {adNo} • District: {districtLabel} • Area: {areaLabel} • Price: {priceLabel} • {distanceLabel} • status: {p.status}
                               {p.created_at ? ` • ${new Date(p.created_at).toLocaleString()}` : ""}
                             </div>
                           </div>
@@ -100,10 +129,11 @@ export default function MyPostsPage() {
                               const url = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
                               const title = String(p.title || "Property").trim() || "Property";
                               const meta = [
-                                String(p.rent_sale || "").trim(),
-                                String(p.property_type || "").trim(),
-                                formatPriceDisplay(p.price_display),
-                                String(p.location_display || "").trim(),
+                                `Ad number: ${adNo}`,
+                                `District: ${districtLabel}`,
+                                `Area: ${areaLabel}`,
+                                `Price: ${priceLabel}`,
+                                distanceLabel,
                               ]
                                 .filter(Boolean)
                                 .join(" • ");
@@ -151,7 +181,17 @@ export default function MyPostsPage() {
                             {String(p.images[0]?.content_type || "").toLowerCase().startsWith("video/") ? (
                               <video controls preload="metadata" src={toApiUrl(p.images[0].url)} />
                             ) : (
-                              <img src={toApiUrl(p.images[0].url)} alt={`Ad ${p.id} media`} loading="lazy" />
+                              <ImageWithTinyLoader
+                                src={toApiUrl(p.images[0].url)}
+                                alt={`Ad ${p.id} media`}
+                                wrapperStyle={{ borderRadius: 14, overflow: "hidden" }}
+                                imgStyle={{ width: "100%", height: 320, objectFit: "cover", cursor: "pointer" }}
+                                onClick={() => {
+                                  const clicked = toApiUrl(p.images[0].url);
+                                  const idx = Math.max(0, imageUrls.indexOf(clicked));
+                                  openViewer(imageUrls, idx);
+                                }}
+                              />
                             )}
                           </div>
                         ) : (
@@ -171,7 +211,7 @@ export default function MyPostsPage() {
                         ) : null}
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             </div>
@@ -183,6 +223,7 @@ export default function MyPostsPage() {
           </div>
         ) : null}
       </div>
+      <ImageViewerModal open={viewerOpen} imageUrls={viewerUrls} initialIndex={viewerIndex} onClose={() => setViewerOpen(false)} />
     </div>
   );
 }

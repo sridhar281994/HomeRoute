@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  formatPriceDisplay,
   getCategoryCatalog,
   getMe,
   getSession,
@@ -572,6 +573,21 @@ export default function OwnerAddPage() {
                   <div className="card">
                     <div className="row">
                       <div>
+                        {(() => {
+                          const adNo = String(p.adv_number || p.ad_number || p.id || "").trim() || "—";
+                          const districtLabel = String(p.district || "").trim() || "—";
+                          const areaLabel = String(p.area || "").trim() || "—";
+                          const priceLabel = formatPriceDisplay(p.price_display || p.price) || "—";
+                          const n = Number(p.distance_km);
+                          const distanceLabel = Number.isFinite(n)
+                            ? `${n < 10 ? n.toFixed(1) : Math.round(n).toString()} km away from you`
+                            : "— km away from you";
+                          return (
+                            <div className="muted" style={{ marginBottom: 6 }}>
+                              Ad number: {adNo} • District: {districtLabel} • Area: {areaLabel} • Price: {priceLabel} • {distanceLabel}
+                            </div>
+                          );
+                        })()}
                         <div className="h2">
                           Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.title}
                         </div>

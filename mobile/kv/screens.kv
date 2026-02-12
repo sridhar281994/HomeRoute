@@ -2145,12 +2145,7 @@
                                         height: self.texture_size[1] + dp(4)
 
                                     Label:
-                                        text:
-                                            "Ad #" + (str(root.property_data.get("adv_number") or root.property_data.get("ad_number") or root.property_id) if root.property_id else "") + \
-                                            " • " + (root.property_data.get("rent_sale") or "") + \
-                                            " • " + (root.property_data.get("property_type") or "") + \
-                                            " • " + (root.property_data.get("price_display") or "") + \
-                                            " • " + (root.property_data.get("location_display") or "")
+                                        text: root.header_meta
                                         font_size: sp(12)
                                         color: TEXT_MUTED
                                         halign: "left"
@@ -2171,7 +2166,7 @@
                             # PRICE + LOCATION (CAPTION)
                             # -----------------------------
                             Label:
-                                text: (root.property_data.get("price_display") or "") + " • " + (root.property_data.get("location_display") or "")
+                                text: root.property_data.get("location_display") or ""
                                 font_size: sp(14)
                                 color: TEXT_MUTED
                                 size_hint_y: None

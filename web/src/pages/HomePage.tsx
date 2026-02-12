@@ -16,6 +16,8 @@ import {
 } from "../api";
 import { getBrowserGps } from "../location";
 import { sharePost } from "../share";
+import ImageViewerModal from "../components/ImageViewerModal";
+import ImageWithTinyLoader from "../components/ImageWithTinyLoader";
 
 export default function HomePage() {
   const nav = useNavigate();
@@ -66,6 +68,9 @@ export default function HomePage() {
   const [contacted, setContacted] = useState<Record<number, boolean>>({});
   const [contactMsg, setContactMsg] = useState<Record<number, string>>({});
   const [didAutoLoad, setDidAutoLoad] = useState<boolean>(false);
+  const [viewerOpen, setViewerOpen] = useState<boolean>(false);
+  const [viewerUrls, setViewerUrls] = useState<string[]>([]);
+  const [viewerIndex, setViewerIndex] = useState<number>(0);
 
   function isValidGps(p: { lat: number; lon: number } | null): p is { lat: number; lon: number } {
     if (!p) return false;
@@ -134,24 +139,44 @@ export default function HomePage() {
       const maxPriceTrim = String(maxPrice || "").trim();
       const maxPriceParam = /^\d+$/.test(maxPriceTrim) ? maxPriceTrim : undefined;
 
-      // If GPS is available, show nearby ads by distance; otherwise fall back to non-GPS listing.
-      const res = gpsOk
-        ? await listNearbyProperties({
+      let res: { items: any[] };
+
+      // Nearby search should prioritize radius first.
+      // Do not force state/district/area here, because that can hide valid nearby ads.
+      if (gpsOk) {
+        let nearby = await listNearbyProperties({
+          lat: gps.lat,
+          lon: gps.lon,
+          radius_km: radius,
+          q,
+          post_group: postGroup,
+          max_price: maxPriceParam,
+          rent_sale: rentSale || undefined,
+          property_type: undefined,
+          posted_within_days: postedWithinDays || undefined,
+          limit: 20,
+        });
+
+        if (!(nearby.items || []).length && postGroup) {
+          nearby = await listNearbyProperties({
             lat: gps.lat,
             lon: gps.lon,
             radius_km: radius,
-            district: district || undefined,
-            state: state || undefined,
-            area: areas.length ? areas.join(",") : undefined,
             q,
-            post_group: postGroup,
+            post_group: undefined,
             max_price: maxPriceParam,
             rent_sale: rentSale || undefined,
             property_type: undefined,
             posted_within_days: postedWithinDays || undefined,
             limit: 20,
-          })
-        : await listProperties({
+          });
+        }
+
+        if ((nearby.items || []).length) {
+          res = nearby;
+        } else {
+          // Fallback so resetting filters to Any always brings posts back.
+          res = await listProperties({
             q,
             post_group: postGroup,
             max_price: maxPriceParam,
@@ -163,6 +188,50 @@ export default function HomePage() {
             posted_within_days: postedWithinDays || undefined,
             limit: 20,
           });
+          if (!(res.items || []).length && postGroup) {
+            res = await listProperties({
+              q,
+              post_group: undefined,
+              max_price: maxPriceParam,
+              rent_sale: rentSale || undefined,
+              district: district || undefined,
+              state: state || undefined,
+              area: areas.length ? areas.join(",") : undefined,
+              sort_budget: sortBudget || undefined,
+              posted_within_days: postedWithinDays || undefined,
+              limit: 20,
+            });
+          }
+        }
+      } else {
+        res = await listProperties({
+          q,
+          post_group: postGroup,
+          max_price: maxPriceParam,
+          rent_sale: rentSale || undefined,
+          district: district || undefined,
+          state: state || undefined,
+          area: areas.length ? areas.join(",") : undefined,
+          sort_budget: sortBudget || undefined,
+          posted_within_days: postedWithinDays || undefined,
+          limit: 20,
+        });
+        if (!(res.items || []).length && postGroup) {
+          res = await listProperties({
+            q,
+            post_group: undefined,
+            max_price: maxPriceParam,
+            rent_sale: rentSale || undefined,
+            district: district || undefined,
+            state: state || undefined,
+            area: areas.length ? areas.join(",") : undefined,
+            sort_budget: sortBudget || undefined,
+            posted_within_days: postedWithinDays || undefined,
+            limit: 20,
+          });
+        }
+      }
+
       const nextItems = res.items || [];
       setItems(nextItems);
       const currentSession = getSession();
@@ -370,6 +439,10 @@ export default function HomePage() {
       if (localStorage.getItem("pd_force_nearby_50") === "1") {
         localStorage.removeItem("pd_force_nearby_50");
         setRadiusKm("50");
+          setState("");
+          setDistrict("");
+          setAreas([]);
+          setAreaSearch("");
         requestGps();
       }
     } catch {
@@ -380,9 +453,17 @@ export default function HomePage() {
 
   function fmtDistance(dkm: any): string {
     const n = Number(dkm);
-    if (!Number.isFinite(n)) return "";
+    if (!Number.isFinite(n)) return "— km away from you";
     const pretty = n < 10 ? n.toFixed(1) : Math.round(n).toString();
-    return `${pretty}km from you`;
+    return `${pretty} km away from you`;
+  }
+
+  function openViewer(urls: string[], index: number) {
+    const clean = urls.map((u) => String(u || "").trim()).filter(Boolean);
+    if (!clean.length) return;
+    setViewerUrls(clean);
+    setViewerIndex(Math.max(0, Math.min(index, clean.length - 1)));
+    setViewerOpen(true);
   }
 
   return (
@@ -581,6 +662,10 @@ export default function HomePage() {
             <button
               onClick={() => {
                 setRadiusKm("50");
+                setState("");
+                setDistrict("");
+                setAreas([]);
+                setAreaSearch("");
                 requestGps();
               }}
             >
@@ -647,6 +732,15 @@ export default function HomePage() {
           const pid = Number(p.id);
           const pidKey = Number.isInteger(pid) ? pid : Number.NaN;
           const shareUrl = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
+          const adNo = String(p.adv_number || p.ad_number || p.id || "").trim() || "—";
+          const districtLabel = String(p.district || "").trim() || "—";
+          const areaLabel = String(p.area || "").trim() || "—";
+          const priceLabel = formatPriceDisplay(p.price_display || p.price) || "—";
+          const distanceLabel = fmtDistance(p.distance_km);
+          const imageUrls = (Array.isArray(p.images) ? p.images : [])
+            .filter((m: any) => !String(m?.content_type || "").toLowerCase().startsWith("video/"))
+            .map((m: any) => toApiUrl(String(m?.url || "")))
+            .filter(Boolean);
           const amenities = Array.isArray(p.amenities)
             ? p.amenities
                 .map((a: any) => String(a).trim())
@@ -670,10 +764,7 @@ export default function HomePage() {
                   </div>
                   <div>
                     <div className="muted post-meta">
-                      {p.distance_km != null ? `${fmtDistance(p.distance_km)} • ` : ""}
-                      Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.rent_sale} • {p.property_type} •{" "}
-                      {formatPriceDisplay(p.price_display)} •{" "}
-                      {p.location_display}
+                      Ad number: {adNo} • District: {districtLabel} • Area: {areaLabel} • Price: {priceLabel} • {distanceLabel}
                       {p.created_at ? ` • ${new Date(p.created_at).toLocaleDateString()}` : ""}
                     </div>
                   </div>
@@ -685,10 +776,11 @@ export default function HomePage() {
                     onClick={async () => {
                       const title = String(p.title || "Property").trim() || "Property";
                       const meta = [
-                        String(p.rent_sale || "").trim(),
-                        String(p.property_type || "").trim(),
-                        formatPriceDisplay(p.price_display),
-                        String(p.location_display || "").trim(),
+                        `Ad number: ${adNo}`,
+                        `District: ${districtLabel}`,
+                        `Area: ${areaLabel}`,
+                        `Price: ${priceLabel}`,
+                        distanceLabel,
                       ]
                         .filter(Boolean)
                         .join(" • ");
@@ -714,7 +806,17 @@ export default function HomePage() {
                             {String(i.content_type || "").toLowerCase().startsWith("video/") ? (
                               <video controls preload="metadata" src={toApiUrl(i.url)} style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
                             ) : (
-                              <img src={toApiUrl(i.url)} alt={`Ad ${p.id} media`} loading="lazy" style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }} />
+                              <ImageWithTinyLoader
+                                src={toApiUrl(i.url)}
+                                alt={`Ad ${p.id} media`}
+                                wrapperStyle={{ borderRadius: 14, overflow: "hidden" }}
+                                imgStyle={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14, cursor: "pointer" }}
+                                onClick={() => {
+                                  const clicked = toApiUrl(i.url);
+                                  const idx = Math.max(0, imageUrls.indexOf(clicked));
+                                  openViewer(imageUrls, idx);
+                                }}
+                              />
                             )}
                           </div>
                         ))}
@@ -790,6 +892,7 @@ export default function HomePage() {
       >
         ↑
       </button>
+      <ImageViewerModal open={viewerOpen} imageUrls={viewerUrls} initialIndex={viewerIndex} onClose={() => setViewerOpen(false)} />
       </div>
     </div>
   );

@@ -279,7 +279,12 @@ export default function AdminUsersPage() {
                               Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} — {p.title}
                             </div>
                             <div className="muted">
-                              {p.rent_sale} • {p.property_type} • {formatPriceDisplay(p.price_display)} • {p.location_display} • status: {p.status}
+                              Ad number: {String(p.adv_number || p.ad_number || p.id || "").trim() || "—"} • District: {String(p.district || "").trim() || "—"} • Area:{" "}
+                              {String(p.area || "").trim() || "—"} • Price: {formatPriceDisplay(p.price_display || p.price) || "—"} •{" "}
+                              {Number.isFinite(Number(p.distance_km))
+                                ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                                : "— km away from you"}{" "}
+                              • status: {p.status}
                             </div>
                             {p.moderation_reason ? <div className="muted">Moderation reason: {p.moderation_reason}</div> : null}
                           </div>

@@ -424,7 +424,12 @@ export default function AdminReviewPage() {
                     <div>
                       <div className="h2">Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()}</div>
                       <div className="muted">
-                        {p.rent_sale} • {p.property_type} • {formatPriceDisplay(p.price_display)} • {p.location_display} • status: {p.status}
+                        Ad number: {String(p.adv_number || p.ad_number || p.id || "").trim() || "—"} • District: {String(p.district || "").trim() || "—"} • Area:{" "}
+                        {String(p.area || "").trim() || "—"} • Price: {formatPriceDisplay(p.price_display || p.price) || "—"} •{" "}
+                        {Number.isFinite(Number(p.distance_km))
+                          ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                          : "— km away from you"}{" "}
+                        • status: {p.status}
                       </div>
                       {p.moderation_reason ? <div className="muted">Moderation reason: {p.moderation_reason}</div> : null}
                     </div>
@@ -436,10 +441,13 @@ export default function AdminReviewPage() {
                       onClick={async () => {
                         const title = String(p.title || "Property").trim() || "Property";
                         const meta = [
-                          String(p.rent_sale || "").trim(),
-                          String(p.property_type || "").trim(),
-                          formatPriceDisplay(p.price_display),
-                          String(p.location_display || "").trim(),
+                          `Ad number: ${String(p.adv_number || p.ad_number || p.id || "").trim() || "—"}`,
+                          `District: ${String(p.district || "").trim() || "—"}`,
+                          `Area: ${String(p.area || "").trim() || "—"}`,
+                          `Price: ${formatPriceDisplay(p.price_display || p.price) || "—"}`,
+                          Number.isFinite(Number(p.distance_km))
+                            ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                            : "— km away from you",
                         ]
                           .filter(Boolean)
                           .join(" • ");
@@ -859,7 +867,12 @@ export default function AdminReviewPage() {
                 <div>
                 <div className="h2">Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()}</div>
                   <div className="muted">
-                    {p.rent_sale} • {p.property_type} • {formatPriceDisplay(p.price_display)} • {p.location_display} • status: {p.status}
+                    Ad number: {String(p.adv_number || p.ad_number || p.id || "").trim() || "—"} • District: {String(p.district || "").trim() || "—"} • Area:{" "}
+                    {String(p.area || "").trim() || "—"} • Price: {formatPriceDisplay(p.price_display || p.price) || "—"} •{" "}
+                    {Number.isFinite(Number(p.distance_km))
+                      ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                      : "— km away from you"}{" "}
+                    • status: {p.status}
                   </div>
                   {p.description ? (
                     <div className="muted" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
@@ -894,10 +907,13 @@ export default function AdminReviewPage() {
                     const url = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
                     const title = String(p.title || "Property").trim() || "Property";
                     const meta = [
-                      String(p.rent_sale || "").trim(),
-                      String(p.property_type || "").trim(),
-                      formatPriceDisplay(p.price_display),
-                      String(p.location_display || "").trim(),
+                      `Ad number: ${String(p.adv_number || p.ad_number || p.id || "").trim() || "—"}`,
+                      `District: ${String(p.district || "").trim() || "—"}`,
+                      `Area: ${String(p.area || "").trim() || "—"}`,
+                      `Price: ${formatPriceDisplay(p.price_display || p.price) || "—"}`,
+                      Number.isFinite(Number(p.distance_km))
+                        ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                        : "— km away from you",
                     ]
                       .filter(Boolean)
                       .join(" • ");

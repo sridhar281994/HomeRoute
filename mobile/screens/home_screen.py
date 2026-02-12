@@ -137,6 +137,17 @@ def _format_price_display(value: Any) -> str:
     return f"Rs {raw}"
 
 
+def _format_distance_away(value: Any) -> str:
+    try:
+        n = float(value)
+    except Exception:
+        return "— km away from you"
+    if not (n == n):  # NaN guard
+        return "— km away from you"
+    pretty = f"{n:.1f}" if n < 10 else str(int(round(n)))
+    return f"{pretty} km away from you"
+
+
 class _TapAsyncImage(AsyncImage):
     """
     AsyncImage with tap detection that does not block Carousel swipe gestures.
@@ -895,6 +906,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
         """
         Explicit user action: show nearby results within 50km.
         """
+        # Nearby should search by radius first, not by previous state/district/area.
+        self.state_value = "Any"
+        self.district_value = "Any"
+        self.area_value = "Any"
+        self.selected_areas = []
+        self.area_search = ""
         self.nearby_mode = True
         # Ensure radius is 50 for this mode (kept for compatibility).
         try:
@@ -923,13 +940,17 @@ class HomeScreen(GestureNavigationMixin, Screen):
         # -------------------------------------------------
         # META TEXT ONLY (NO TITLE)
         # -------------------------------------------------
+        district_label = str(p.get("district") or "").strip() or "—"
+        area_label = str(p.get("area") or "").strip() or "—"
+        price_label = _format_price_display(p.get("price_display") or p.get("price")) or "—"
+        distance_label = _format_distance_away(p.get("distance_km"))
         meta = " • ".join(
             x for x in [
-                f"Ad #{adv_no}" if adv_no else "",
-                p.get("rent_sale"),
-                p.get("property_type"),
-                _format_price_display(p.get("price_display") or p.get("price")),
-                p.get("location_display"),
+                f"Ad number: {adv_no}" if adv_no else "Ad number: —",
+                f"District: {district_label}",
+                f"Area: {area_label}",
+                f"Price: {price_label}",
+                distance_label,
             ] if x
         )
 
@@ -1041,7 +1062,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 carousel.bind(width=_recalc_height)
 
                 for u in urls:
-                    slide = BoxLayout()
+                    slide = FloatLayout()
                     img = _TapAsyncImage(
                         source=u,
                         size_hint=(1, None),
@@ -1054,11 +1075,29 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     except Exception:
                         pass
 
+                    tiny = Label(
+                        text="...",
+                        size_hint=(None, None),
+                        size=(dp(18), dp(18)),
+                        pos_hint={"center_x": 0.5, "center_y": 0.5},
+                        color=(1, 1, 1, 0.78),
+                    )
+
+                    def _hide_tiny(_img, _tex, tiny=tiny):
+                        try:
+                            tex = getattr(_img, "texture", None)
+                            if tex is not None and getattr(tex, "size", None) and tex.size[0] > 0 and tex.size[1] > 0:
+                                tiny.opacity = 0
+                        except Exception:
+                            pass
+
                     img.on_tap = (lambda idx=len(imgs): self.open_image_viewer(urls, idx))
+                    slide.add_widget(tiny)
                     slide.add_widget(img)
                     carousel.add_widget(slide)
                     imgs.append(img)
                     img.bind(texture=_recalc_height)
+                    img.bind(texture=_hide_tiny)
 
                 media_box.add_widget(carousel)
 
@@ -1434,6 +1473,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
                 use_nearby = bool(getattr(self, "nearby_mode", False))
                 if use_nearby and loc:
+                    # Nearby search should be radius-first; don't force state/district/area.
                     data = api_list_nearby_properties(
                         lat=float(loc[0]),
                         lon=float(loc[1]),
@@ -1442,12 +1482,52 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         post_group=post_group,
                         rent_sale=rent_sale_norm,
                         max_price=max_price,
-                        state=state,
-                        district=district,
-                        area=area,
+                        state="",
+                        district="",
+                        area="",
                         posted_within_days="",
                         limit=20,
                     )
+                    if not (data.get("items") or []) and post_group:
+                        data = api_list_nearby_properties(
+                            lat=float(loc[0]),
+                            lon=float(loc[1]),
+                            radius_km=radius,
+                            q=q,
+                            post_group="",
+                            rent_sale=rent_sale_norm,
+                            max_price=max_price,
+                            state="",
+                            district="",
+                            area="",
+                            posted_within_days="",
+                            limit=20,
+                        )
+                    if not (data.get("items") or []):
+                        # Fallback to regular listing so Any filters always show posts.
+                        data = api_list_properties(
+                            q=q,
+                            post_group=post_group,
+                            rent_sale=rent_sale_norm,
+                            max_price=max_price,
+                            state=state,
+                            district=district,
+                            area=area,
+                            sort_budget=sort_budget_param,
+                            posted_within_days="",
+                        )
+                        if not (data.get("items") or []) and post_group:
+                            data = api_list_properties(
+                                q=q,
+                                post_group="",
+                                rent_sale=rent_sale_norm,
+                                max_price=max_price,
+                                state=state,
+                                district=district,
+                                area=area,
+                                sort_budget=sort_budget_param,
+                                posted_within_days="",
+                            )
                 else:
                     data = api_list_properties(
                         q=q,
@@ -1460,6 +1540,18 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         sort_budget=sort_budget_param,
                         posted_within_days="",
                     )
+                    if not (data.get("items") or []) and post_group:
+                        data = api_list_properties(
+                            q=q,
+                            post_group="",
+                            rent_sale=rent_sale_norm,
+                            max_price=max_price,
+                            state=state,
+                            district=district,
+                            area=area,
+                            sort_budget=sort_budget_param,
+                            posted_within_days="",
+                        )
 
                 # -----------------------------
                 # Build cards
