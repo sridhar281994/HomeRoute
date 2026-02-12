@@ -477,9 +477,10 @@
                 size: self.size
 
         Label:
-            text: "Loading..."
-            font_size: sp(16)
-            color: 1, 1, 1, 0.7
+            text: "[b]Flatnow.in[/b]"
+            markup: True
+            font_size: sp(24)
+            color: 1, 1, 1, 0.86
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
 
 
@@ -1951,8 +1952,12 @@
 
                         TextInput:
                             text: root.home.max_price if root.home else ""
+                            hint_text: "Max budget"
                             multiline: False
                             input_filter: "int"
+                            input_type: "text"
+                            foreground_color: (0.08, 0.08, 0.08, 1)
+                            cursor_color: (0.08, 0.08, 0.08, 1)
                             on_text:
                                 if root.home: root.home.max_price = self.text
                             size_hint_y: None

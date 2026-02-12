@@ -12,6 +12,7 @@ import {
   setSession,
   toApiUrl,
   getContact,
+  formatPriceDisplay,
 } from "../api";
 import { getBrowserGps } from "../location";
 import { sharePost } from "../share";
@@ -457,7 +458,6 @@ export default function HomePage() {
             >
               Services
             </button>
-            <span className="muted">Showing: {postGroup === "services" ? "Services" : "Property/material"}</span>
           </div>
         </div>
         <div className="col-6">
@@ -671,7 +671,8 @@ export default function HomePage() {
                   <div>
                     <div className="muted post-meta">
                       {p.distance_km != null ? `${fmtDistance(p.distance_km)} • ` : ""}
-                      Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} •{" "}
+                      Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • {p.rent_sale} • {p.property_type} •{" "}
+                      {formatPriceDisplay(p.price_display)} •{" "}
                       {p.location_display}
                       {p.created_at ? ` • ${new Date(p.created_at).toLocaleDateString()}` : ""}
                     </div>
@@ -686,7 +687,7 @@ export default function HomePage() {
                       const meta = [
                         String(p.rent_sale || "").trim(),
                         String(p.property_type || "").trim(),
-                        String(p.price_display || "").trim(),
+                        formatPriceDisplay(p.price_display),
                         String(p.location_display || "").trim(),
                       ]
                         .filter(Boolean)

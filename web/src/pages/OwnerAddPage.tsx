@@ -10,14 +10,16 @@ import {
   ownerDeleteProperty,
   ownerListProperties,
   ownerPublishProperty,
+  ownerUpdateProperty,
   uploadPropertyImage,
 } from "../api";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { getBrowserGps } from "../location";
 import { requestBrowserMediaAccess } from "../permissions";
 import GuestGate from "../components/GuestGate";
 
 export default function OwnerAddPage() {
+  const location = useLocation();
   const s = getSession();
   const isLocked = !s.token;
   const [postGroup, setPostGroup] = useState<"property_material" | "services">("property_material");
@@ -33,6 +35,10 @@ export default function OwnerAddPage() {
   const [companyName, setCompanyName] = useState<string>(((s.user as any)?.company_name as string) || "");
   const [propertyId, setPropertyId] = useState<number | null>(null);
   const [adNumber, setAdNumber] = useState<string>("");
+  const [editingAdId, setEditingAdId] = useState<number | null>(null);
+  const [editingAdNumber, setEditingAdNumber] = useState<string>("");
+  const [editTargetDistrict, setEditTargetDistrict] = useState<string>("");
+  const [editTargetArea, setEditTargetArea] = useState<string>("");
   const [msg, setMsg] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
   const [selectedMediaSummary, setSelectedMediaSummary] = useState<string>("");
@@ -69,6 +75,57 @@ export default function OwnerAddPage() {
     const existing = (((getSession().user as any)?.company_name as string) || "").trim();
     if (existing) setUseCompanyName(true);
   }, []);
+
+  useEffect(() => {
+    const editPost: any = (location.state as any)?.editPost;
+    if (!editPost) {
+      setEditingAdId(null);
+      setEditingAdNumber("");
+      return;
+    }
+    const pid = Number(editPost.id);
+    if (!Number.isInteger(pid) || pid <= 0) return;
+    if (editingAdId === pid) return;
+
+    const adv = String(editPost.adv_number || editPost.ad_number || pid).trim();
+    const currentUser: any = s.user || {};
+    const rawPrice = editPost.price != null ? String(editPost.price) : "";
+    const fallbackPrice = String(editPost.price_display || "").replace(/[^\d]/g, "");
+    const pg = String(editPost.post_group || "").trim().toLowerCase() === "services" ? "services" : "property_material";
+    const rs = String(editPost.rent_sale || "").trim().toLowerCase();
+    const nextCompany = String(editPost.company_name || "").trim();
+
+    setEditingAdId(pid);
+    setEditingAdNumber(adv);
+    setPropertyId(pid);
+    setAdNumber(adv);
+    setPostGroup(pg);
+    setState(String(editPost.state || "").trim());
+    setEditTargetDistrict(String(editPost.district || "").trim());
+    setEditTargetArea(String(editPost.area || "").trim());
+    setTitle(String(editPost.title || "").trim());
+    setPrice(rawPrice || fallbackPrice);
+    setRentSale(rs === "sale" ? "sale" : "rent");
+    setPropertyType(String(editPost.property_type || "").trim());
+    setContactPhone(String(editPost.contact_phone || currentUser.phone || "").trim());
+    setCompanyName(nextCompany || String(currentUser.company_name || "").trim());
+    setUseCompanyName(!!nextCompany);
+    setMsg(`Editing Ad #${adv}. Update fields and click Save changes.`);
+  }, [location.state, s.user, editingAdId]);
+
+  useEffect(() => {
+    if (!editTargetDistrict) return;
+    if (!districtOptions.includes(editTargetDistrict)) return;
+    setDistrict(editTargetDistrict);
+    setEditTargetDistrict("");
+  }, [districtOptions, editTargetDistrict]);
+
+  useEffect(() => {
+    if (!editTargetArea) return;
+    if (!areaOptions.includes(editTargetArea)) return;
+    setArea(editTargetArea);
+    setEditTargetArea("");
+  }, [areaOptions, editTargetArea]);
 
   useEffect(() => {
     (async () => {
@@ -463,9 +520,16 @@ export default function OwnerAddPage() {
                   gps_lng: gps ? gps.lon : null,
                 };
 
-                // If files are selected, publish atomically (create + upload in one request).
-                // This avoids leaving orphan posts when an upload fails.
-                if (files?.length) {
+                if (editingAdId) {
+                  const res = await ownerUpdateProperty(editingAdId, payloadObj);
+                  const updated = (res as any)?.property || {};
+                  const label = String(updated.adv_number || updated.ad_number || editingAdNumber || editingAdId).trim();
+                  setPropertyId(editingAdId);
+                  setAdNumber(label || String(editingAdId));
+                  setMsg(`Saved changes for Ad #${label || editingAdId}.`);
+                } else if (files?.length) {
+                  // If files are selected, publish atomically (create + upload in one request).
+                  // This avoids leaving orphan posts when an upload fails.
                   const v = validateSelectedMedia(files);
                   if (!v.ok) throw new Error(v.message);
                   const ordered = [...v.images, ...v.videos];
@@ -487,7 +551,7 @@ export default function OwnerAddPage() {
               }
             }}
           >
-            Submit Ad
+            {editingAdId ? "Save changes" : "Submit Ad"}
           </button>
           <span className="muted">{msg}</span>
         </div>

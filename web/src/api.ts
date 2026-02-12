@@ -75,6 +75,13 @@ export function toApiUrl(url: string): string {
   return `${API_BASE}/${u}`;
 }
 
+export function formatPriceDisplay(value: any): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (/^rs\.?\s+/i.test(raw) || /^₹\s*/.test(raw)) return raw;
+  return `Rs ${raw}`;
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const s = getSession();
   const headers = new Headers(init?.headers || {});
@@ -332,6 +339,14 @@ export function ownerCreateProperty(input: any) {
 
 export function ownerListProperties() {
   return api<{ items: any[] }>(`/owner/properties`);
+}
+
+export function ownerUpdateProperty(id: number, input: any) {
+  return api<{ ok: boolean; property: any }>(`/owner/properties/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input || {}),
+  });
 }
 
 export function ownerDeleteProperty(id: number) {

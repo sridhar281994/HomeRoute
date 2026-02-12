@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getSession, ownerDeleteProperty, ownerListProperties, toApiUrl } from "../api";
-import { Link } from "react-router-dom";
+import { formatPriceDisplay, getSession, ownerDeleteProperty, ownerListProperties, toApiUrl } from "../api";
+import { Link, useNavigate } from "react-router-dom";
 import GuestGate from "../components/GuestGate";
 import { sharePost } from "../share";
 
@@ -14,6 +14,7 @@ function groupByStatus(items: any[]) {
 }
 
 export default function MyPostsPage() {
+  const nav = useNavigate();
   const s = getSession();
   const isLocked = !s.token;
   const [items, setItems] = useState<any[]>([]);
@@ -85,7 +86,7 @@ export default function MyPostsPage() {
                           <div>
                             <div className="muted post-meta">
                               Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} • status: {p.status} • {p.rent_sale} •{" "}
-                              {p.property_type} • {p.price_display} • {p.location_display}
+                              {p.property_type} • {formatPriceDisplay(p.price_display)} • {p.location_display}
                               {p.created_at ? ` • ${new Date(p.created_at).toLocaleString()}` : ""}
                             </div>
                           </div>
@@ -101,7 +102,7 @@ export default function MyPostsPage() {
                               const meta = [
                                 String(p.rent_sale || "").trim(),
                                 String(p.property_type || "").trim(),
-                                String(p.price_display || "").trim(),
+                                formatPriceDisplay(p.price_display),
                                 String(p.location_display || "").trim(),
                               ]
                                 .filter(Boolean)
@@ -113,6 +114,13 @@ export default function MyPostsPage() {
                             style={{ padding: "8px 10px", minWidth: 44 }}
                           >
                             ↗️
+                          </button>
+                          <button
+                            onClick={() => {
+                              nav("/owner/add", { state: { editPost: p } });
+                            }}
+                          >
+                            Edit
                           </button>
                           <button
                             className="danger"

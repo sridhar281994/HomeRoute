@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getContact, getProperty, getSession, toApiUrl } from "../api";
+import { formatPriceDisplay, getContact, getProperty, getSession, toApiUrl } from "../api";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { sharePost } from "../share";
 
@@ -74,7 +74,7 @@ export default function PropertyPage() {
             const meta = [
               String(p.rent_sale || "").trim(),
               String(p.property_type || "").trim(),
-              String(p.price_display || "").trim(),
+              formatPriceDisplay(p.price_display),
               String(p.location_display || "").trim(),
             ]
               .filter(Boolean)
@@ -91,7 +91,8 @@ export default function PropertyPage() {
         <Link to="/home">Back</Link>
       </div>
       <p className="muted">
-        Ad #{String(p.adv_number || p.advNo || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display}
+        Ad #{String(p.adv_number || p.advNo || p.id || "").trim()} • {p.rent_sale} • {p.property_type} •{" "}
+        {formatPriceDisplay(p.price_display)} • {p.location_display}
       </p>
 
       <div className="grid" style={{ marginTop: 12 }}>

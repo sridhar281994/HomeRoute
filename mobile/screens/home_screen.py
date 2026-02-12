@@ -126,6 +126,42 @@ def _payment_required_popup(*, screen: "HomeScreen", detail: str = "") -> None:
 
     Clock.schedule_once(_open, 0)
 
+
+def _format_price_display(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    if low.startswith("rs ") or low.startswith("rs.") or raw.startswith("₹"):
+        return raw
+    return f"Rs {raw}"
+
+
+class _TapAsyncImage(AsyncImage):
+    """
+    AsyncImage with tap detection that does not block Carousel swipe gestures.
+    """
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            touch.ud[f"_tap_start_{id(self)}"] = touch.pos
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        key = f"_tap_start_{id(self)}"
+        start = touch.ud.get(key)
+        if start and self.collide_point(*touch.pos):
+            dx = abs(float(touch.pos[0]) - float(start[0]))
+            dy = abs(float(touch.pos[1]) - float(start[1]))
+            if dx <= float(dp(12)) and dy <= float(dp(12)):
+                cb = getattr(self, "on_tap", None)
+                if callable(cb):
+                    try:
+                        cb()
+                    except Exception:
+                        pass
+        return super().on_touch_up(touch)
+
 @dataclass
 class PropertyCard:
     id: int
@@ -892,7 +928,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 f"Ad #{adv_no}" if adv_no else "",
                 p.get("rent_sale"),
                 p.get("property_type"),
-                p.get("price_display"),
+                _format_price_display(p.get("price_display") or p.get("price")),
                 p.get("location_display"),
             ] if x
         )
@@ -1006,7 +1042,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
                 for u in urls:
                     slide = BoxLayout()
-                    img = AsyncImage(
+                    img = _TapAsyncImage(
                         source=u,
                         size_hint=(1, None),
                         height=carousel.height,
@@ -1018,6 +1054,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     except Exception:
                         pass
 
+                    img.on_tap = (lambda idx=len(imgs): self.open_image_viewer(urls, idx))
                     slide.add_widget(img)
                     carousel.add_widget(slide)
                     imgs.append(img)
@@ -1191,6 +1228,73 @@ class HomeScreen(GestureNavigationMixin, Screen):
         card.add_widget(contact_lbl)
         card.add_widget(btn_row)
         return card
+
+    def open_image_viewer(self, urls: list[str], start_index: int = 0) -> None:
+        urls = [str(u or "").strip() for u in (urls or []) if str(u or "").strip()]
+        if not urls:
+            return
+
+        root = FloatLayout()
+        with root.canvas.before:
+            from kivy.graphics import Color, Rectangle
+
+            Color(0, 0, 0, 0.98)
+            bg = Rectangle(pos=root.pos, size=root.size)
+
+        def _sync_bg(*_):
+            bg.pos = root.pos
+            bg.size = root.size
+
+        root.bind(pos=_sync_bg, size=_sync_bg)
+
+        viewer = Carousel(direction="right", loop=(len(urls) > 1))
+        viewer.size_hint = (1, 1)
+        for u in urls:
+            slide = FloatLayout()
+            im = AsyncImage(source=u)
+            try:
+                setattr(im, "fit_mode", "contain")
+            except Exception:
+                pass
+            im.size_hint = (1, 1)
+            slide.add_widget(im)
+            viewer.add_widget(slide)
+        root.add_widget(viewer)
+
+        btn_close = Factory.AppButton(text="Close", size_hint=(None, None), size=(dp(96), dp(42)))
+        btn_close.pos_hint = {"right": 0.985, "top": 0.985}
+        root.add_widget(btn_close)
+
+        if len(urls) > 1:
+            btn_prev = Factory.AppButton(text="◀", size_hint=(None, None), size=(dp(52), dp(52)))
+            btn_next = Factory.AppButton(text="▶", size_hint=(None, None), size=(dp(52), dp(52)))
+            btn_prev.pos_hint = {"x": 0.01, "center_y": 0.5}
+            btn_next.pos_hint = {"right": 0.99, "center_y": 0.5}
+            btn_prev.bind(on_release=lambda *_: viewer.load_previous())
+            btn_next.bind(on_release=lambda *_: viewer.load_next())
+            root.add_widget(btn_prev)
+            root.add_widget(btn_next)
+
+        popup = Popup(
+            title="",
+            content=root,
+            size_hint=(1, 1),
+            auto_dismiss=True,
+            separator_height=0,
+            background="",
+            background_color=(0, 0, 0, 0),
+        )
+        btn_close.bind(on_release=lambda *_: popup.dismiss())
+        popup.open()
+
+        def _goto(*_):
+            try:
+                idx = max(0, min(int(start_index), len(viewer.slides) - 1))
+                viewer.load_slide(viewer.slides[idx])
+            except Exception:
+                pass
+
+        Clock.schedule_once(_goto, 0)
 
     def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
         src = None
@@ -1366,7 +1470,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         {
                             "id": int(pp.get("id") or 0),
                             "title": str(pp.get("title") or "Property"),
-                            "price": str(pp.get("price_display") or pp.get("price") or ""),
+                            "price": _format_price_display(pp.get("price_display") or pp.get("price")),
                             "location": str(pp.get("location_display") or pp.get("location") or ""),
                             "kind": str(pp.get("property_type") or ""),
                             "rent_sale": str(pp.get("rent_sale") or ""),

@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { adminApproveUser, adminDeleteUser, adminGetUser, adminListUsers, adminMarkSpam, adminSuspendUser, getSession } from "../api";
+import {
+  adminApproveUser,
+  adminDeleteUser,
+  adminGetUser,
+  adminListUsers,
+  adminMarkSpam,
+  adminSuspendUser,
+  formatPriceDisplay,
+  getSession,
+} from "../api";
 import GuestGate from "../components/GuestGate";
 import { Link } from "react-router-dom";
 import { toApiUrl } from "../api";
@@ -270,7 +279,7 @@ export default function AdminUsersPage() {
                               Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} — {p.title}
                             </div>
                             <div className="muted">
-                              {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display} • status: {p.status}
+                              {p.rent_sale} • {p.property_type} • {formatPriceDisplay(p.price_display)} • {p.location_display} • status: {p.status}
                             </div>
                             {p.moderation_reason ? <div className="muted">Moderation reason: {p.moderation_reason}</div> : null}
                           </div>

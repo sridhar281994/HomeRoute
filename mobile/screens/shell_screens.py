@@ -34,6 +34,7 @@ from frontend_app.utils.api import (
     api_me_delete,
     api_me_update,
     api_me_upload_profile_image,
+    api_me_upload_profile_image_bytes,
     api_meta_categories,
     api_owner_create_property,
     api_owner_delete_property,
@@ -56,6 +57,42 @@ from frontend_app.utils.api import api_owner_publish_property_bytes
 # Media sizing for post/detail images.
 _POST_MEDIA_MIN_H = dp(240)
 _POST_MEDIA_MAX_H = dp(520)
+
+
+def _format_price_display(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    if low.startswith("rs ") or low.startswith("rs.") or raw.startswith("₹"):
+        return raw
+    return f"Rs {raw}"
+
+
+class _TapAsyncImage(AsyncImage):
+    """
+    AsyncImage that still allows Carousel swipes, while detecting simple taps.
+    """
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            touch.ud[f"_tap_start_{id(self)}"] = touch.pos
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        key = f"_tap_start_{id(self)}"
+        start = touch.ud.get(key)
+        if start and self.collide_point(*touch.pos):
+            dx = abs(float(touch.pos[0]) - float(start[0]))
+            dy = abs(float(touch.pos[1]) - float(start[1]))
+            if dx <= float(dp(12)) and dy <= float(dp(12)):
+                cb = getattr(self, "on_tap", None)
+                if callable(cb):
+                    try:
+                        cb()
+                    except Exception:
+                        pass
+        return super().on_touch_up(touch)
 
 def _sync_app_badge_best_effort() -> None:
     """
@@ -145,8 +182,8 @@ class SplashScreen(GestureNavigationMixin, Screen):
             self.gesture_bind_window()
         except Exception:
             pass
-        # Small delay then continue to Welcome or Home (if already logged in).
-        Clock.schedule_once(lambda _dt: self._go_next(), 0.5)
+        # Keep splash very short so users don't see a loading/buffer screen.
+        Clock.schedule_once(lambda _dt: self._go_next(), 0.18)
 
     def on_leave(self, *args):
         try:
@@ -257,23 +294,25 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
 
         def work():
             try:
-                data = api_get_property(self.property_id)
-                Clock.schedule_once(lambda *_: setattr(self, "property_data", data), 0)
+                data = api_get_property(self.property_id) or {}
+                data2 = dict(data)
+                data2["price_display"] = _format_price_display(data2.get("price_display") or data2.get("price"))
+                Clock.schedule_once(lambda *_: setattr(self, "property_data", data2), 0)
                 # Also rebuild media grid (if KV container exists).
-                Clock.schedule_once(lambda *_: self._render_media_grid(data), 0)
+                Clock.schedule_once(lambda *_: self._render_media_grid(data2), 0)
                 # Avatar in the detail header should reflect the post owner.
                 try:
                     owner = str(
-                        (data or {}).get("owner_name")
-                        or (data or {}).get("posted_by")
-                        or (data or {}).get("user_name")
+                        (data2 or {}).get("owner_name")
+                        or (data2 or {}).get("posted_by")
+                        or (data2 or {}).get("user_name")
                         or ""
                     ).strip()
                     owner_initial = owner[0].upper() if owner else "U"
                 except Exception:
                     owner_initial = "U"
                 try:
-                    owner_img = str((data or {}).get("owner_image") or (data or {}).get("profile_image") or "").strip()
+                    owner_img = str((data2 or {}).get("owner_image") or (data2 or {}).get("profile_image") or "").strip()
                 except Exception:
                     owner_img = ""
                 Clock.schedule_once(lambda *_: setattr(self, "fallback_text", owner_initial), 0)
@@ -365,12 +404,13 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
 
         for u in urls:
             slide = FloatLayout()
-            img = AsyncImage(source=u)
+            img = _TapAsyncImage(source=u)
             try:
                 setattr(img, "fit_mode", "contain")
             except Exception:
                 pass
             img.size_hint = (1, 1)
+            img.on_tap = (lambda idx=len(imgs): self._open_image_viewer(urls, idx))
             slide.add_widget(img)
             carousel.add_widget(slide)
             imgs.append(img)
@@ -402,6 +442,73 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
 
         Clock.schedule_once(_recalc_height, 0)
         container.add_widget(wrap)
+
+    def _open_image_viewer(self, urls: list[str], start_index: int = 0) -> None:
+        urls = [str(u or "").strip() for u in (urls or []) if str(u or "").strip()]
+        if not urls:
+            return
+
+        root = FloatLayout()
+        with root.canvas.before:
+            from kivy.graphics import Color, Rectangle
+
+            Color(0, 0, 0, 0.98)
+            bg = Rectangle(pos=root.pos, size=root.size)
+
+        def _sync_bg(*_):
+            bg.pos = root.pos
+            bg.size = root.size
+
+        root.bind(pos=_sync_bg, size=_sync_bg)
+
+        viewer = Carousel(direction="right", loop=(len(urls) > 1))
+        viewer.size_hint = (1, 1)
+        for u in urls:
+            slide = FloatLayout()
+            im = AsyncImage(source=u)
+            try:
+                setattr(im, "fit_mode", "contain")
+            except Exception:
+                pass
+            im.size_hint = (1, 1)
+            slide.add_widget(im)
+            viewer.add_widget(slide)
+        root.add_widget(viewer)
+
+        btn_close = Factory.AppButton(text="Close", size_hint=(None, None), size=(dp(96), dp(42)))
+        btn_close.pos_hint = {"right": 0.985, "top": 0.985}
+        root.add_widget(btn_close)
+
+        if len(urls) > 1:
+            btn_prev = Factory.AppButton(text="◀", size_hint=(None, None), size=(dp(52), dp(52)))
+            btn_next = Factory.AppButton(text="▶", size_hint=(None, None), size=(dp(52), dp(52)))
+            btn_prev.pos_hint = {"x": 0.01, "center_y": 0.5}
+            btn_next.pos_hint = {"right": 0.99, "center_y": 0.5}
+            btn_prev.bind(on_release=lambda *_: viewer.load_previous())
+            btn_next.bind(on_release=lambda *_: viewer.load_next())
+            root.add_widget(btn_prev)
+            root.add_widget(btn_next)
+
+        popup = Popup(
+            title="",
+            content=root,
+            size_hint=(1, 1),
+            auto_dismiss=True,
+            separator_height=0,
+            background="",
+            background_color=(0, 0, 0, 0),
+        )
+        btn_close.bind(on_release=lambda *_: popup.dismiss())
+        popup.open()
+
+        def _goto(*_):
+            try:
+                idx = max(0, min(int(start_index), len(viewer.slides) - 1))
+                viewer.load_slide(viewer.slides[idx])
+            except Exception:
+                pass
+
+        Clock.schedule_once(_goto, 0)
 
     def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
         """
@@ -506,7 +613,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
         for x in [
             str(p.get("rent_sale") or "").strip(),
             str(p.get("property_type") or "").strip(),
-            str(p.get("price_display") or "").strip(),
+            _format_price_display(p.get("price_display") or p.get("price")),
             str(p.get("location_display") or "").strip(),
         ]:
             if x:
@@ -522,7 +629,7 @@ class PropertyDetailScreen(GestureNavigationMixin, Screen):
             for x in [
                 str(p.get("rent_sale") or "").strip(),
                 str(p.get("property_type") or "").strip(),
-                str(p.get("price_display") or "").strip(),
+                _format_price_display(p.get("price_display") or p.get("price")),
                 str(p.get("location_display") or "").strip(),
             ]
             if x
