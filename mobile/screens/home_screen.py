@@ -912,6 +912,10 @@ class HomeScreen(GestureNavigationMixin, Screen):
         self.area_value = "Any"
         self.selected_areas = []
         self.area_search = ""
+        try:
+            self.on_state_selected()
+        except Exception:
+            pass
         self.nearby_mode = True
         # Ensure radius is 50 for this mode (kept for compatibility).
         try:
