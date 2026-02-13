@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { adminApproveUser, adminDeleteUser, adminGetUser, adminListUsers, adminMarkSpam, adminSuspendUser, getSession } from "../api";
+import {
+  adminApproveUser,
+  adminDeleteUser,
+  adminGetUser,
+  adminListUsers,
+  adminMarkSpam,
+  adminSuspendUser,
+  extractDistrictArea,
+  formatPriceDisplay,
+  getSession,
+} from "../api";
 import GuestGate from "../components/GuestGate";
 import { Link } from "react-router-dom";
 import { toApiUrl } from "../api";
@@ -243,6 +253,7 @@ export default function AdminUsersPage() {
                   const url = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
                   const isSpam = String(p.moderation_reason || "").toUpperCase().includes("SPAM") || String(p.status || "").toLowerCase() === "suspended";
                   const thumb = p.images?.length ? toApiUrl(p.images[0].url) : "";
+                  const { district, area } = extractDistrictArea(p);
                   return (
                     <div className="col-12" key={pid}>
                       <div className="card post-card" style={{ position: "relative" }}>
@@ -270,7 +281,12 @@ export default function AdminUsersPage() {
                               Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} — {p.title}
                             </div>
                             <div className="muted">
-                              {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display} • status: {p.status}
+                              Ad number: {String(p.adv_number || p.ad_number || p.id || "").trim() || "—"} • District: {district} • Area: {area} • Price:{" "}
+                              {formatPriceDisplay(p.price_display || p.price) || "—"} •{" "}
+                              {Number.isFinite(Number(p.distance_km))
+                                ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                                : "— km away from you"}{" "}
+                              • status: {p.status}
                             </div>
                             {p.moderation_reason ? <div className="muted">Moderation reason: {p.moderation_reason}</div> : null}
                           </div>

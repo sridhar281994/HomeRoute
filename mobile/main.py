@@ -6,6 +6,7 @@ from kivy.app import App
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
 from kivy.lang import Builder
+from kivy.loader import Loader
 from kivy.properties import StringProperty
 from kivy.resources import resource_add_path, resource_find
 from kivy.uix.screenmanager import FadeTransition, ScreenManager
@@ -37,6 +38,13 @@ class QuickRentApp(App):
 
     def build(self):
         base_dir = os.path.dirname(__file__)
+        # Avoid showing Kivy's default loader placeholder image while network
+        # images are buffering; keep startup/feed visually clean.
+        try:
+            Loader.loading_image = ""
+            Loader.error_image = ""
+        except Exception:
+            pass
         resource_add_path(base_dir)
         resource_add_path(os.path.join(base_dir, "kv"))
         resource_add_path(os.path.join(base_dir, "assets"))

@@ -15,6 +15,8 @@ import {
   adminReject,
   adminSuspend,
   adminUpdateProperty,
+  extractDistrictArea,
+  formatPriceDisplay,
   getSession,
   getCategoryCatalog,
   listLocationAreas,
@@ -398,6 +400,7 @@ export default function AdminReviewPage() {
             const editKey = String(pid);
             const isOpen = !!editOpenById[editKey];
             const draft = editDraftById[editKey] || {};
+            const { district, area } = extractDistrictArea(p);
             return (
               <div key={p.id} className="col-12">
                 <div className="card" style={{ position: "relative" }}>
@@ -423,7 +426,12 @@ export default function AdminReviewPage() {
                     <div>
                       <div className="h2">Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()}</div>
                       <div className="muted">
-                        {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display} • status: {p.status}
+                        Ad number: {String(p.adv_number || p.ad_number || p.id || "").trim() || "—"} • District: {district} • Area: {area} • Price:{" "}
+                        {formatPriceDisplay(p.price_display || p.price) || "—"} •{" "}
+                        {Number.isFinite(Number(p.distance_km))
+                          ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                          : "— km away from you"}{" "}
+                        • status: {p.status}
                       </div>
                       {p.moderation_reason ? <div className="muted">Moderation reason: {p.moderation_reason}</div> : null}
                     </div>
@@ -435,10 +443,13 @@ export default function AdminReviewPage() {
                       onClick={async () => {
                         const title = String(p.title || "Property").trim() || "Property";
                         const meta = [
-                          String(p.rent_sale || "").trim(),
-                          String(p.property_type || "").trim(),
-                          String(p.price_display || "").trim(),
-                          String(p.location_display || "").trim(),
+                          `Ad number: ${String(p.adv_number || p.ad_number || p.id || "").trim() || "—"}`,
+                          `District: ${district}`,
+                          `Area: ${area}`,
+                          `Price: ${formatPriceDisplay(p.price_display || p.price) || "—"}`,
+                          Number.isFinite(Number(p.distance_km))
+                            ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                            : "— km away from you",
                         ]
                           .filter(Boolean)
                           .join(" • ");
@@ -851,14 +862,21 @@ export default function AdminReviewPage() {
         <div className="col-12">
           <div className="h2">Pending Listings</div>
         </div>
-        {items.map((p) => (
+        {items.map((p) => {
+          const { district, area } = extractDistrictArea(p);
+          return (
           <div key={p.id} className="col-12">
             <div className="card">
               <div className="row">
                 <div>
                 <div className="h2">Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()}</div>
                   <div className="muted">
-                    {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display} • status: {p.status}
+                    Ad number: {String(p.adv_number || p.ad_number || p.id || "").trim() || "—"} • District: {district} • Area: {area} • Price:{" "}
+                    {formatPriceDisplay(p.price_display || p.price) || "—"} •{" "}
+                    {Number.isFinite(Number(p.distance_km))
+                      ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                      : "— km away from you"}{" "}
+                    • status: {p.status}
                   </div>
                   {p.description ? (
                     <div className="muted" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
@@ -893,10 +911,13 @@ export default function AdminReviewPage() {
                     const url = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
                     const title = String(p.title || "Property").trim() || "Property";
                     const meta = [
-                      String(p.rent_sale || "").trim(),
-                      String(p.property_type || "").trim(),
-                      String(p.price_display || "").trim(),
-                      String(p.location_display || "").trim(),
+                      `Ad number: ${String(p.adv_number || p.ad_number || p.id || "").trim() || "—"}`,
+                      `District: ${district}`,
+                      `Area: ${area}`,
+                      `Price: ${formatPriceDisplay(p.price_display || p.price) || "—"}`,
+                      Number.isFinite(Number(p.distance_km))
+                        ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
+                        : "— km away from you",
                     ]
                       .filter(Boolean)
                       .join(" • ");
@@ -966,7 +987,7 @@ export default function AdminReviewPage() {
               </div>
             </div>
           </div>
-        ))}
+        )})}
         {!items.length ? (
           <div className="col-12 muted" style={{ marginTop: 8 }}>
             No pending listings.

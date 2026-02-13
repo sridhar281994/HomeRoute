@@ -477,9 +477,10 @@
                 size: self.size
 
         Label:
-            text: "Loading..."
-            font_size: sp(16)
-            color: 1, 1, 1, 0.7
+            text: "[b]Flatnow.in[/b]"
+            markup: True
+            font_size: sp(24)
+            color: 1, 1, 1, 0.86
             pos_hint: {"center_x": 0.5, "center_y": 0.5}
 
 
@@ -1951,8 +1952,12 @@
 
                         TextInput:
                             text: root.home.max_price if root.home else ""
+                            hint_text: "Max budget"
                             multiline: False
                             input_filter: "int"
+                            input_type: "text"
+                            foreground_color: (0.08, 0.08, 0.08, 1)
+                            cursor_color: (0.08, 0.08, 0.08, 1)
                             on_text:
                                 if root.home: root.home.max_price = self.text
                             size_hint_y: None
@@ -2140,12 +2145,7 @@
                                         height: self.texture_size[1] + dp(4)
 
                                     Label:
-                                        text:
-                                            "Ad #" + (str(root.property_data.get("adv_number") or root.property_data.get("ad_number") or root.property_id) if root.property_id else "") + \
-                                            " • " + (root.property_data.get("rent_sale") or "") + \
-                                            " • " + (root.property_data.get("property_type") or "") + \
-                                            " • " + (root.property_data.get("price_display") or "") + \
-                                            " • " + (root.property_data.get("location_display") or "")
+                                        text: root.header_meta
                                         font_size: sp(12)
                                         color: TEXT_MUTED
                                         halign: "left"
@@ -2166,7 +2166,7 @@
                             # PRICE + LOCATION (CAPTION)
                             # -----------------------------
                             Label:
-                                text: (root.property_data.get("price_display") or "") + " • " + (root.property_data.get("location_display") or "")
+                                text: root.property_data.get("location_display") or ""
                                 font_size: sp(14)
                                 color: TEXT_MUTED
                                 size_hint_y: None

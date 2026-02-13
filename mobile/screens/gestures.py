@@ -309,7 +309,7 @@ class GestureNavigationMixin:
             _mk_item("Settings", "profile")
             _mk_item("Publish Ad", "owner_add_property")
             _mk_item("Subscription", "subscription")
-            _mk_item("Search Nearby(50km)", "nearby_50")
+            _mk_item("Search Nearby(20km)", "nearby_20")
             _mk_item("Logout", "logout")
 
             try:
@@ -356,10 +356,12 @@ class GestureNavigationMixin:
             except Exception:
                 pass
 
-        if action == "nearby_50":
+        if action == "nearby_20":
             try:
                 home = mgr.get_screen("home")
-                if hasattr(home, "search_nearby_50km"):
+                if hasattr(home, "search_nearby_20km"):
+                    home.search_nearby_20km()
+                elif hasattr(home, "search_nearby_50km"):
                     home.search_nearby_50km()
                 elif hasattr(home, "enable_gps"):
                     # fallback

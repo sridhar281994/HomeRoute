@@ -126,6 +126,53 @@ def _payment_required_popup(*, screen: "HomeScreen", detail: str = "") -> None:
 
     Clock.schedule_once(_open, 0)
 
+
+def _format_price_display(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    if low.startswith("rs ") or low.startswith("rs.") or raw.startswith("₹"):
+        return raw
+    return f"Rs {raw}"
+
+
+def _format_distance_away(value: Any) -> str:
+    try:
+        n = float(value)
+    except Exception:
+        return "— km away from you"
+    if not (n == n):  # NaN guard
+        return "— km away from you"
+    pretty = f"{n:.1f}" if n < 10 else str(int(round(n)))
+    return f"{pretty} km away from you"
+
+
+class _TapAsyncImage(AsyncImage):
+    """
+    AsyncImage with tap detection that does not block Carousel swipe gestures.
+    """
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            touch.ud[f"_tap_start_{id(self)}"] = touch.pos
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        key = f"_tap_start_{id(self)}"
+        start = touch.ud.get(key)
+        if start and self.collide_point(*touch.pos):
+            dx = abs(float(touch.pos[0]) - float(start[0]))
+            dy = abs(float(touch.pos[1]) - float(start[1]))
+            if dx <= float(dp(12)) and dy <= float(dp(12)):
+                cb = getattr(self, "on_tap", None)
+                if callable(cb):
+                    try:
+                        cb()
+                    except Exception:
+                        pass
+        return super().on_touch_up(touch)
+
 @dataclass
 class PropertyCard:
     id: int
@@ -285,7 +332,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
     selected_areas = ListProperty([])
     area_search = StringProperty("")
     # Kept for backward compatibility, but radius is no longer shown in Filters UI.
-    radius_km = StringProperty("200")
+    radius_km = StringProperty("20")
     gps_status = StringProperty("GPS not available (showing non-nearby results).")
     gps_msg = StringProperty("")
     nearby_mode = BooleanProperty(False)
@@ -855,17 +902,31 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         ensure_permissions(required_location_permissions(), on_result=after)
 
-    def search_nearby_50km(self) -> None:
+    def search_nearby_20km(self) -> None:
         """
-        Explicit user action: show nearby results within 50km.
+        Explicit user action: show nearby results within 20km.
         """
-        self.nearby_mode = True
-        # Ensure radius is 50 for this mode (kept for compatibility).
+        # Nearby should search by radius first, not by previous state/district/area.
+        self.state_value = "Any"
+        self.district_value = "Any"
+        self.area_value = "Any"
+        self.selected_areas = []
+        self.area_search = ""
         try:
-            self.radius_km = "50"
+            self.on_state_selected()
+        except Exception:
+            pass
+        self.nearby_mode = True
+        # Ensure radius is 20 for this mode.
+        try:
+            self.radius_km = "20"
         except Exception:
             pass
         self.enable_gps()
+
+    # Backward-compatible alias for older callers.
+    def search_nearby_50km(self) -> None:
+        self.search_nearby_20km()
 
     def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
         p = raw or {}
@@ -887,13 +948,17 @@ class HomeScreen(GestureNavigationMixin, Screen):
         # -------------------------------------------------
         # META TEXT ONLY (NO TITLE)
         # -------------------------------------------------
+        district_label = str(p.get("district") or "").strip() or "—"
+        area_label = str(p.get("area") or "").strip() or "—"
+        price_label = _format_price_display(p.get("price_display") or p.get("price")) or "—"
+        distance_label = _format_distance_away(p.get("distance_km")) if bool(getattr(self, "nearby_mode", False)) else "— km away from you"
         meta = " • ".join(
             x for x in [
-                f"Ad #{adv_no}" if adv_no else "",
-                p.get("rent_sale"),
-                p.get("property_type"),
-                p.get("price_display"),
-                p.get("location_display"),
+                f"#{adv_no}" if adv_no else "#—",
+                district_label,
+                area_label,
+                price_label,
+                distance_label,
             ] if x
         )
 
@@ -1005,8 +1070,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 carousel.bind(width=_recalc_height)
 
                 for u in urls:
-                    slide = BoxLayout()
-                    img = AsyncImage(
+                    slide = FloatLayout()
+                    img = _TapAsyncImage(
                         source=u,
                         size_hint=(1, None),
                         height=carousel.height,
@@ -1018,10 +1083,29 @@ class HomeScreen(GestureNavigationMixin, Screen):
                     except Exception:
                         pass
 
+                    tiny = Label(
+                        text="...",
+                        size_hint=(None, None),
+                        size=(dp(18), dp(18)),
+                        pos_hint={"center_x": 0.5, "center_y": 0.5},
+                        color=(1, 1, 1, 0.78),
+                    )
+
+                    def _hide_tiny(_img, _tex, tiny=tiny):
+                        try:
+                            tex = getattr(_img, "texture", None)
+                            if tex is not None and getattr(tex, "size", None) and tex.size[0] > 0 and tex.size[1] > 0:
+                                tiny.opacity = 0
+                        except Exception:
+                            pass
+
+                    img.on_tap = (lambda idx=len(imgs): self.open_image_viewer(urls, idx))
+                    slide.add_widget(tiny)
                     slide.add_widget(img)
                     carousel.add_widget(slide)
                     imgs.append(img)
                     img.bind(texture=_recalc_height)
+                    img.bind(texture=_hide_tiny)
 
                 media_box.add_widget(carousel)
 
@@ -1192,6 +1276,73 @@ class HomeScreen(GestureNavigationMixin, Screen):
         card.add_widget(btn_row)
         return card
 
+    def open_image_viewer(self, urls: list[str], start_index: int = 0) -> None:
+        urls = [str(u or "").strip() for u in (urls or []) if str(u or "").strip()]
+        if not urls:
+            return
+
+        root = FloatLayout()
+        with root.canvas.before:
+            from kivy.graphics import Color, Rectangle
+
+            Color(0, 0, 0, 0.98)
+            bg = Rectangle(pos=root.pos, size=root.size)
+
+        def _sync_bg(*_):
+            bg.pos = root.pos
+            bg.size = root.size
+
+        root.bind(pos=_sync_bg, size=_sync_bg)
+
+        viewer = Carousel(direction="right", loop=(len(urls) > 1))
+        viewer.size_hint = (1, 1)
+        for u in urls:
+            slide = FloatLayout()
+            im = AsyncImage(source=u)
+            try:
+                setattr(im, "fit_mode", "contain")
+            except Exception:
+                pass
+            im.size_hint = (1, 1)
+            slide.add_widget(im)
+            viewer.add_widget(slide)
+        root.add_widget(viewer)
+
+        btn_close = Factory.AppButton(text="Close", size_hint=(None, None), size=(dp(96), dp(42)))
+        btn_close.pos_hint = {"right": 0.985, "top": 0.985}
+        root.add_widget(btn_close)
+
+        if len(urls) > 1:
+            btn_prev = Factory.AppButton(text="◀", size_hint=(None, None), size=(dp(52), dp(52)))
+            btn_next = Factory.AppButton(text="▶", size_hint=(None, None), size=(dp(52), dp(52)))
+            btn_prev.pos_hint = {"x": 0.01, "center_y": 0.5}
+            btn_next.pos_hint = {"right": 0.99, "center_y": 0.5}
+            btn_prev.bind(on_release=lambda *_: viewer.load_previous())
+            btn_next.bind(on_release=lambda *_: viewer.load_next())
+            root.add_widget(btn_prev)
+            root.add_widget(btn_next)
+
+        popup = Popup(
+            title="",
+            content=root,
+            size_hint=(1, 1),
+            auto_dismiss=True,
+            separator_height=0,
+            background="",
+            background_color=(0, 0, 0, 0),
+        )
+        btn_close.bind(on_release=lambda *_: popup.dismiss())
+        popup.open()
+
+        def _goto(*_):
+            try:
+                idx = max(0, min(int(start_index), len(viewer.slides) - 1))
+                viewer.load_slide(viewer.slides[idx])
+            except Exception:
+                pass
+
+        Clock.schedule_once(_goto, 0)
+
     def _extract_media_items(self, p: dict[str, Any]) -> list[dict[str, Any]]:
         src = None
         try:
@@ -1325,11 +1476,12 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 # -----------------------------
                 loc = getattr(self, "_gps", None)
 
-                # 🔒 HARD DEFAULT = 50 KM
-                radius = 50
+                # 🔒 HARD DEFAULT = 20 KM
+                radius = 20
 
                 use_nearby = bool(getattr(self, "nearby_mode", False))
                 if use_nearby and loc:
+                    # Nearby search should be radius-first; don't force state/district/area.
                     data = api_list_nearby_properties(
                         lat=float(loc[0]),
                         lon=float(loc[1]),
@@ -1338,12 +1490,27 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         post_group=post_group,
                         rent_sale=rent_sale_norm,
                         max_price=max_price,
-                        state=state,
-                        district=district,
-                        area=area,
+                        state="",
+                        district="",
+                        area="",
                         posted_within_days="",
                         limit=20,
                     )
+                    if not (data.get("items") or []) and post_group:
+                        data = api_list_nearby_properties(
+                            lat=float(loc[0]),
+                            lon=float(loc[1]),
+                            radius_km=radius,
+                            q=q,
+                            post_group="",
+                            rent_sale=rent_sale_norm,
+                            max_price=max_price,
+                            state="",
+                            district="",
+                            area="",
+                            posted_within_days="",
+                            limit=20,
+                        )
                 else:
                     data = api_list_properties(
                         q=q,
@@ -1356,6 +1523,18 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         sort_budget=sort_budget_param,
                         posted_within_days="",
                     )
+                    if not (data.get("items") or []) and post_group:
+                        data = api_list_properties(
+                            q=q,
+                            post_group="",
+                            rent_sale=rent_sale_norm,
+                            max_price=max_price,
+                            state=state,
+                            district=district,
+                            area=area,
+                            sort_budget=sort_budget_param,
+                            posted_within_days="",
+                        )
 
                 # -----------------------------
                 # Build cards
@@ -1366,7 +1545,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
                         {
                             "id": int(pp.get("id") or 0),
                             "title": str(pp.get("title") or "Property"),
-                            "price": str(pp.get("price_display") or pp.get("price") or ""),
+                            "price": _format_price_display(pp.get("price_display") or pp.get("price")),
                             "location": str(pp.get("location_display") or pp.get("location") or ""),
                             "kind": str(pp.get("property_type") or ""),
                             "rent_sale": str(pp.get("rent_sale") or ""),
@@ -1387,7 +1566,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
                     # Show empty-nearby message only when nearby mode is ON.
                     if use_nearby and loc and not cards:
-                        self.error_msg = "No properties found within 50 km."
+                        self.error_msg = "No properties found within 20 km."
 
                     self.is_loading = False
 

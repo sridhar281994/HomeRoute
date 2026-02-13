@@ -75,6 +75,44 @@ export function toApiUrl(url: string): string {
   return `${API_BASE}/${u}`;
 }
 
+export function formatPriceDisplay(value: any): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (/^rs\.?\s+/i.test(raw) || /^₹\s*/.test(raw)) return raw;
+  return `Rs ${raw}`;
+}
+
+export function extractDistrictArea(input: any): { district: string; area: string } {
+  let district = String(input?.district ?? input?.district_name ?? "").trim();
+  let area = String(input?.area ?? input?.area_name ?? input?.locality ?? "").trim();
+  const loc = String(input?.location_display ?? input?.location ?? "").trim();
+
+  if (loc) {
+    if (!district) {
+      const m = loc.match(/district\s*[:\-]\s*([^,|/]+)/i);
+      if (m?.[1]) district = String(m[1]).trim();
+    }
+    if (!area) {
+      const m = loc.match(/area\s*[:\-]\s*([^,|/]+)/i);
+      if (m?.[1]) area = String(m[1]).trim();
+    }
+    if (!district || !area) {
+      const parts = loc
+        .split(/[\/,|]/)
+        .map((x: string) => String(x || "").trim())
+        .filter(Boolean);
+      if (!area && parts.length >= 1) area = parts[0];
+      if (!district && parts.length >= 2) district = parts[1];
+      if (!district && parts.length === 1) district = parts[0];
+    }
+  }
+
+  return {
+    district: district || "—",
+    area: area || "—",
+  };
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const s = getSession();
   const headers = new Headers(init?.headers || {});
@@ -332,6 +370,14 @@ export function ownerCreateProperty(input: any) {
 
 export function ownerListProperties() {
   return api<{ items: any[] }>(`/owner/properties`);
+}
+
+export function ownerUpdateProperty(id: number, input: any) {
+  return api<{ ok: boolean; property: any }>(`/owner/properties/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input || {}),
+  });
 }
 
 export function ownerDeleteProperty(id: number) {

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { getContact, getProperty, getSession, toApiUrl } from "../api";
+import { extractDistrictArea, formatPriceDisplay, getContact, getProperty, getSession, toApiUrl } from "../api";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { sharePost } from "../share";
+import ImageViewerModal from "../components/ImageViewerModal";
+import ImageWithTinyLoader from "../components/ImageWithTinyLoader";
 
 export default function PropertyPage() {
   const { id } = useParams();
@@ -10,6 +12,9 @@ export default function PropertyPage() {
   const [p, setP] = useState<any>(null);
   const [msg, setMsg] = useState("");
   const [contacted, setContacted] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState<boolean>(false);
+  const [viewerUrls, setViewerUrls] = useState<string[]>([]);
+  const [viewerIndex, setViewerIndex] = useState<number>(0);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -57,6 +62,27 @@ export default function PropertyPage() {
           return true;
         })
     : [];
+  const adNo = String(p.adv_number || p.ad_number || p.advNo || p.id || "").trim() || "—";
+  const { district: districtLabel, area: areaLabel } = extractDistrictArea(p);
+  const priceLabel = formatPriceDisplay(p.price_display || p.price) || "—";
+  const distanceLabel = (() => {
+    const n = Number(p.distance_km);
+    if (!Number.isFinite(n)) return "— km away from you";
+    const pretty = n < 10 ? n.toFixed(1) : Math.round(n).toString();
+    return `${pretty} km away from you`;
+  })();
+  const imageUrls = (Array.isArray(p.images) ? p.images : [])
+    .filter((m: any) => !String(m?.content_type || "").toLowerCase().startsWith("video/"))
+    .map((m: any) => toApiUrl(String(m?.url || "")))
+    .filter(Boolean);
+
+  function openViewer(urls: string[], index: number) {
+    const clean = urls.map((u) => String(u || "").trim()).filter(Boolean);
+    if (!clean.length) return;
+    setViewerUrls(clean);
+    setViewerIndex(Math.max(0, Math.min(index, clean.length - 1)));
+    setViewerOpen(true);
+  }
 
   return (
     <div className="panel">
@@ -72,10 +98,11 @@ export default function PropertyPage() {
           onClick={async () => {
             const title = String(p.title || "Property").trim() || "Property";
             const meta = [
-              String(p.rent_sale || "").trim(),
-              String(p.property_type || "").trim(),
-              String(p.price_display || "").trim(),
-              String(p.location_display || "").trim(),
+              `Ad number: ${adNo}`,
+              `District: ${districtLabel}`,
+              `Area: ${areaLabel}`,
+              `Price: ${priceLabel}`,
+              distanceLabel,
             ]
               .filter(Boolean)
               .join(" • ");
@@ -91,7 +118,7 @@ export default function PropertyPage() {
         <Link to="/home">Back</Link>
       </div>
       <p className="muted">
-        Ad #{String(p.adv_number || p.advNo || p.id || "").trim()} • {p.rent_sale} • {p.property_type} • {p.price_display} • {p.location_display}
+        Ad number: {adNo} • District: {districtLabel} • Area: {areaLabel} • Price: {priceLabel} • {distanceLabel}
       </p>
 
       <div className="grid" style={{ marginTop: 12 }}>
@@ -102,37 +129,41 @@ export default function PropertyPage() {
               <div className="grid" style={{ marginTop: 10 }}>
                 {p.images.map((i: any) => (
                   <div className="col-6" key={i.id ?? i.url}>
-                    <a href={toApiUrl(i.url)} target="_blank" rel="noreferrer">
-                      {String(i.content_type || "").toLowerCase().startsWith("video/") ? (
-                        <video
-                          controls
-                          preload="metadata"
-                          src={toApiUrl(i.url)}
-                          style={{
-                            width: "100%",
-                            height: 220,
-                            objectFit: "cover",
-                            borderRadius: 14,
-                            border: "1px solid rgba(255,255,255,.14)",
-                            background: "rgba(0,0,0,.25)",
-                          }}
-                        />
-                      ) : (
-                        <img
-                          src={toApiUrl(i.url)}
-                          alt={`Property ${p.id} media`}
-                          style={{
-                            width: "100%",
-                            height: 220,
-                            objectFit: "cover",
-                            borderRadius: 14,
-                            border: "1px solid rgba(255,255,255,.14)",
-                            background: "rgba(0,0,0,.25)",
-                          }}
-                          loading="lazy"
-                        />
-                      )}
-                    </a>
+                    {String(i.content_type || "").toLowerCase().startsWith("video/") ? (
+                      <video
+                        controls
+                        preload="metadata"
+                        src={toApiUrl(i.url)}
+                        style={{
+                          width: "100%",
+                          height: 220,
+                          objectFit: "cover",
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,.14)",
+                          background: "rgba(0,0,0,.25)",
+                        }}
+                      />
+                    ) : (
+                      <ImageWithTinyLoader
+                        src={toApiUrl(i.url)}
+                        alt={`Property ${p.id} media`}
+                        wrapperStyle={{ borderRadius: 14, overflow: "hidden" }}
+                        imgStyle={{
+                          width: "100%",
+                          height: 220,
+                          objectFit: "cover",
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,.14)",
+                          background: "rgba(0,0,0,.25)",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => {
+                          const clicked = toApiUrl(i.url);
+                          const idx = Math.max(0, imageUrls.indexOf(clicked));
+                          openViewer(imageUrls, idx);
+                        }}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -195,6 +226,7 @@ export default function PropertyPage() {
           <span className="muted">{msg}</span>
         </div>
       </div>
+      <ImageViewerModal open={viewerOpen} imageUrls={viewerUrls} initialIndex={viewerIndex} onClose={() => setViewerOpen(false)} />
     </div>
   );
 }
