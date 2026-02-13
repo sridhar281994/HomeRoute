@@ -72,6 +72,7 @@ export default function HomePage() {
   const [viewerOpen, setViewerOpen] = useState<boolean>(false);
   const [viewerUrls, setViewerUrls] = useState<string[]>([]);
   const [viewerIndex, setViewerIndex] = useState<number>(0);
+  const [nearbyMode, setNearbyMode] = useState<boolean>(false);
 
   function isValidGps(p: { lat: number; lon: number } | null): p is { lat: number; lon: number } {
     if (!p) return false;
@@ -130,7 +131,7 @@ export default function HomePage() {
   }, [needGroups]);
   const categoryHint = categoryMsg || (needGroups.length ? "" : "Categories unavailable.");
 
-  async function load(opts?: { postGroupOverride?: "property_material" | "services" }) {
+  async function load(opts?: { postGroupOverride?: "property_material" | "services"; nearbyModeOverride?: boolean }) {
     setErr("");
     try {
       const q = (need || "").trim() || undefined;
@@ -142,10 +143,9 @@ export default function HomePage() {
       const selectedPostGroup = opts?.postGroupOverride || postGroup;
 
       let res: { items: any[] };
+      const useNearby = gpsOk && (opts?.nearbyModeOverride ?? nearbyMode);
 
-      // Nearby search should prioritize radius first.
-      // Do not force state/district/area here, because that can hide valid nearby ads.
-      if (gpsOk) {
+      if (useNearby) {
         let nearby = await listNearbyProperties({
           lat: gps.lat,
           lon: gps.lon,
@@ -173,38 +173,7 @@ export default function HomePage() {
             limit: 20,
           });
         }
-
-        if ((nearby.items || []).length) {
-          res = nearby;
-        } else {
-          // Fallback so resetting filters to Any always brings posts back.
-          res = await listProperties({
-            q,
-            post_group: selectedPostGroup,
-            max_price: maxPriceParam,
-            rent_sale: rentSale || undefined,
-            district: district || undefined,
-            state: state || undefined,
-            area: areas.length ? areas.join(",") : undefined,
-            sort_budget: sortBudget || undefined,
-            posted_within_days: postedWithinDays || undefined,
-            limit: 20,
-          });
-          if (!(res.items || []).length && selectedPostGroup) {
-            res = await listProperties({
-              q,
-              post_group: undefined,
-              max_price: maxPriceParam,
-              rent_sale: rentSale || undefined,
-              district: district || undefined,
-              state: state || undefined,
-              area: areas.length ? areas.join(",") : undefined,
-              sort_budget: sortBudget || undefined,
-              posted_within_days: postedWithinDays || undefined,
-              limit: 20,
-            });
-          }
-        }
+        res = nearby;
       } else {
         res = await listProperties({
           q,
@@ -442,6 +411,7 @@ export default function HomePage() {
         localStorage.removeItem("pd_force_nearby_20");
         localStorage.removeItem("pd_force_nearby_50");
         setRadiusKm("20");
+        setNearbyMode(true);
         setState("");
         setDistrict("");
         setAreas([]);
@@ -455,6 +425,7 @@ export default function HomePage() {
   }, []);
 
   function fmtDistance(dkm: any): string {
+    if (!nearbyMode) return "— km away from you";
     const n = Number(dkm);
     if (!Number.isFinite(n)) return "— km away from you";
     const pretty = n < 10 ? n.toFixed(1) : Math.round(n).toString();
@@ -550,6 +521,7 @@ export default function HomePage() {
           <select
             value={state}
             onChange={(e) => {
+              setNearbyMode(false);
               setState(e.target.value);
               setDistrict("");
               setAreas([]);
@@ -570,6 +542,7 @@ export default function HomePage() {
           <select
             value={district}
             onChange={(e) => {
+              setNearbyMode(false);
               setDistrict(e.target.value);
               setAreas([]);
               setAreaSearch("");
@@ -666,6 +639,7 @@ export default function HomePage() {
             <button
               onClick={() => {
                 setRadiusKm("20");
+                setNearbyMode(true);
                 setState("");
                 setDistrict("");
                 setAreas([]);
@@ -724,7 +698,13 @@ export default function HomePage() {
           </select>
         </div>
         <div className="col-12 row">
-          <button className="primary" onClick={load}>
+          <button
+            className="primary"
+            onClick={() => {
+              setNearbyMode(false);
+              load({ nearbyModeOverride: false });
+            }}
+          >
             Apply filters
           </button>
           <span className="muted">{err}</span>

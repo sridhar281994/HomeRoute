@@ -1511,31 +1511,6 @@ class HomeScreen(GestureNavigationMixin, Screen):
                             posted_within_days="",
                             limit=20,
                         )
-                    if not (data.get("items") or []):
-                        # Fallback to regular listing so Any filters always show posts.
-                        data = api_list_properties(
-                            q=q,
-                            post_group=post_group,
-                            rent_sale=rent_sale_norm,
-                            max_price=max_price,
-                            state=state,
-                            district=district,
-                            area=area,
-                            sort_budget=sort_budget_param,
-                            posted_within_days="",
-                        )
-                        if not (data.get("items") or []) and post_group:
-                            data = api_list_properties(
-                                q=q,
-                                post_group="",
-                                rent_sale=rent_sale_norm,
-                                max_price=max_price,
-                                state=state,
-                                district=district,
-                                area=area,
-                                sort_budget=sort_budget_param,
-                                posted_within_days="",
-                            )
                 else:
                     data = api_list_properties(
                         q=q,
