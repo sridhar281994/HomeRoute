@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatPriceDisplay, getSession, ownerDeleteProperty, ownerListProperties, toApiUrl } from "../api";
+import { extractDistrictArea, formatPriceDisplay, getSession, ownerDeleteProperty, ownerListProperties, toApiUrl } from "../api";
 import { Link, useNavigate } from "react-router-dom";
 import GuestGate from "../components/GuestGate";
 import { sharePost } from "../share";
@@ -98,8 +98,7 @@ export default function MyPostsPage() {
                 <div className="grid" style={{ marginTop: 10 }}>
                   {arr.map((p) => {
                     const adNo = String(p.adv_number || p.ad_number || p.id || "").trim() || "—";
-                    const districtLabel = String(p.district || "").trim() || "—";
-                    const areaLabel = String(p.area || "").trim() || "—";
+                    const { district: districtLabel, area: areaLabel } = extractDistrictArea(p);
                     const priceLabel = formatPriceDisplay(p.price_display || p.price) || "—";
                     const distanceLabel = fmtDistance(p.distance_km);
                     const imageUrls = (Array.isArray(p.images) ? p.images : [])

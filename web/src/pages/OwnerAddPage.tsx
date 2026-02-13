@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  extractDistrictArea,
   formatPriceDisplay,
   getCategoryCatalog,
   getMe,
@@ -575,8 +576,7 @@ export default function OwnerAddPage() {
                       <div>
                         {(() => {
                           const adNo = String(p.adv_number || p.ad_number || p.id || "").trim() || "—";
-                          const districtLabel = String(p.district || "").trim() || "—";
-                          const areaLabel = String(p.area || "").trim() || "—";
+                          const { district: districtLabel, area: areaLabel } = extractDistrictArea(p);
                           const priceLabel = formatPriceDisplay(p.price_display || p.price) || "—";
                           const n = Number(p.distance_km);
                           const distanceLabel = Number.isFinite(n)

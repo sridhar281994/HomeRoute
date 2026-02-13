@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { formatPriceDisplay, getContact, getProperty, getSession, toApiUrl } from "../api";
+import { extractDistrictArea, formatPriceDisplay, getContact, getProperty, getSession, toApiUrl } from "../api";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { sharePost } from "../share";
 import ImageViewerModal from "../components/ImageViewerModal";
@@ -63,8 +63,7 @@ export default function PropertyPage() {
         })
     : [];
   const adNo = String(p.adv_number || p.ad_number || p.advNo || p.id || "").trim() || "—";
-  const districtLabel = String(p.district || "").trim() || "—";
-  const areaLabel = String(p.area || "").trim() || "—";
+  const { district: districtLabel, area: areaLabel } = extractDistrictArea(p);
   const priceLabel = formatPriceDisplay(p.price_display || p.price) || "—";
   const distanceLabel = (() => {
     const n = Number(p.distance_km);

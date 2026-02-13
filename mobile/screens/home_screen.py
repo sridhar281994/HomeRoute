@@ -332,7 +332,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
     selected_areas = ListProperty([])
     area_search = StringProperty("")
     # Kept for backward compatibility, but radius is no longer shown in Filters UI.
-    radius_km = StringProperty("200")
+    radius_km = StringProperty("20")
     gps_status = StringProperty("GPS not available (showing non-nearby results).")
     gps_msg = StringProperty("")
     nearby_mode = BooleanProperty(False)
@@ -902,9 +902,9 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
         ensure_permissions(required_location_permissions(), on_result=after)
 
-    def search_nearby_50km(self) -> None:
+    def search_nearby_20km(self) -> None:
         """
-        Explicit user action: show nearby results within 50km.
+        Explicit user action: show nearby results within 20km.
         """
         # Nearby should search by radius first, not by previous state/district/area.
         self.state_value = "Any"
@@ -917,12 +917,16 @@ class HomeScreen(GestureNavigationMixin, Screen):
         except Exception:
             pass
         self.nearby_mode = True
-        # Ensure radius is 50 for this mode (kept for compatibility).
+        # Ensure radius is 20 for this mode.
         try:
-            self.radius_km = "50"
+            self.radius_km = "20"
         except Exception:
             pass
         self.enable_gps()
+
+    # Backward-compatible alias for older callers.
+    def search_nearby_50km(self) -> None:
+        self.search_nearby_20km()
 
     def _feed_card(self, raw: dict[str, Any]) -> BoxLayout:
         p = raw or {}
@@ -947,13 +951,13 @@ class HomeScreen(GestureNavigationMixin, Screen):
         district_label = str(p.get("district") or "").strip() or "—"
         area_label = str(p.get("area") or "").strip() or "—"
         price_label = _format_price_display(p.get("price_display") or p.get("price")) or "—"
-        distance_label = _format_distance_away(p.get("distance_km"))
+        distance_label = _format_distance_away(p.get("distance_km")) if bool(getattr(self, "nearby_mode", False)) else "— km away from you"
         meta = " • ".join(
             x for x in [
-                f"Ad number: {adv_no}" if adv_no else "Ad number: —",
-                f"District: {district_label}",
-                f"Area: {area_label}",
-                f"Price: {price_label}",
+                f"#{adv_no}" if adv_no else "#—",
+                district_label,
+                area_label,
+                price_label,
                 distance_label,
             ] if x
         )
@@ -1472,8 +1476,8 @@ class HomeScreen(GestureNavigationMixin, Screen):
                 # -----------------------------
                 loc = getattr(self, "_gps", None)
 
-                # 🔒 HARD DEFAULT = 50 KM
-                radius = 50
+                # 🔒 HARD DEFAULT = 20 KM
+                radius = 20
 
                 use_nearby = bool(getattr(self, "nearby_mode", False))
                 if use_nearby and loc:
@@ -1587,7 +1591,7 @@ class HomeScreen(GestureNavigationMixin, Screen):
 
                     # Show empty-nearby message only when nearby mode is ON.
                     if use_nearby and loc and not cards:
-                        self.error_msg = "No properties found within 50 km."
+                        self.error_msg = "No properties found within 20 km."
 
                     self.is_loading = False
 

@@ -86,7 +86,7 @@ def _post_header_meta(p: dict[str, Any]) -> str:
     area = str((p or {}).get("area") or "").strip() or "—"
     price = _format_price_display((p or {}).get("price_display") or (p or {}).get("price")) or "—"
     distance = _format_distance_away((p or {}).get("distance_km"))
-    return f"Ad number: {ad_no} • District: {district} • Area: {area} • Price: {price} • {distance}"
+    return f"#{ad_no} • {district} • {area} • {price} • {distance}"
 
 
 class _TapAsyncImage(AsyncImage):

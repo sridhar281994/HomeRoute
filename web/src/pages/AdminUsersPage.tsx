@@ -6,6 +6,7 @@ import {
   adminListUsers,
   adminMarkSpam,
   adminSuspendUser,
+  extractDistrictArea,
   formatPriceDisplay,
   getSession,
 } from "../api";
@@ -252,6 +253,7 @@ export default function AdminUsersPage() {
                   const url = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
                   const isSpam = String(p.moderation_reason || "").toUpperCase().includes("SPAM") || String(p.status || "").toLowerCase() === "suspended";
                   const thumb = p.images?.length ? toApiUrl(p.images[0].url) : "";
+                  const { district, area } = extractDistrictArea(p);
                   return (
                     <div className="col-12" key={pid}>
                       <div className="card post-card" style={{ position: "relative" }}>
@@ -279,8 +281,8 @@ export default function AdminUsersPage() {
                               Ad #{String(p.adv_number || p.ad_number || p.id || "").trim()} — {p.title}
                             </div>
                             <div className="muted">
-                              Ad number: {String(p.adv_number || p.ad_number || p.id || "").trim() || "—"} • District: {String(p.district || "").trim() || "—"} • Area:{" "}
-                              {String(p.area || "").trim() || "—"} • Price: {formatPriceDisplay(p.price_display || p.price) || "—"} •{" "}
+                              Ad number: {String(p.adv_number || p.ad_number || p.id || "").trim() || "—"} • District: {district} • Area: {area} • Price:{" "}
+                              {formatPriceDisplay(p.price_display || p.price) || "—"} •{" "}
                               {Number.isFinite(Number(p.distance_km))
                                 ? `${Number(p.distance_km) < 10 ? Number(p.distance_km).toFixed(1) : Math.round(Number(p.distance_km)).toString()} km away from you`
                                 : "— km away from you"}{" "}

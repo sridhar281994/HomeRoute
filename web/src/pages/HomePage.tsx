@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  extractDistrictArea,
   getCategoryCatalog,
   getMe,
   getSession,
@@ -129,7 +130,7 @@ export default function HomePage() {
   }, [needGroups]);
   const categoryHint = categoryMsg || (needGroups.length ? "" : "Categories unavailable.");
 
-  async function load() {
+  async function load(opts?: { postGroupOverride?: "property_material" | "services" }) {
     setErr("");
     try {
       const q = (need || "").trim() || undefined;
@@ -138,6 +139,7 @@ export default function HomePage() {
       const gpsOk = isValidGps(gps);
       const maxPriceTrim = String(maxPrice || "").trim();
       const maxPriceParam = /^\d+$/.test(maxPriceTrim) ? maxPriceTrim : undefined;
+      const selectedPostGroup = opts?.postGroupOverride || postGroup;
 
       let res: { items: any[] };
 
@@ -149,7 +151,7 @@ export default function HomePage() {
           lon: gps.lon,
           radius_km: radius,
           q,
-          post_group: postGroup,
+          post_group: selectedPostGroup,
           max_price: maxPriceParam,
           rent_sale: rentSale || undefined,
           property_type: undefined,
@@ -157,7 +159,7 @@ export default function HomePage() {
           limit: 20,
         });
 
-        if (!(nearby.items || []).length && postGroup) {
+        if (!(nearby.items || []).length && selectedPostGroup) {
           nearby = await listNearbyProperties({
             lat: gps.lat,
             lon: gps.lon,
@@ -178,7 +180,7 @@ export default function HomePage() {
           // Fallback so resetting filters to Any always brings posts back.
           res = await listProperties({
             q,
-            post_group: postGroup,
+            post_group: selectedPostGroup,
             max_price: maxPriceParam,
             rent_sale: rentSale || undefined,
             district: district || undefined,
@@ -188,7 +190,7 @@ export default function HomePage() {
             posted_within_days: postedWithinDays || undefined,
             limit: 20,
           });
-          if (!(res.items || []).length && postGroup) {
+          if (!(res.items || []).length && selectedPostGroup) {
             res = await listProperties({
               q,
               post_group: undefined,
@@ -206,7 +208,7 @@ export default function HomePage() {
       } else {
         res = await listProperties({
           q,
-          post_group: postGroup,
+          post_group: selectedPostGroup,
           max_price: maxPriceParam,
           rent_sale: rentSale || undefined,
           district: district || undefined,
@@ -216,7 +218,7 @@ export default function HomePage() {
           posted_within_days: postedWithinDays || undefined,
           limit: 20,
         });
-        if (!(res.items || []).length && postGroup) {
+        if (!(res.items || []).length && selectedPostGroup) {
           res = await listProperties({
             q,
             post_group: undefined,
@@ -434,15 +436,16 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    // Triggered by topbar "Search Nearby(50km)".
+    // Triggered by topbar "Search Nearby(20km)".
     try {
-      if (localStorage.getItem("pd_force_nearby_50") === "1") {
+      if (localStorage.getItem("pd_force_nearby_20") === "1" || localStorage.getItem("pd_force_nearby_50") === "1") {
+        localStorage.removeItem("pd_force_nearby_20");
         localStorage.removeItem("pd_force_nearby_50");
-        setRadiusKm("50");
-          setState("");
-          setDistrict("");
-          setAreas([]);
-          setAreaSearch("");
+        setRadiusKm("20");
+        setState("");
+        setDistrict("");
+        setAreas([]);
+        setAreaSearch("");
         requestGps();
       }
     } catch {
@@ -523,9 +526,9 @@ export default function HomePage() {
             <button
               className={postGroup === "property_material" ? "primary" : ""}
               onClick={() => {
-                setPostGroup("property_material");
-                // reload with new group
-                setTimeout(() => load(), 0);
+                const next = "property_material" as const;
+                setPostGroup(next);
+                load({ postGroupOverride: next });
               }}
             >
               Property/material
@@ -533,8 +536,9 @@ export default function HomePage() {
             <button
               className={postGroup === "services" ? "primary" : ""}
               onClick={() => {
-                setPostGroup("services");
-                setTimeout(() => load(), 0);
+                const next = "services" as const;
+                setPostGroup(next);
+                load({ postGroupOverride: next });
               }}
             >
               Services
@@ -661,7 +665,7 @@ export default function HomePage() {
           <div className="row" style={{ marginTop: 6, alignItems: "center" }}>
             <button
               onClick={() => {
-                setRadiusKm("50");
+                setRadiusKm("20");
                 setState("");
                 setDistrict("");
                 setAreas([]);
@@ -669,7 +673,7 @@ export default function HomePage() {
                 requestGps();
               }}
             >
-              Search Nearby(50km)
+              Search Nearby(20km)
             </button>
             <span className="muted">{gpsMsg}</span>
           </div>
@@ -733,8 +737,7 @@ export default function HomePage() {
           const pidKey = Number.isInteger(pid) ? pid : Number.NaN;
           const shareUrl = Number.isInteger(pid) && pid > 0 ? `${window.location.origin}/property/${pid}` : window.location.href;
           const adNo = String(p.adv_number || p.ad_number || p.id || "").trim() || "—";
-          const districtLabel = String(p.district || "").trim() || "—";
-          const areaLabel = String(p.area || "").trim() || "—";
+          const { district: districtLabel, area: areaLabel } = extractDistrictArea(p);
           const priceLabel = formatPriceDisplay(p.price_display || p.price) || "—";
           const distanceLabel = fmtDistance(p.distance_km);
           const imageUrls = (Array.isArray(p.images) ? p.images : [])

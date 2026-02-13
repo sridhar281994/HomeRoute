@@ -82,6 +82,37 @@ export function formatPriceDisplay(value: any): string {
   return `Rs ${raw}`;
 }
 
+export function extractDistrictArea(input: any): { district: string; area: string } {
+  let district = String(input?.district ?? input?.district_name ?? "").trim();
+  let area = String(input?.area ?? input?.area_name ?? input?.locality ?? "").trim();
+  const loc = String(input?.location_display ?? input?.location ?? "").trim();
+
+  if (loc) {
+    if (!district) {
+      const m = loc.match(/district\s*[:\-]\s*([^,|/]+)/i);
+      if (m?.[1]) district = String(m[1]).trim();
+    }
+    if (!area) {
+      const m = loc.match(/area\s*[:\-]\s*([^,|/]+)/i);
+      if (m?.[1]) area = String(m[1]).trim();
+    }
+    if (!district || !area) {
+      const parts = loc
+        .split(/[\/,|]/)
+        .map((x: string) => String(x || "").trim())
+        .filter(Boolean);
+      if (!area && parts.length >= 1) area = parts[0];
+      if (!district && parts.length >= 2) district = parts[1];
+      if (!district && parts.length === 1) district = parts[0];
+    }
+  }
+
+  return {
+    district: district || "—",
+    area: area || "—",
+  };
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const s = getSession();
   const headers = new Headers(init?.headers || {});
